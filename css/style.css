@@ -1,0 +1,174 @@
+:root { 
+    --primary-color: #007bff;
+    --danger-color: #dc3545;
+    --success-color: #28a745;
+    --gray-color: #f8f9fa;
+    --dark-color: #343a40;
+}
+
+body { font-family: 'Malgun Gothic', sans-serif; margin: 20px; background-color: #f4f6f9; color: #333; padding-bottom: 200px; }
+
+.container { max-width: 1150px; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 20px auto; }
+.card { max-width: 400px; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin: 20px auto; text-align: center; box-sizing: border-box; }
+
+h2, h3 { text-align: center; color: #222; margin-bottom: 20px; }
+
+.tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 20px; }
+.tab-btn { flex: 1; padding: 12px; cursor: pointer; background: none; border: none; font-size: 16px; font-weight: bold; color: #666; }
+.tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); }
+
+input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+button { width: 100%; padding: 12px; background: var(--dark-color); color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+button:hover { opacity: 0.9; }
+
+table { width: 100%; border-collapse: collapse; margin: 20px 0; table-layout: fixed; }
+th, td { border: 1px solid #dee2e6; padding: 12px; text-align: center; }
+th { background-color: #f1f3f5; }
+
+/* 드롭다운 */
+.custom-select-wrapper { position: relative; width: 100px; margin: 0 auto; }
+.selected-value { border: 1px solid #ddd; padding: 8px; cursor: pointer; background: white; }
+.select-options-box { display: none; position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid #ddd; z-index: 10; max-height: 200px; overflow-y: auto; }
+.select-options-box div { padding: 8px; cursor: pointer; }
+.select-options-box div:hover { background: #f0f0f0; }
+
+/* [신규] 최상단 탑 네비게이션 영역 (얇은 선 + 좌우 정렬) */
+.top-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #dee2e6; /* 가이드라인 얇은 줄 생성 */
+    margin-bottom: 15px;
+}
+
+/* [신규] 메인화면 돌아가기 텍스트 링크 */
+.nav-link {
+    font-size: 13px;
+    color: #6c757d; /* 깔끔한 회색 텍스트 */
+    cursor: pointer;
+    font-weight: 500;
+    transition: color 0.2s;
+    user-select: none;
+}
+.nav-link:hover {
+    color: #212529;
+    text-decoration: underline; /* 호버 시 밑줄 효과 */
+}
+
+/* [신규] 우측 사원 정보 텍스트 */
+.user-info-text {
+    font-size: 13px;
+    color: #333;
+    font-weight: bold;
+}
+
+/* 레이아웃 (수정됨: 사원정보 뱃지가 위로 이동했으므로 중앙 집중 및 여백 조정) */
+.main-header { text-align: center; margin-bottom: 25px; }
+.summary-box { text-align: right; margin-bottom: 10px; font-size: 16px; font-weight: bold; }
+#total-hours { font-size: 18px; color: #333; margin-right: 10px; }
+.status-badge { font-weight: bold; padding: 5px 10px; border-radius: 4px; }
+.over-ot { color: white; background: var(--danger-color); }
+.under-ot { color: var(--success-color); }
+
+/* 버튼 영역 - 오른쪽 정렬 */
+.row-control-area { text-align: right; margin-bottom: 10px; }
+.btn-add { background-color: #424547; color: white; width: auto; padding: 8px 15px; font-size: 14px; border-radius: 4px; border: none; cursor: pointer; }
+
+.button-group { text-align: right; margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
+.btn-history { background-color: #185edf; color: white; width: auto; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+.btn-submit { background-color: #007bff; color: white; width: auto; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+
+/* 상태 색상 */
+.type-weekday { color: #007bff; font-weight: bold; }
+.type-weekend { color: #dc3545; font-weight: bold; }
+
+/* 1. 모달 전체 배경은 그대로 유지 */
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+
+/* 2. 모달 내용 박스 */
+.modal-content { 
+    background: #fff; 
+    /* ↓ 위아래 마진을 3% 정도로 잡고, 좌우는 가운데 정렬(auto)로 설정합니다 */
+    margin: 3% auto; 
+    padding: 25px; 
+    border-radius: 8px; 
+    width: 75%; 
+    text-align: center; 
+    
+    max-height: 88vh;       /* 화면 높이 대비 모달 최대 크기를 살짝 조절 (예: 88vh) */
+    /* [핵심 수정 부분] */
+    overflow-y: scroll;     /* auto 대신 항상 스크롤 공간을 차지하도록 scroll 고정 */
+    scrollbar-gutter: stable; /* 최신 브라우저에서 스크롤바 영역을 미리 안정적으로 확보 */
+    
+    box-sizing: border-box; 
+}
+/* 3. 모달 안의 '닫기' 버튼 스타일 (닫기 버튼만 타겟팅) */
+.modal-content > button, 
+.modal-content .close-btn { 
+    width: auto;         
+    padding: 8px 20px;   
+    margin-top: 15px;    
+    background-color: #424547; 
+}
+
+/* 4. 제출 내역 상단 회수/삭제/재작성 버튼 그룹 정렬용 */
+.action-btn-group, div[style*="background-color: #ffc107"] {
+    display: flex;
+    justify-content: flex-end; /* 오른쪽 정렬 (또는 center로 바꾸면 가운데 정렬) */
+    gap: 5px;
+    margin: 10px 0;
+}
+
+#history-list th, #history-list td { 
+    padding: 10px 8px; 
+    border: 1px solid #ddd; 
+    text-align: center; 
+}
+
+#history-tbody {
+    display: table-row-group; 
+}
+
+#history-tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+
+/* 메인 테이블 내의 체크박스가 100%로 늘어나지 않게 고정 */
+#ot-tbody input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* 기존 .btn-batch-delete 스타일을 찾아서 이 코드로 덮어씌워 주세요 */
+.btn-batch-delete {
+    background-color: #ffffff; /* 깔끔한 흰색 바탕 */
+    color: #333333;            /* 진한 회색 글자 */
+    border: 1px solid #cccccc; /* 연한 테두리 선 */
+    border-radius: 4px;
+    padding: 6px 15px;         /* 행 추가 버튼과 비슷한 아담한 여백 */
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    width: auto !important;    /* ★ 넓게 퍼지는 현상 방지 (핵심!) */
+    display: inline-block;     /* 행 추가 버튼처럼 한 칸만 차지하도록 설정 */
+    transition: all 0.2s;
+}
+
+.btn-batch-delete:hover {
+    background-color: #f8f9fa; /* 마우스 올리면 살짝 어두워지는 효과 */
+    border-color: #adadad;
+}
+
+/* --- style.css 맨 밑에 추가 --- */
+/* 테이블 칸별 너비 비율 조정 (삭제 칸 제거 및 사유 칸 확장) */
+#ot-table th:nth-child(1), #ot-tbody td:nth-child(1) { width: 5%; }  /* 체크박스 */
+#ot-table th:nth-child(2), #ot-tbody td:nth-child(2) { width: 15%; } /* 날짜 */
+#ot-table th:nth-child(3), #ot-tbody td:nth-child(3) { width: 12%; } /* 구분 */
+#ot-table th:nth-child(4), #ot-tbody td:nth-child(4) { width: 10%; } /* 시작 */
+#ot-table th:nth-child(5), #ot-tbody td:nth-child(5) { width: 10%; } /* 종료 */
+#ot-table th:nth-child(6), #ot-tbody td:nth-child(6) { width: 38%; } /* 사유 (대폭 확장) */
+#ot-table th:nth-child(7), #ot-tbody td:nth-child(7) { width: 10%; } /* 시간 */
+
