@@ -185,7 +185,7 @@ function viewTempRequests() {
             if (paginationContainer) {
                 paginationContainer.style.cssText = "display: block !important; width: 100% !important; text-align: center !important; margin: 15px 0 10px 0 !important; padding: 0 !important; float: none !important;";
 
-                const tempBtnStyle = "width: auto !important; min-width: 50px; height: 36px; padding: 0 14px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-inline-block !important; align-items: center; justify-content: center; white-space: nowrap !important;";
+                const tempBtnStyle = "width: auto !important; min-width: 50px; height: 36px; padding: 0 14px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-block !important; align-items: center; justify-content: center; white-space: nowrap !important;";
 
                 paginationContainer.innerHTML = `
                     <div style="display: inline-flex !important; gap: 8px !important; justify-content: center !important; align-items: center !important;">
