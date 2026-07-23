@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>관리자 결재 시스템</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+    <div id="admin-system" class="container" style="display:none;">
+        <!-- 1. 상단 네비게이션 영역 -->
+        <div class="top-nav">
+            <span class="nav-link" onclick="logoutAdmin()">← 로그아웃</span>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="user-info-text">👑 관리자 모드</span>
+                <button onclick="openEmpModal()" class="btn-submit">사원등록</button>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 30px;">
+            <h2>연장근로 결재 센터</h2>
+        </div>
+
+        <!-- 🔍 검색 & 기간 필터링 통합 영역 -->
+        <div style="background: #fff; padding: 20px; border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 30px; display: flex; flex-direction: column; gap: 15px;">
+            
+            <!-- 직원명 & 상태 선택 한 줄 배치 -->
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-weight: bold; font-size: 14px; color: #333; min-width: 70px;">직원명:</span>
+                    <select id="search-employee-name" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 140px; height: 34px; cursor: pointer; outline: none; background-color: #fff;">
+                        <option value="">선택</option>
+                    </select>
+                </div>
+
+                <!-- 상태 선택 드롭다운 -->
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-weight: bold; font-size: 14px; color: #333; min-width: 50px;">상태:</span>
+                    <select id="search-status" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 120px; height: 34px; cursor: pointer; outline: none; background-color: #fff;">
+                        <option value="전체">전체</option>
+                        <option value="대기">대기</option>                        
+                        <option value="승인">승인</option>
+                        <option value="재전송">재전송</option> <!-- 🆕 추가된 부분 -->
+                        <option value="반송">반송</option>
+                    </select>
+                </div>
+
+            <!-- 제출일 기준 기간 검색 (인터넷뱅킹 스타일) -->
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span style="font-weight: bold; font-size: 14px; color: #333; min-width: 70px;">조회기간:</span>
+                
+                <!-- 기간 퀵 버튼들 -->
+                <div style="display: inline-flex; gap: 4px;">
+                    <button type="button" onclick="setDateRange('today')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0;">당일</button>
+                    <button type="button" onclick="setDateRange('3days')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0;">3일</button>
+                    <button type="button" onclick="setDateRange('week')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0;">일주일</button>
+                    <button type="button" onclick="setDateRange('month')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0;">한달</button>
+                    <button type="button" onclick="setDateRange('6months')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0;">6개월</button>
+                    <button type="button" onclick="setDateRange('year')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0;">1년</button>
+                    <button type="button" onclick="setDateRange('all')" class="btn-batch-delete" style="height: 34px; padding: 0 12px; font-size: 13px; line-height: 32px; margin: 0; background-color: #f1f3f5;">전체</button>
+                </div>
+
+                <!-- 달력 날짜 지정 범위 -->
+                <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;">
+                    <input type="date" id="search-start-date" style="margin: 0; height: 34px; padding: 0 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                    <span>~</span>
+                    <input type="date" id="search-end-date" style="margin: 0; height: 34px; padding: 0 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
+                </div>
+
+                <!-- 최종 검색 버튼 -->
+                <button onclick="applyFilters()" class="btn-batch-delete" style="margin: 0 0 0 auto; padding: 0 20px; height: 34px; line-height: 32px; font-weight: bold; background-color: #333; color: #fff; border-color: #333;">조회</button>
+            </div> 
+        </div>        
+
+        
+        <!-- 2. 결재 대기 내역 -->
+        <h3>📜 결재 대기 내역</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>제출일</th>
+                    <th>이름</th>
+                    <th>번호</th>
+                    <th>총시간</th>
+                    <th>상태</th>
+                    <th>관리</th>
+                </tr>
+            </thead>
+            <tbody id="admin-tbody"></tbody>
+        </table>
+    </div>
+
+    <!-- 👤 [사원 관리 모달창] -->
+    <div id="emp-manage-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 15px; margin-bottom: 20px;">
+                <h3 style="margin: 0; text-align: left;">👤 사원 등록 및 관리</h3>
+                <span onclick="closeEmpModal()" style="cursor:pointer; font-size: 24px; color: #aaa; font-weight: bold;">&times;</span>
+            </div>
+            
+            <!-- 신규 사원 추가 (등록 버튼을 흰색 배경의 대기/삭제 스타일 버튼으로 적용) -->
+            <div style="background: var(--gray-color); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
+                <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; text-align: left;">신규 사원 추가</h4>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="new-emp-name" placeholder="사원 이름" style="margin: 0;">
+                    <input type="text" id="new-emp-phone" placeholder="휴대폰 뒤 4자리" style="margin: 0;">
+                    <button onclick="registerEmployee()" class="btn-batch-delete" style="margin: 0; height: 42px; line-height: 40px; padding: 0 20px; font-weight: bold; background: #fff; flex-shrink: 0; min-width: 75px; white-space: nowrap;">등록</button>
+                </div>
+            </div>
+
+            <!-- 등록된 사원 목록 (테이블 높이를 잡고 세로 스크롤바가 자연스럽게 작동하도록 수정) -->
+            <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; text-align: left;">📋 등록된 사원 목록</h4>
+            <div style="max-height: 250px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+                <table style="margin: 0; table-layout: auto; width: 100%;">
+                    <thead style="position: sticky; top: 0; z-index: 1; background: #f8f9fa;">
+                        <tr>
+                            <th>이름</th>
+                            <th>번호(뒤4자리)</th>
+                            <th style="width: 80px;">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="employee-list-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📜 [상세 내역 모달창] -->
+    <div id="detail-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>상세 내역</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>날짜</th>
+                        <th>구분</th>
+                        <th>시작</th>
+                        <th>종료</th>
+                        <th>시간</th>
+                    </tr>
+                </thead>
+                <tbody id="modal-tbody"></tbody>
+            </table>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="closeModal()" class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px;">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/admin.js"></script>
+</body>
+</html>

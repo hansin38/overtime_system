@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>연장근로 관리 시스템</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Firebase SDK (반드시 core-app이 가장 먼저 와야 합니다) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+    <!-- 로그인 컨테이너 (사원 / 관리자 전환 가능) -->
+    <div id="login-container" class="login-container">
+        <div class="tabs">
+            <button id="tab-user" class="tab-btn active" onclick="switchLoginTab('user')">사원 로그인</button>
+            <button id="tab-admin" class="tab-btn" onclick="switchLoginTab('admin')">관리자 로그인</button>
+        </div>
+
+        <!-- 사원 로그인 섹션 -->
+        <div id="login-section-user" class="card">
+            <h3>사원 로그인</h3>
+            <!-- autocomplete="username"과 "current-password"를 넣어 브라우저 경고 방지 및 입력 편의성 제공 -->
+            <input type="text" id="login-name" placeholder="이름" autocomplete="username">
+            <input type="password" id="login-phone" placeholder="휴대폰 뒷자리" autocomplete="current-password">
+            <button onclick="handleLogin()">시스템 접속</button>
+        </div>
+
+        <!-- 관리자 로그인 섹션 -->
+        <div id="login-section-admin" class="card" style="display: none;">
+            <h3>관리자 결재 시스템</h3>
+            <input type="text" id="admin-name" placeholder="관리자 이름" autocomplete="username">
+            <input type="password" id="admin-pw" placeholder="비밀번호" autocomplete="current-password">
+            <button onclick="handleAdminLogin()">관리자 접속</button>
+        </div>
+    </div>
+
+    <!-- 기존 employee.js 대신 index.js를 연결합니다 -->
+    <script src="js/index.js"></script>
+</body>
+</html>  

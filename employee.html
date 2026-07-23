@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>연장근로 신청 시스템</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- ⚠️ db(Firestore) 라이브러리 로드 -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+    <!-- display:none을 제거하여 페이지 접속 시 바로 신청서가 보이도록 설정 -->
+    <div id="main-system" class="container">
+        <!-- 1. 상단 네비게이션 영역 (.top-nav, .nav-link, .user-info-text 연동) -->
+        <div class="top-nav">
+            <span class="nav-link" onclick="logoutUser()">메인화면 돌아가기</span>
+            <div id="user-display" class="user-info-text">로드 중...</div>
+        </div>
+
+        <div style="margin: 20px 0 30px 0;">
+            <h2>연장근로 신청</h2>
+        </div>
+
+        <!-- 2. 상단 버튼 제어 영역 (.btn-submit, .btn-batch-delete 연동) -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-submit" onclick="submitForm(event)">제출하기</button>
+                <button type="button" class="btn-batch-delete" onclick="saveTemporary(event)">임시저장</button>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-batch-delete" onclick="viewMyRequests()">제출내역조회</button>
+                <button type="button" class="btn-batch-delete" onclick="viewTempRequests()">임시저장내역</button>
+            </div>
+        </div>
+        
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">
+
+        <!-- 3. 제목 입력 영역 (CSS의 input 기본 스타일 연동) -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <b style="white-space: nowrap;">제 목:</b>
+            <input type="text" id="ot-title" value="00월 연장근로일지 제출" style="margin: 0; flex-grow: 1;">
+        </div>
+
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">
+
+        <!-- 4. 테이블 조작 영역 (.summary-box, .status-badge 연동) -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <!-- 삭제 버튼 -->
+                <button type="button" class="btn-batch-delete" onclick="deleteCheckedRows()" style="margin: 0;">
+                    삭제
+                </button>        
+                <!-- 초기화(⟳) 버튼: .btn-batch-delete 클래스를 사용하여 일체감 있게 정돈 -->
+                <button type="button" class="btn-batch-delete" onclick="clearFormWithConfirm()" style="margin: 0; padding: 6px 12px;" title="작성내역 초기화">
+                    ⟳
+                </button>        
+            </div>
+            <!-- 총 시간 및 상태 뱃지 영역 -->
+            <div class="summary-box" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span id="total-hours" style="font-weight: bold; font-size: 16px; color: #222;">0.0 시간</span>
+                <span id="ot-status" class="status-badge under-ot" style="font-size: 14px;">고정OT 범위 내</span>
+            </div>
+        </div>
+
+        <!-- 5. 신청 내역 테이블 (CSS의 table 기본 스타일 연동) -->
+        <table id="ot-table">
+            <thead>
+                <tr>
+                    <!-- 체크박스 너비 제어를 위한 nth-child CSS 연동을 위해 너비 하드코딩 제거 -->
+                    <th><input type="checkbox" id="master-check" onclick="toggleAllCheckboxes(this)"></th>
+                    <th>날짜</th>
+                    <th>구분</th>
+                    <th>시작</th>
+                    <th>종료</th>
+                    <th>사유</th>
+                    <th>시간</th>
+                </tr>
+            </thead>
+            <tbody id="ot-tbody"></tbody>
+        </table>
+
+        <!-- 행 추가 영역 (.row-control-area, .btn-add 혹은 .btn-batch-delete 연동) -->
+        <div class="row-control-area">
+            <button onclick="addRow()" class="btn-batch-delete" style="margin: 0;">+ 행 추가</button>
+        </div>
+        
+        <!-- 👤 [마이 페이지용 내역 모달창] (.modal, .modal-content 클래스 연동) -->
+        <div id="history-modal" class="modal">
+            <div class="modal-content" style="max-width: 800px; width: 90%;">
+                <h3 style="margin-bottom: 20px;">나의 제출 내역</h3>            
+                <div id="history-list">
+                    <table style="margin: 0;">
+                        <thead id="modal-thead">
+                            <tr>
+                                <th style="width: 8%;"><input type="checkbox" id="modal-master-check"></th>
+                                <th style="width: 42%;">제목</th>
+                                <th style="width: 25%;">신청일/작성일</th>
+                                <th style="width: 25%;">상태</th> 
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody"></tbody>
+                    </table>
+                </div>
+                
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 15px;">
+                    <div id="pagination-container" style="flex-grow: 1; text-align: center;"></div>
+                    <div id="modal-action-buttons" style="display: flex; gap: 6px;"></div>
+                </div>
+
+                <!-- 상세 보기 확장 영역 (클릭 시 노출) -->
+                <div id="detail-view-area" style="margin-top: 30px; border-top: 1px solid #dee2e6; padding-top: 20px; display: none;">
+                    <div style="position: relative; margin-bottom: 15px;">
+                        <div style="font-size: 16px; font-weight: bold; color: #222; text-align: center;">상세 내역</div>
+                        <div id="detail-title-display" style="font-size: 13px; font-weight: bold; color: #333; text-align: left; margin-top: 5px;">제목: </div>
+                    </div>                
+                    <table style="margin: 0;">
+                        <thead>
+                            <tr>
+                                <th>날짜</th>
+                                <th>구분</th>
+                                <th>시작</th>
+                                <th>종료</th>
+                                <th>사유</th>
+                                <th>시간</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detail-tbody"></tbody>
+                    </table>
+                </div>
+
+                <!-- 닫기 버튼: .modal-content button 전용 CSS 상속받도록 클래스 걷어냄 -->
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="document.getElementById('history-modal').style.display='none'">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/employee.js"></script>
+</body>
+</html>
