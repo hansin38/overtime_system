@@ -13,9 +13,16 @@
     <!-- display:none을 제거하여 페이지 접속 시 바로 신청서가 보이도록 설정 -->
     <div id="main-system" class="container">
         <!-- 1. 상단 네비게이션 영역 (.top-nav, .nav-link, .user-info-text 연동) -->
-        <div class="top-nav">
+        <div class="top-nav" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 10px; margin-bottom: 25px;">
+            <!-- 메인화면 돌아가기 -->
             <span class="nav-link" onclick="logoutUser()">메인화면 돌아가기</span>
-            <div id="user-display" class="user-info-text">로드 중...</div>
+            
+            <!-- 우측 상단 통합 정보 영역 (작성자 + 제출일자) -->
+            <div style="text-align: right; line-height: 1.4;">
+                <div style="font-size: 13px; color: #333; font-weight: bold;">
+                    작성자: <span id="user-display">로드 중...</span> | 제출일자: <span id="top-today-date"></span>
+                </div>
+            </div>
         </div>
 
         <div style="margin: 20px 0 30px 0;">
@@ -39,7 +46,7 @@
         <!-- 3. 제목 입력 영역 (CSS의 input 기본 스타일 연동) -->
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
             <b style="white-space: nowrap;">제 목:</b>
-            <input type="text" id="ot-title" value="00월 연장근로일지 제출" style="margin: 0; flex-grow: 1;">
+            <input type="text" id="ot-title" placeholder="00월 연장근로일지 제출" style="margin: 0; flex-grow: 1;">
         </div>
 
         <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">

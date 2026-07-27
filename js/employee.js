@@ -78,9 +78,20 @@ window.addEventListener('DOMContentLoaded', () => {
             if (mainSystem) mainSystem.style.display = 'block';
             if (loginContainer) loginContainer.style.display = 'none';
 
+            // 👤 작성자 정보 즉시 갱신
             const userDisplay = document.getElementById('user-display');
             if (userDisplay) {
                 userDisplay.innerText = `${currentUser.name}(${currentUser.phone})`;
+            }
+            
+            // 📅 제출일자 즉시 갱신
+            const dateSpan = document.getElementById('top-today-date');
+            if (dateSpan) {
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                dateSpan.textContent = `${yyyy}. ${mm}. ${dd}.`;
             }
             
             initDatePickerLimits();
@@ -183,14 +194,14 @@ function viewTempRequests() {
             
             // [불러오기 / 선택 삭제] 버튼 영역: 확실한 중앙 정렬 구조 적용
             if (paginationContainer) {
-                paginationContainer.style.cssText = "display: block !important; width: 100% !important; text-align: center !important; margin: 15px 0 10px 0 !important; padding: 0 !important; float: none !important;";
+                paginationContainer.style.cssText = "display: block !important; width: 100% !important; text-align: center !important; margin: 15px auto 10px auto !important; padding: 0 !important; float: none !important;";
 
-                const tempBtnStyle = "width: auto !important; min-width: 50px; height: 36px; padding: 0 14px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-block !important; align-items: center; justify-content: center; white-space: nowrap !important;";
+                const tempBtnStyle = "width: auto !important; min-width: 70px; height: 36px; padding: 0 16px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-block !important; white-space: nowrap !important;";
 
                 paginationContainer.innerHTML = `
-                    <div style="display: inline-flex !important; gap: 8px !important; justify-content: center !important; align-items: center !important;">
-                        <button type="button" onclick="loadCheckedTempRequest()" style="${tempBtnStyle} background-color: #007bff; color: #fff;">불러오기</button>
-                        <button type="button" onclick="deleteCheckedTempRequests()" style="${tempBtnStyle} background-color: #dc3545; color: #fff;">선택 삭제</button>
+                    <div style="display: inline-flex !important; gap: 8px !important; justify-content: center !important; align-items: center !important; margin: 0 auto !important;">
+                        <button type="button" onclick="loadCheckedTempRequest()" style="${tempBtnStyle} background-color: var(--primary-color); color: #fff;">불러오기</button>
+                        <button type="button" onclick="deleteCheckedTempRequests()" style="${tempBtnStyle} background-color: var(--danger-color); color: #fff;">선택 삭제</button>
                     </div>
                 `;
             }
@@ -382,8 +393,12 @@ function buildCustomOptions(type, mode, weekdayStartVal) {
 function makeSmartSelect(row, mode, type, startVal) {
     const container = row.querySelector(`.${mode}-time-container`);
     if (type === 'weekday' && mode === 'end' && !startVal) startVal = row.querySelector('.start-time-container').dataset.value || "08:30";
+    
     const timeList = buildCustomOptions(type, mode, startVal);
-    let initialText = container.dataset.value && timeList.includes(container.dataset.value) ? container.dataset.value : "선택";
+    
+    let currentVal = container.dataset.value || "";
+    let initialText = currentVal && timeList.includes(currentVal) ? currentVal : "선택";
+
     let html = `<div class="custom-select-wrapper"><div class="selected-value" onclick="toggleDropdown(this)">${initialText}</div><div class="select-options-box"><div onclick="selectCustomValue(this, '')">선택</div>`;
     timeList.forEach(t => { html += `<div onclick="selectCustomValue(this, '${t}')">${t}</div>`; });
     html += `</div></div>`;
@@ -413,20 +428,41 @@ function toggleDropdown(el) {
 function handleDateChange(dateInput) {
     const row = dateInput.closest('tr');
     const typeTextSpan = row.querySelector('.type-text');
-    if(!dateInput.value) { typeTextSpan.innerText = "-"; return; }
+    
+    const startContainer = row.querySelector('.start-time-container');
+    const endContainer = row.querySelector('.end-time-container');
+
+    // 1. 날짜를 지웠을 때: 완전 초기화 (빈칸)
+    if(!dateInput.value) { 
+        typeTextSpan.innerText = "-"; 
+        typeTextSpan.className = "type-text";
+        row.dataset.workType = "";
+        if (startContainer) startContainer.dataset.value = "";
+        if (endContainer) endContainer.dataset.value = "";
+        makeSmartSelect(row, 'start', 'weekday');
+        makeSmartSelect(row, 'end', 'weekday');
+        calculateRowHours(dateInput);
+        return; 
+    }
     
     const selectedDateStr = dateInput.value; 
     const dayOfWeek = new Date(selectedDateStr).getDay(); 
     
+    // 2. 날짜를 선택했을 때 평일/주말 판별 및 시작 시간 자동 지정!
     if (dayOfWeek === 0 || dayOfWeek === 6 || holidays2026.includes(selectedDateStr)) {
         typeTextSpan.innerText = "주말/공휴일"; 
         typeTextSpan.className = "type-text type-weekend"; 
         row.dataset.workType = 'weekend';
+        if (startContainer) startContainer.dataset.value = "09:00"; // 주말은 09:00
     } else {
         typeTextSpan.innerText = "평일 야근"; 
         typeTextSpan.className = "type-text type-weekday"; 
         row.dataset.workType = 'weekday';
+        if (startContainer) startContainer.dataset.value = "18:30"; // 평일은 18:30
     }
+    
+    if (endContainer) endContainer.dataset.value = "";
+
     makeSmartSelect(row, 'start', row.dataset.workType);
     makeSmartSelect(row, 'end', row.dataset.workType);
     calculateRowHours(dateInput);
@@ -546,11 +582,11 @@ function submitForm(event) {
     let isValid = true; 
     let hasData = false;
 
-    rows.forEach(row => {
+    for (let row of rows) {
         const dateInput = row.querySelector('.work-date');
         const reasonInput = row.querySelector('.work-reason');
         
-        if (!dateInput || !reasonInput) return;
+        if (!dateInput || !reasonInput) continue;
 
         const date = dateInput.value;
         const startVal = row.querySelector('.start-time-container').dataset.value;
@@ -559,10 +595,10 @@ function submitForm(event) {
 
         if (date || startVal || endVal) {
             hasData = true;
+            // 빈 항목이 하나라도 있으면 검증 실패 처리 후 즉시 중단하고 빠져나옴 (알림은 딱 1번만!)
             if (!date || !startVal || !endVal || !reason) {
-                alert("입력하신 행의 날짜, 시간, 업무 상세내역을 모두 기입해주세요.");
                 isValid = false;
-                return;
+                break; 
             }
             logs.push({ 
                 date, 
@@ -573,9 +609,12 @@ function submitForm(event) {
                 reason: reason 
             });
         }
-    });
+    }
 
-    if (!isValid) return;
+    if (!isValid) {
+        alert("입력하신 행의 날짜, 시간, 업무 상세내역을 모두 기입해주세요.");
+        return;
+    }
     if (!hasData) { alert("제출할 데이터가 없습니다."); return; }
 
     const titleInput = document.getElementById('ot-title');
@@ -601,12 +640,12 @@ function submitForm(event) {
         .then(() => {
             let promises = [];
             
-            // [해결책 반영] 2. 반송 문서를 다시 쓴 거라면 기존 결재 문서 삭제
+            // 2. 반송 문서를 다시 쓴 거라면 기존 결재 문서 삭제
             if (originDocIdForRewrite) {
                 promises.push(db.collection("overtime_requests").doc(originDocIdForRewrite).delete());
             }
             
-            // [해결책 반영] 3. 임시저장함에서 불러와서 최종 제출한 거라면 기존 임시저장 삭제!
+            // 3. 임시저장함에서 불러와서 최종 제출한 거라면 기존 임시저장 삭제!
             if (currentTempDocId) {
                 promises.push(db.collection("temp_requests").doc(currentTempDocId).delete());
             }
