@@ -115,25 +115,55 @@
                     <div id="modal-action-buttons" style="display: flex; gap: 6px;"></div>
                 </div>
 
-                <!-- 상세 보기 확장 영역 (클릭 시 노출) -->
-                <div id="detail-view-area" style="margin-top: 30px; border-top: 1px solid #dee2e6; padding-top: 20px; display: none;">
-                    <div style="position: relative; margin-bottom: 15px;">
-                        <div style="font-size: 16px; font-weight: bold; color: #222; text-align: center;">상세 내역</div>
-                        <div id="detail-title-display" style="font-size: 13px; font-weight: bold; color: #333; text-align: left; margin-top: 5px;">제목: </div>
-                    </div>                
-                    <table style="margin: 0;">
-                        <thead>
+                <!-- 하단 상세 내역 영역 (확인증 디자인 적용) -->
+                <div id="detail-view-container" style="display: none; margin-top: 20px;">
+                    <div class="print-paper" style="width: 100%; box-sizing: border-box; margin: 0 auto;">
+                        
+                        <!-- 타이틀 구역 -->
+                        <div class="print-header">
+                            <h2>연장근로 신청 확인증</h2>
+                            <p style="font-size: 13px; color: #666; margin: 0;">Overtime Work Application Certificate</p>
+                        </div>
+
+                        <!-- 기본 정보 표 -->
+                        <table class="print-info-table">
                             <tr>
-                                <th>날짜</th>
-                                <th>구분</th>
-                                <th>시작</th>
-                                <th>종료</th>
-                                <th>사유</th>
-                                <th>시간</th>
+                                <th>작성자</th>
+                                <td id="detail-view-name">-</td>
+                                <th>제출일자</th>
+                                <td id="detail-view-date">-</td>
                             </tr>
-                        </thead>
-                        <tbody id="detail-tbody"></tbody>
-                    </table>
+                            <tr>
+                                <th>신청 제목</th>
+                                <td colspan="3" id="detail-view-title">-</td>
+                            </tr>
+                        </table>
+
+                        <!-- 상세 로그 내역 표 -->
+                        <table class="print-item-table">
+                            <thead>
+                                <tr>
+                                    <th>날짜</th>
+                                    <th>구분</th>
+                                    <th>시작 시간</th>
+                                    <th>종료 시간</th>
+                                    <th>사유</th>
+                                    <th>시간</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detail-view-tbody">
+                                <!-- 데이터가 동적으로 들어오는 자리 -->
+                            </tbody>
+                        </table>
+
+                        <!-- 총 시간 및 하단 영역 -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                            <div style="font-weight: bold; font-size: 14px;">
+                                총 연장근로 시간: <span id="detail-view-total-hours" style="color: #0056b3;">0.0 시간</span>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
 
                 <!-- 닫기 버튼: .modal-content button 전용 CSS 상속받도록 클래스 걷어냄 -->
@@ -144,6 +174,60 @@
             </div>
         </div>
     </div>
+
+    <!-- 🖨️ 연장근로 신청 확인증 (인쇄용 팝업) -->
+    <div id="print-modal">
+        <div class="print-paper">
+            <div class="print-header">
+                <h2>연장근로 신청 확인증</h2>
+                <p style="font-size: 13px; color: #666;">Overtime Work Application Certificate</p>
+            </div>
+            
+            <!-- 기본 정보 표 -->
+            <table class="print-info-table">
+                <tr>
+                    <th>작성자</th>
+                    <td id="print-user-name">-</td>
+                    <th>제출일자</th>
+                    <td id="print-submit-date">-</td>
+                </tr>
+                <tr>
+                    <th>신청 제목</th>
+                    <td colspan="3" id="print-title">-</td>
+                </tr>
+            </table>
+
+            <!-- 상세 내역 표 -->
+            <table class="print-item-table">
+                <thead>
+                    <tr>
+                        <th>날짜</th>
+                        <th>구분</th>
+                        <th>시작 시간</th>
+                        <th>종료 시간</th>
+                        <th>사유</th>
+                        <th>시간</th>
+                    </tr>
+                </thead>
+                <tbody id="print-tbody">
+                    <!-- 자바스크립트로 동적 삽입 -->
+                </tbody>
+            </table>
+
+            <!-- 인쇄 모달 하단 버튼 구역 (이슈 해결용 정돈된 코드) -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                <div style="font-weight: bold; font-size: 14px;">
+                    총 연장근로 시간: <span id="print-total-hours" style="color: #0056b3;">0.0 시간</span>
+                </div>
+                <div style="display: flex; gap: 8px; position: relative; z-index: 9999;">
+                    <button type="button" id="modal-print-btn" class="btn-primary" style="padding: 6px 14px; cursor: pointer;">인쇄 / PDF 저장</button>
+                    <button type="button" id="modal-close-btn" class="btn-secondary" style="padding: 6px 14px; cursor: pointer;">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
 
     <script src="js/employee.js"></script>
 </body>

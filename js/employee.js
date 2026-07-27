@@ -367,6 +367,29 @@ function saveTemporary(event) {
 // ==========================================
 // 5. 셀렉트 박스 및 동적 시간 계산 로직
 // ==========================================
+
+// 1. 중복 날짜 체크 함수 (함수 밖으로 빼내기)
+function checkDuplicateDate(currentInput) {
+    const currentDate = currentInput.value;
+    if (!currentDate) return false;
+
+    const allDateInputs = document.querySelectorAll('#ot-tbody .work-date');
+    let duplicateCount = 0;
+
+    allDateInputs.forEach(input => {
+        if (input.value === currentDate) {
+            duplicateCount++;
+        }
+    });
+
+    if (duplicateCount > 1) {
+        currentInput.value = ""; // 중복된 경우 값 초기화
+        handleDateChange(currentInput); // 초기화에 따른 상태 동기화
+        return true;
+    }
+    return false;
+}
+
 function buildCustomOptions(type, mode, weekdayStartVal) {
     let baseTime = (type === 'weekend') ? "09:00" : "18:00";
     if (type === 'weekday' && mode === 'start') return ["18:30", "19:00", "19:30"];
@@ -426,6 +449,11 @@ function toggleDropdown(el) {
 }
 
 function handleDateChange(dateInput) {
+    // 🛑 [핵심 수정] 함수가 시작하자마자 중복 날짜부터 체크합니다!
+    if (checkDuplicateDate(dateInput)) {
+        return;
+    }
+
     const row = dateInput.closest('tr');
     const typeTextSpan = row.querySelector('.type-text');
     
@@ -683,24 +711,33 @@ function viewMyRequests() {
         return;
     }
 
-    // 1. 모달 타이틀 구역 내부에 검색창 생성 (중복 생성 방지)
+    // 1. 모달 최상단 우측에 검색 버튼과 동일한 스타일의 인쇄 버튼 배치
     if (modalTitle) {
         if (!document.getElementById('history-search-input')) {
             modalTitle.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; position: relative;">
-                    <span style="font-size: 20px; font-weight: bold;">나의 제출 내역</span>
-                    <!-- ↓ font-size: 0을 지우고 white-space: nowrap을 추가했습니다! -->
-                    <div style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
-                        <span style="font-size: 14px; font-weight: normal; color: #222; margin-right: 2px;">제목 :</span>
-                        <input type="text" id="history-search-input" placeholder="검색어 입력..." style="padding: 0 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 150px; box-sizing: border-box; height: 30px; margin: 0;">
-                        <button type="button" id="history-search-btn" style="display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 1px solid #e2e8f0; background: #fff; color: #555; cursor: pointer; border-radius: 3px; font-size: 13px; font-family: sans-serif; font-weight: bold; box-sizing: border-box; margin: 0; line-height: 1;">검색</button>
+                <div style="display: flex; flex-direction: column; width: 100%; gap: 8px; position: relative;">
+                    <!-- 최상단 우측에 위치할 인쇄 버튼 (width 100% 현상 방지) -->
+                    <div style="display: flex; justify-content: flex-end; width: 100%;">
+                        <button type="button" onclick="printSelectedHistory()" style="display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 1px solid #e2e8f0; background: #fff; color: #555; cursor: pointer; border-radius: 3px; font-size: 13px; font-family: sans-serif; font-weight: bold; box-sizing: border-box; margin: 0; line-height: 1; white-space: nowrap; width: auto !important; flex: none !important;">🖨️ 인쇄</button>
+                    </div>
+
+                    <!-- "나의 제출 내역" 타이틀과 검색창 영역 -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span style="font-size: 20px; font-weight: bold;">나의 제출 내역</span>
+                        
+                        <div style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                            <span style="font-size: 14px; font-weight: normal; color: #222; margin-right: 2px;">제목 :</span>
+                            <input type="text" id="history-search-input" placeholder="검색어 입력..." style="padding: 0 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 150px; box-sizing: border-box; height: 30px; margin: 0;">
+                            <button type="button" id="history-search-btn" style="display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 1px solid #e2e8f0; background: #fff; color: #555; cursor: pointer; border-radius: 3px; font-size: 13px; font-family: sans-serif; font-weight: bold; box-sizing: border-box; margin: 0; line-height: 1;">검색</button>
+                        </div>
                     </div>
                 </div>
             `;
         } else {
             document.getElementById('history-search-input').value = "";
         }
-    }   
+    }
+    
     // 2. 헤더 세팅
     if (thead) {
         thead.innerHTML = `
@@ -715,7 +752,7 @@ function viewMyRequests() {
             </tr>
         `;
     }
-    // [회수 / 삭제 / 재작성] 버튼 영역: 우측 정렬 및 가로 배치 고정
+    // [회수 / 삭제 / 재작성] 하단 버튼 영역
     if (actionBtnContainer) {
         actionBtnContainer.style.cssText = "display: flex !important; flex-direction: row !important; justify-content: flex-end !important; align-items: center !important; gap: 8px !important; width: 100% !important; margin: 15px 0 10px 0 !important;";
 
@@ -739,7 +776,57 @@ function viewMyRequests() {
     
     if (detailArea) detailArea.style.display = 'none';
     modal.style.display = 'block';
-    
+
+   // ★ [완전 수정] 3단계 계층별 ESC 처리 통합 로직
+    if (window._historyModalKeyHandler) {
+        window.removeEventListener('keydown', window._historyModalKeyHandler, true);
+    }
+
+    window._historyModalKeyHandler = function(e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            const printModal = document.getElementById('print-modal');
+            const historyModal = document.getElementById('history-modal');
+            const detailContainer = document.getElementById('detail-view-container');
+
+            // 1단계: 인쇄 모달이 떠 있는 경우 -> 인쇄 모달만 닫음 (아래 상세내역은 그대로 유지)
+            if (printModal && (printModal.style.display === 'flex' || printModal.style.display === 'block')) {
+                printModal.style.display = 'none';
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // 제출내역 조회 모달이 열려 있을 때
+            if (historyModal && (historyModal.style.display === 'block' || historyModal.style.display === 'flex')) {
+                
+                // 2단계: 아래 상세내역(확인증)이 열려 있는 경우 -> 상세내역만 닫음
+                if (detailContainer && (detailContainer.style.display === 'block' || detailContainer.style.display === 'flex')) {
+                    detailContainer.style.display = 'none';
+                    
+                    // 선택된 행 강조 표시 초기화
+                    tbody.querySelectorAll('tr').forEach(item => {
+                        item.style.backgroundColor = '';
+                        item.classList.remove('selected');
+                    });
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+
+                // 3단계: 상세내역이 이미 닫혀 있는 경우 -> 제출내역 조회 모달 전체를 닫음
+                historyModal.style.display = 'none';
+                window.removeEventListener('keydown', window._historyModalKeyHandler, true);
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+    };
+
+    // 가장 높은 우선순위로 capture 레벨(true) 이벤트 등록
+    window.addEventListener('keydown', window._historyModalKeyHandler, true);
+
+
     let currentPage = 1;
     const itemsPerPage = 5;
     let allData = [];      
@@ -879,24 +966,56 @@ function openTab(tabId, element) {
 }
 
 function showDetailInModal(data) {
-    const detailArea = document.getElementById('detail-view-area');
-    const titleDisplay = document.getElementById('detail-title-display');
-    const detailTbody = document.getElementById('detail-tbody');
+    // 기존 detail-view-area 대신 새로 변경한 확인증 디자인 컨테이너를 사용합니다.
+    const detailContainer = document.getElementById('detail-view-container');
     
-    if (detailArea) detailArea.style.display = 'block';
-    if (titleDisplay) titleDisplay.innerText = `[ 제 목: ${data.title || '제목 없음'} ]`;
+    // 확인증 내부 데이터 바인딩 엘리먼트들
+    const viewName = document.getElementById('detail-view-name');
+    const viewDate = document.getElementById('detail-view-date');
+    const viewTitle = document.getElementById('detail-view-title');
+    const detailTbody = document.getElementById('detail-view-tbody');
+    const totalHoursEl = document.getElementById('detail-view-total-hours');
     
+    // 상세 영역 컨테이너 노출
+    if (detailContainer) {
+        detailContainer.style.display = 'block';
+    }
+    
+    // 기본 정보 매핑 (작성자, 제출일자, 신청 제목)
+    if (viewName) viewName.innerText = data.employeeName || currentUser.name || '-';
+    
+    if (viewDate) {
+        // submittedAt 타임스탬프 포맷팅 처리 안전장치
+        if (data.submittedAt && typeof data.submittedAt.toDate === 'function') {
+            viewDate.innerText = data.submittedAt.toDate().toLocaleDateString();
+        } else {
+            viewDate.innerText = '-';
+        }
+    }
+    
+    if (viewTitle) viewTitle.innerText = data.title || '제목 없음';
+    
+    // 상세 로그 내역 리스트(테이블 바디) 바인딩
     if (detailTbody) {
-        detailTbody.innerHTML = data.detailLogs.map(log => `
-            <tr>
-                <td style="padding:8px; border:1px solid #ddd; text-align:center;">${log.date}</td>
-                <td style="padding:8px; border:1px solid #ddd; text-align:center;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
-                <td style="padding:8px; border:1px solid #ddd; text-align:center;">${log.start}</td>
-                <td style="padding:8px; border:1px solid #ddd; text-align:center;">${log.end}</td>
-                <td style="padding:8px; border:1px solid #ddd; word-break: break-all;">${log.reason || '-'}</td>
-                <td style="padding:8px; border:1px solid #ddd; text-align:center;">${log.hours}</td>
-            </tr>
-        `).join('');
+        if (data.detailLogs && Array.isArray(data.detailLogs)) {
+            detailTbody.innerHTML = data.detailLogs.map(log => `
+                <tr>
+                    <td style="text-align:center;">${log.date || '-'}</td>
+                    <td style="text-align:center;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
+                    <td style="text-align:center;">${log.start || '-'}</td>
+                    <td style="text-align:center;">${log.end || '-'}</td>
+                    <td>${log.reason || '-'}</td>
+                    <td style="text-align:center;">${log.hours || 0} 시간</td>
+                </tr>
+            `).join('');
+        } else {
+            detailTbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">상세 내역이 없습니다.</td></tr>`;
+        }
+    }
+    
+    // 총 연장근로 시간 바인딩
+    if (totalHoursEl) {
+        totalHoursEl.innerText = `${data.totalHours || 0.0} 시간`;
     }
 }
 
@@ -1024,11 +1143,114 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// ==========================================
+// 10. 제출내역조회 목록에서 선택한 항목 바로 인쇄하기
+// ==========================================
+function printSelectedHistory() {
+    let tr = document.querySelector('#history-tbody tr.selected');
+    if (!tr) {
+        const checkedBox = document.querySelector('#history-tbody .submit-row-check:checked');
+        if (checkedBox) tr = checkedBox.closest('tr');
+    }
+    
+    if (!tr) {
+        alert("인쇄할 항목(행)을 먼저 클릭하거나 체크박스를 선택해주세요.");
+        return;
+    }
 
+    const targetCheck = tr.querySelector('.submit-row-check');
+    if (!targetCheck) {
+        alert("문서 정보를 찾을 수 없습니다.");
+        return;
+    }
+    
+    const docId = targetCheck.dataset.docId;
 
+    db.collection("overtime_requests").doc(docId).get()
+        .then((doc) => {
+            if (!doc.exists) {
+                alert("해당 문서 데이터를 찾을 수 없습니다.");
+                return;
+            }
+            const data = doc.data();
 
+            const modal = document.getElementById('print-modal');
+            if (!modal) return;
 
+            const userNameEl = document.getElementById('print-user-name');
+            const submitDateEl = document.getElementById('print-submit-date');
+            const printTitleEl = document.getElementById('print-title');
 
+            if (userNameEl) userNameEl.innerText = data.employeeName || "-";
+            if (submitDateEl) submitDateEl.innerText = data.submittedAt ? data.submittedAt.toDate().toLocaleDateString() : "-";
+            if (printTitleEl) printTitleEl.innerText = data.title || "제목 없음";
 
+            const printTableHead = document.querySelector('#print-modal table thead tr');
+            if (printTableHead && !printTableHead.innerHTML.includes('사유')) {
+                printTableHead.innerHTML = `
+                    <th>날짜</th>
+                    <th>구분</th>
+                    <th>시작 시간</th>
+                    <th>종료 시간</th>
+                    <th>사유</th>
+                    <th>시간</th>
+                `;
+            }
 
+            const printTbody = document.getElementById('print-tbody');
+            if (!printTbody) return;
+            printTbody.innerHTML = "";
 
+            let totalH = 0;
+            if (data.detailLogs && Array.isArray(data.detailLogs)) {
+                data.detailLogs.forEach(log => {
+                    const hoursNum = parseFloat(log.hours) || 0;
+                    totalH += hoursNum;
+
+                    const rowTr = document.createElement('tr');
+                    rowTr.innerHTML = `
+                        <td>${log.date || "-"}</td>
+                        <td>${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
+                        <td>${log.start || "-"}</td>
+                        <td>${log.end || "-"}</td>
+                        <td>${log.reason || log.memo || "-"}</td>
+                        <td>${log.hours}</td>
+                    `;
+                    printTbody.appendChild(rowTr);
+                });
+            }
+
+            const totalHoursEl = document.getElementById('print-total-hours');
+            if (totalHoursEl) totalHoursEl.innerText = `${totalH.toFixed(1)} 시간`;
+
+            // 인쇄 모달 띄우기
+            modal.style.display = 'flex';
+            modal.style.zIndex = '99999';
+
+            const printBtn = document.getElementById('modal-print-btn');
+            const closeBtn = document.getElementById('modal-close-btn');
+
+            if (printBtn) {
+                printBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    window.print();
+                };
+            }
+
+            if (closeBtn) {
+                closeBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    closePrintModal();
+                };
+            }
+        })
+        .catch(err => {
+            console.error("인쇄 데이터 로드 실패:", err);
+            alert("인쇄 데이터를 불러오는 중 오류가 발생했습니다.");
+        });
+}
+
+function closePrintModal() {
+    const modal = document.getElementById('print-modal');
+    if (modal) modal.style.display = 'none';
+}

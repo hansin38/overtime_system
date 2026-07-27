@@ -172,3 +172,142 @@ th { background-color: #f1f3f5; }
 #ot-table th:nth-child(6), #ot-tbody td:nth-child(6) { width: 38%; } /* 사유 (대폭 확장) */
 #ot-table th:nth-child(7), #ot-tbody td:nth-child(7) { width: 10%; } /* 시간 */
 
+
+
+/* 인쇄 시에만 적용되는 스타일 */
+/* ==========================================
+   1. 평소 화면용 스타일 (모달 디자인)
+   ========================================== */
+#print-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+
+.print-paper {
+    background: white;
+    width: 700px;
+    padding: 40px;
+    border: 1px solid #ccc;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    font-family: 'Malgun Gothic', sans-serif;
+    color: #000;
+}
+
+.print-header {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 15px;
+}
+
+.print-header h2 {
+    font-size: 24px;
+    margin-bottom: 5px;
+}
+
+.print-info-table, .print-item-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+.print-info-table th, .print-info-table td,
+.print-item-table th, .print-item-table td {
+    border: 1px solid #ddd;
+    padding: 8px 12px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.print-info-table th {
+    background-color: #f8f9fa;
+    width: 25%;
+}
+
+.print-item-table th {
+    background-color: #f8f9fa;
+}
+
+
+/* ==========================================
+   2. A4 용지 규격 설정
+   ========================================== */
+@page {
+    size: A4;
+    margin: 10mm;
+}
+
+
+/* ==========================================
+   3. 통합 인쇄 전용 스타일 (오른쪽 잘림 및 2페이지 방지 완벽 해결)
+   ========================================== */
+@media print {
+    /* 1. 페이지 전체 설정: 여백 제거 및 배경 초기화 */
+    html, body {
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        visibility: hidden;
+    }
+    
+    /* 2. 인쇄 모달과 내부 요소만 강제로 보이게 설정 */
+    #print-modal, #print-modal * {
+        visibility: visible !important;
+    }
+
+    /* 3. 모달 배경(오버레이)의 크기/배경색을 없애고 딱 내용물만큼만 잡히게 설정 */
+    #print-modal {
+        display: block !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        background: transparent !important;
+        z-index: 99999 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* 4. 종이 박스 여백 및 높이 최적화 (2페이지 방지 핵심) */
+    .print-paper {
+        border: none !important;
+        box-shadow: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 0px 10px !important;
+        margin: 0 !important;
+        background: white !important;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    .print-header {
+        margin-bottom: 10px !important;
+        padding-bottom: 5px !important;
+    }
+
+    .print-info-table, .print-item-table {
+        margin-bottom: 10px !important;
+        page-break-inside: avoid !important;
+    }
+
+    /* 5. 인쇄 시 필요 없는 버튼 및 요소 숨기기 */
+    #print-modal button, 
+    .no-print, 
+    .print-hide {
+        display: none !important;
+    }
+}
