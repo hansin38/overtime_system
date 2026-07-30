@@ -112,16 +112,30 @@ function viewTempRequests() {
     const modal = document.getElementById('history-modal');
     const tbody = document.getElementById('history-tbody');
     const paginationContainer = document.getElementById('pagination-container');
-    const detailArea = document.getElementById('detail-view-area');
+    const detailArea = document.getElementById('detail-view-area');     
+    // 👇 [여기가 핵심 추가!] 진짜 확인증이 들어있는 컨테이너를 찾습니다
+    const detailContainer = document.getElementById('detail-view-container');     
     const actionBtnContainer = document.getElementById('modal-action-buttons');
+    
+    if (!modal) return;
+    
+    // 👇 [확인증 침범 방지] 상세보기 영역을 완전히 비우고 숨김
+    if (detailArea) {
+        detailArea.innerHTML = ""; 
+        detailArea.style.cssText = "display: none !important;";
+    }
+    if (detailContainer) {
+        detailContainer.style.display = "none"; // 👈 진짜 확인증 숨김 처리!
+    }
     if (actionBtnContainer) actionBtnContainer.innerHTML = "";
     
-    detailArea.style.display = 'none';
+    // 모달 노출 및 나머지 로직 진행
     modal.style.display = 'block';
-    
+
     const modalTitle = modal.querySelector('h3');
     if (modalTitle) modalTitle.innerText = "나의 임시저장 내역";
 
+    // 테이블 헤더를 임시저장용으로 강제 고정
     const thead = modal.querySelector('#history-table thead') || modal.querySelector('thead');
     if (thead) {
         thead.innerHTML = `
@@ -135,34 +149,47 @@ function viewTempRequests() {
             </tr>
         `;
     }
-    tbody.innerHTML = "";
-    paginationContainer.innerHTML = "";
 
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="padding:15px; text-align:center; color:#888;">불러오는 중...</td></tr>`;
+    
     const modalMaster = document.getElementById('modal-master-check');
     if (modalMaster) modalMaster.checked = false;
-    const docIdPrefix = `${currentUser.name}_${currentUser.phone}_temp`;
 
-    db.collection("temp_requests").get()
+    if (!currentUser || !currentUser.name) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="padding:15px; text-align:center; color:#888;">사용자 정보를 찾을 수 없습니다.</td></tr>`;
+        return;
+    }
+
+    // [최적화] 전체 데이터가 아닌 본인 이름 기준 데이터만 쿼리
+    db.collection("temp_requests")
+        .where("employeeName", "==", currentUser.name)
+        .get()
         .then((snapshot) => {
             const myTempDocs = [];
             snapshot.forEach(doc => {
-                if (doc.id.startsWith(docIdPrefix)) {
-                    myTempDocs.push({ id: doc.id, data: doc.data() });
-                }
+                myTempDocs.push({ id: doc.id, data: doc.data() });
             });
+
             myTempDocs.sort((a, b) => {
-                const timeA = a.data.savedAt ? a.data.savedAt.toDate().getTime() : 0;
-                const timeB = b.data.savedAt ? b.data.savedAt.toDate().getTime() : 0;
+                const timeA = a.data.savedAt && typeof a.data.savedAt.toDate === 'function' ? a.data.savedAt.toDate().getTime() : 0;
+                const timeB = b.data.savedAt && typeof b.data.savedAt.toDate === 'function' ? b.data.savedAt.toDate().getTime() : 0;
                 return timeB - timeA;
             });
+
+            if (tbody) tbody.innerHTML = "";
+
             if (myTempDocs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" style="padding:15px; text-align:center; color:#888;">임시저장된 내역이 없습니다.</td></tr>`;
+                if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="padding:15px; text-align:center; color:#888;">임시저장된 내역이 없습니다.</td></tr>`;
+                
+                // 데이터가 없을 때도 버튼 렌더링 영역 정리
+                if (paginationContainer) paginationContainer.innerHTML = "";
                 return;
             }
+
             myTempDocs.forEach((item) => {
                 const data = item.data;
-                const savedDate = data.savedAt ? data.savedAt.toDate().toLocaleDateString() : "-";
-                const tr = document.createElement('tr');               
+                const savedDate = data.savedAt && typeof data.savedAt.toDate === 'function' ? data.savedAt.toDate().toLocaleDateString() : "-";
+                const tr = document.createElement('tr');              
                 
                 tr.innerHTML = `
                     <td style="padding: 10px; text-align: center; vertical-align: middle;">
@@ -171,7 +198,7 @@ function viewTempRequests() {
                     <td style="padding: 10px; font-weight: bold; color: #222; text-align: center; vertical-align: middle;">${data.title || '임시 저장된 연장근로일지'}</td>
                     <td style="padding: 10px; text-align: center; vertical-align: middle;">${savedDate}</td>
                     <td style="padding: 10px; text-align: center; vertical-align: middle;">${data.totalHours || 0} 시간</td>
-                `;               
+                `;              
 
                 tr.style.cursor = 'pointer'; 
                 tr.onclick = (e) => { 
@@ -180,7 +207,7 @@ function viewTempRequests() {
                         if(ck) ck.click(); 
                     } 
                 };
-                tbody.appendChild(tr);
+                if (tbody) tbody.appendChild(tr);
             });
 
             if (modalMaster) {
@@ -192,22 +219,35 @@ function viewTempRequests() {
                 };
             }
             
-            // [불러오기 / 선택 삭제] 버튼 영역: 확실한 중앙 정렬 구조 적용
+            // 👇 [버튼 정렬 수정] 페이징 영역은 비우고 숨김
             if (paginationContainer) {
-                paginationContainer.style.cssText = "display: block !important; width: 100% !important; text-align: center !important; margin: 15px auto 10px auto !important; padding: 0 !important; float: none !important;";
+                paginationContainer.innerHTML = "";
+                paginationContainer.style.display = "none";
+            }
 
-                const tempBtnStyle = "width: auto !important; min-width: 70px; height: 36px; padding: 0 16px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-block !important; white-space: nowrap !important;";
+            // 👇 [버튼 정렬 수정] 전용 액션 버튼 영역을 사용하여 완벽한 중앙 정렬
+            if (actionBtnContainer) {
+                actionBtnContainer.style.cssText = "display: flex !important; flex-direction: row !important; justify-content: center !important; align-items: center !important; gap: 10px !important; width: 100% !important; margin: 20px 0 10px 0 !important;";
 
-                paginationContainer.innerHTML = `
-                    <div style="display: inline-flex !important; gap: 8px !important; justify-content: center !important; align-items: center !important; margin: 0 auto !important;">
-                        <button type="button" onclick="loadCheckedTempRequest()" style="${tempBtnStyle} background-color: var(--primary-color); color: #fff;">불러오기</button>
-                        <button type="button" onclick="deleteCheckedTempRequests()" style="${tempBtnStyle} background-color: var(--danger-color); color: #fff;">선택 삭제</button>
-                    </div>
+                const tempBtnStyle = "width: auto !important; min-width: 70px; height: 36px; padding: 0 16px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-flex !important; align-items: center; justify-content: center; white-space: nowrap !important;";
+
+                actionBtnContainer.innerHTML = `
+                    <button type="button" onclick="loadCheckedTempRequest()" style="${tempBtnStyle} background-color: var(--primary-color, #007bff); color: #fff;">불러오기</button>
+                    <button type="button" onclick="deleteCheckedTempRequests()" style="${tempBtnStyle} background-color: var(--danger-color, #dc3545); color: #fff;">선택 삭제</button>
                 `;
             }
         })
         .catch(err => {
             console.error("임시저장 내역 조회 실패:", err);
+            if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="padding:15px; text-align:center; color:#d9534f;">조회 중 오류가 발생했습니다.</td></tr>`;
+        });
+
+        // ESC 키를 누르면 임시저장 모달이 닫히도록 이벤트 추가
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('history-modal');
+                if (modal) modal.style.display = 'none';
+            }
         });
 }
 
@@ -254,7 +294,7 @@ function deleteCheckedTempRequests() {
         if (currentTempDocId === docId) {
             currentTempDocId = null;
         }
-    });    
+    });
     
     Promise.all(deletePromises)
         .then(() => {            
@@ -776,6 +816,11 @@ function viewMyRequests() {
     
     if (detailArea) detailArea.style.display = 'none';
     modal.style.display = 'block';
+    // ★ [추가] 제출내역조회 모달이 열릴 때 스크롤 위치를 맨 위로 초기화
+    modal.scrollTop = 0;
+    const historyScrollBox = modal.querySelector('.modal-content') || modal.querySelector('.modal-body') || modal;
+    if (historyScrollBox) historyScrollBox.scrollTop = 0;
+
 
    // ★ [완전 수정] 3단계 계층별 ESC 처리 통합 로직
     if (window._historyModalKeyHandler) {
@@ -911,16 +956,42 @@ function viewMyRequests() {
                 </td>
             `;            
             tr.onclick = () => {
+                // 1. 모든 행의 선택 상태 및 체크박스 초기화
                 tbody.querySelectorAll('tr').forEach(item => {
                     item.style.backgroundColor = '';
                     item.classList.remove('selected');
+                    const cb = item.querySelector('.submit-row-check');
+                    if (cb) cb.checked = false;
                 });
+                // 2. 현재 클릭한 행 선택 및 배경색 지정
                 tr.style.backgroundColor = '#e7f3ff';
                 tr.classList.add('selected');
+                // 3. 현재 행의 체크박스 자동 체크
+                const currentCheckbox = tr.querySelector('.submit-row-check');
+                if (currentCheckbox) {
+                    currentCheckbox.checked = true;
+                }
+                // 4. 상세 내역 표시 함수 호출
                 showDetailInModal(data);
             };
             tbody.appendChild(tr);
         });
+
+        // 2. ★ [핵심] 부족한 빈 행을 빈 공간(투명 행)으로 채워 높이 고정
+        const emptyRowsCount = itemsPerPage - pageData.length;
+        for (let i = 0; i < emptyRowsCount; i++) {
+            const emptyTr = document.createElement('tr');
+            emptyTr.style.height = '45px'; // 실제 데이터 행과 동일한 높이 지정
+            emptyTr.innerHTML = `
+                <td style="padding:10px;">&nbsp;</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            `;
+            tbody.appendChild(emptyTr);
+        }
+
         if (modalMaster) modalMaster.checked = false;
         renderPaginationButtons();
     }
@@ -973,6 +1044,7 @@ function showDetailInModal(data) {
     const viewName = document.getElementById('detail-view-name');
     const viewDate = document.getElementById('detail-view-date');
     const viewTitle = document.getElementById('detail-view-title');
+    const viewStatus = document.getElementById('detail-view-status'); // ★ 상태 엘리먼트 추가
     const detailTbody = document.getElementById('detail-view-tbody');
     const totalHoursEl = document.getElementById('detail-view-total-hours');
     
@@ -995,17 +1067,30 @@ function showDetailInModal(data) {
     
     if (viewTitle) viewTitle.innerText = data.title || '제목 없음';
     
-    // 상세 로그 내역 리스트(테이블 바디) 바인딩
+    // ★ [추가] 상태 값 및 색상 지정 로직
+    if (viewStatus) {
+        let statusText = data.status || '작성';
+        let statusColor = '#6c757d';
+        if (statusText === '승인') statusColor = '#007bff';
+        else if (statusText === '반송') statusColor = '#dc3545';
+        else if (statusText === '작성') statusColor = '#e67e22';
+        else if (statusText === '대기' || statusText === '재전송') statusColor = '#2c3e50';
+
+        viewStatus.innerHTML = `<span style="color: ${statusColor}; font-weight: bold; font-size: 14px;">${statusText}</span>`;
+    }
+
+    // 상세 로그 내역 리스트 바인딩
     if (detailTbody) {
         if (data.detailLogs && Array.isArray(data.detailLogs)) {
             detailTbody.innerHTML = data.detailLogs.map(log => `
                 <tr>
-                    <td style="text-align:center;">${log.date || '-'}</td>
-                    <td style="text-align:center;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
-                    <td style="text-align:center;">${log.start || '-'}</td>
-                    <td style="text-align:center;">${log.end || '-'}</td>
-                    <td>${log.reason || '-'}</td>
-                    <td style="text-align:center;">${log.hours || 0} 시간</td>
+                    <td style="text-align:center; width: 15%;">${log.date || '-'}</td>
+                    <td style="text-align:center; width: 15%;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
+                    <td style="text-align:center; width: 10%;">${log.start || '-'}</td>
+                    <td style="text-align:center; width: 10%;">${log.end || '-'}</td>
+                    <!-- ★ [핵심 수정] 사유 칸에 word-break와 white-space 속성을 주어 긴 글자가 자연스럽게 줄바꿈되도록 처리 -->
+                    <td style="text-align:left; width: 35%; word-break: break-all; white-space: normal; padding: 8px;">${log.reason || '-'}</td>
+                    <td style="text-align:center; width: 15%; white-space: nowrap;">${log.hours || 0} 시간</td>
                 </tr>
             `).join('');
         } else {
@@ -1208,13 +1293,14 @@ function printSelectedHistory() {
                     totalH += hoursNum;
 
                     const rowTr = document.createElement('tr');
+                    // ★ 8번(상세보기) 영역과 동일한 옵션/스타일 적용
                     rowTr.innerHTML = `
-                        <td>${log.date || "-"}</td>
-                        <td>${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
-                        <td>${log.start || "-"}</td>
-                        <td>${log.end || "-"}</td>
-                        <td>${log.reason || log.memo || "-"}</td>
-                        <td>${log.hours}</td>
+                        <td style="text-align:center; width: 15%;">${log.date || '-'}</td>
+                        <td style="text-align:center; width: 15%;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
+                        <td style="text-align:center; width: 10%;">${log.start || '-'}</td>
+                        <td style="text-align:center; width: 10%;">${log.end || '-'}</td>
+                        <td style="text-align:left; width: 35%; word-break: break-all; white-space: normal; padding: 8px;">${log.reason || log.memo || '-'}</td>
+                        <td style="text-align:center; width: 15%; white-space: nowrap;">${log.hours || 0} 시간</td>
                     `;
                     printTbody.appendChild(rowTr);
                 });
@@ -1226,6 +1312,11 @@ function printSelectedHistory() {
             // 인쇄 모달 띄우기
             modal.style.display = 'flex';
             modal.style.zIndex = '99999';
+
+            // ★ [추가] 모달이 열릴 때 스크롤 위치를 맨 위로 초기화
+            modal.scrollTop = 0;
+            const modalContent = modal.querySelector('.print-paper') || modal.querySelector('.modal-content');
+            if (modalContent) modalContent.scrollTop = 0;
 
             const printBtn = document.getElementById('modal-print-btn');
             const closeBtn = document.getElementById('modal-close-btn');

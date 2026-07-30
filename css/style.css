@@ -265,7 +265,7 @@ th { background-color: #f1f3f5; }
         visibility: visible !important;
     }
 
-    /* 3. 모달 배경(오버레이)의 크기/배경색을 없애고 딱 내용물만큼만 잡히게 설정 */
+    /* 3. 모달 배경(오버레이) 설정 수정 (인쇄 시 여백/중앙정렬 강제 해제) */
     #print-modal {
         display: block !important;
         position: absolute !important;
@@ -278,6 +278,10 @@ th { background-color: #f1f3f5; }
         margin: 0 !important;
         padding: 0 !important;
         overflow: visible !important;
+        /* ★ 추가: 플렉스 정렬이나 중앙 배치 속성 무력화 */
+        transform: none !important;
+        justify-content: initial !important;
+        align-items: initial !important;
     }
 
     /* 4. 종이 박스 여백 및 높이 최적화 (2페이지 방지 핵심) */
@@ -286,12 +290,17 @@ th { background-color: #f1f3f5; }
         box-shadow: none !important;
         width: 100% !important;
         max-width: 100% !important;
+        max-height: none !important; /* ★ 추가: 모달에서 줬던 최대 높이 제한 풀기 */
         box-sizing: border-box !important;
         padding: 0px 10px !important;
         margin: 0 !important;
         background: white !important;
         page-break-after: avoid !important;
         page-break-inside: avoid !important;
+        /* ★ 추가: 인쇄 시 절대 위치로 맨 위로 고정 */
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
     }
 
     .print-header {
