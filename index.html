@@ -2,16 +2,49 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>연장근로 관리 시스템</title>
+    <title>사내 통합 관리 시스템</title>
+
+    <!-- 기존 연장근무일지용 스타일 -->
     <link rel="stylesheet" href="css/style.css">
+    <!-- ✨ 새로 만든 포털 전용 스타일 추가 -->
+    <link rel="stylesheet" href="css/style-portal.css">
+
     <!-- Firebase SDK (반드시 core-app이 가장 먼저 와야 합니다) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
-    <!-- 로그인 컨테이너 (사원 / 관리자 전환 가능) -->
-    <div id="login-container" class="login-container">
+    <!-- 1. [처음에 뜨는 대문 선택 화면] -->
+    <div id="portal-main-screen">
+        <div class="card">
+            <h2>사내 통합 관리 시스템</h2>
+            <p>이용하실 서비스를 선택해 주세요.</p>
+            
+            <div class="portal-btn-group">
+                <!-- 연장근무 선택 버튼 -->
+                <button class="btn-ot" onclick="selectSystem('ot')">
+                    📝 연장근무일지
+                </button>
+                
+                <!-- 연차신청 선택 버튼 -->
+                <button class="btn-leave" onclick="selectSystem('leave')">
+                    🏖️ 연차신청
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 2. [선택 후 숨겨져 있다가 뜨는 로그인 화면] (기존 style.css의 .login-container 스타일을 그대로 받습니다) -->
+    <div id="login-container" class="login-container" style="display: none; max-width: 450px;">
+        
+        <!-- 뒤로 가기 -->
+        <button onclick="goBackToPortal()" style="margin-bottom: 15px; background: none; border: none; color: #666; cursor: pointer; font-size: 14px; padding: 0; width: auto;">
+            ← 메인 선택 화면으로 돌아가기
+        </button>
+        
+        <!-- 기존 오리지널 탭 구조 -->
         <div class="tabs">
             <button id="tab-user" class="tab-btn active" onclick="switchLoginTab('user')">사원 로그인</button>
             <button id="tab-admin" class="tab-btn" onclick="switchLoginTab('admin')">관리자 로그인</button>
@@ -37,6 +70,7 @@
 
     <!-- 기존 employee.js 대신 index.js를 연결합니다 -->
     <script src="js/index.js"></script>
+
 </body>
 </html>
  

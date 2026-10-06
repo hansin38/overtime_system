@@ -15,6 +15,26 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// -----------------------------------------------------------------
+// ✨ [추가된 부분] 대문 선택 화면 제어용 함수 2개
+// -----------------------------------------------------------------
+let currentSystemMode = 'ot'; // 기본값은 연장근무
+
+function selectSystem(mode) {
+    currentSystemMode = mode;
+    document.getElementById('portal-main-screen').style.display = 'none';
+    document.getElementById('login-container').style.display = 'block';
+}
+
+// 대문으로 돌아가기 함수
+function goBackToPortal() {
+    document.getElementById('login-container').style.display = 'none';
+    const portal = document.getElementById('portal-main-screen');
+    portal.style.display = 'block'; // 상단 고정 위치로 깔끔하게 복귀
+}
+// -----------------------------------------------------------------
+
+
 // 탭 전환 로직 (CSS .tab-btn.active 클래스와 완벽 연동)
 function switchLoginTab(type) {
     const userBox = document.getElementById('login-section-user');
@@ -35,7 +55,7 @@ function switchLoginTab(type) {
     }
 }
 
-// 관리자 로그인
+// 관리자 로그인 (기존 오리지널 + 연차 모드 목적지 분기만 안전 추가!)
 function handleAdminLogin() {
     const name = document.getElementById('admin-name').value.trim();
     const pw = document.getElementById('admin-pw').value.trim();
@@ -44,12 +64,19 @@ function handleAdminLogin() {
     if (name === "김은지" && pw === "1234") { 
         sessionStorage.setItem('boss_authenticated', 'true');
         location.href = 'admin.html'; 
+        // 연차 선택 시 연차 관리자로, 아니면 기존 연장근무 관리자로 이동
+        if (currentSystemMode === 'leave') {
+            location.href = 'leave/leave-admin.html';
+        } else {
+            location.href = 'admin.html'; 
+        }
     } else {
         alert("관리자 정보가 일치하지 않습니다.");
     }
 }
 
-// 사원 로그인 (예외 처리 및 유연성 보강 완료!)
+
+// 사원 로그인 (기존 오리지널 DB 조회 로직 토씨 하나 안 틀리고 그대로!)
 function handleLogin() {
     const nameInput = document.getElementById('login-name').value.trim();
     let phoneInput = document.getElementById('login-phone').value.trim();    
@@ -82,8 +109,12 @@ function handleLogin() {
             // 💡 [원복 완료] 기존 employee.js가 읽어갈 수 있도록 오리지널 키와 JSON 포맷으로 저장합니다!
             const currentUser = { name: nameInput, phone: phoneInput };
             sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
-            
-            location.href = 'employee.html';
+            // 연차 선택 시 연차 신청 페이지로, 아니면 기존 연장근무 페이지로 이동
+            if (currentSystemMode === 'leave') {
+                location.href = 'leave/leave-apply.html';
+            } else {
+                location.href = 'employee.html';
+            }
         })
         .catch(err => {
             console.error("로그인 조회 실패 원인 상세:", err);

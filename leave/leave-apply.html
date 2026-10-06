@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>연차 신청</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/leave-style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+    <div id="main-system" class="container">
+        <!-- 상단 네비게이션 -->
+        <div class="top-nav" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 10px; margin-bottom: 25px;">
+            <span class="nav-link" onclick="logoutLeaveUser()">메인화면 돌아가기</span>
+            <div style="text-align: right; line-height: 1.4;">
+                <div style="font-size: 13px; color: #333; font-weight: bold;">
+                    작성자: <span id="user-display">로드 중...</span> | 제출일자: <span id="top-today-date"></span>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin: 20px 0 15px 0;">
+            <h2>연차 신청</h2>
+        </div>
+
+        <!-- 연차 현황 박스 -->
+        <div id="leave-balance-box" class="leave-balance-box">연차 정보를 불러오는 중...</div>
+
+        <!-- 상단 버튼 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0;">
+            <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-submit" onclick="submitLeaveForm(event)">제출하기</button>
+                <button type="button" class="btn-batch-delete" onclick="saveLeaveTemporary(event)">임시저장</button>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-batch-delete" onclick="viewMyLeaveRequests()">제출내역조회</button>
+                <button type="button" class="btn-batch-delete" onclick="viewLeaveTempRequests()">임시저장내역</button>
+            </div>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">
+
+        <!-- 사유 / 비상연락처 -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <b style="white-space: nowrap; width: 100px;">사 유:</b>
+            <input type="text" id="leave-reason" placeholder="예) 개인 사유로 인한 연차 사용" style="margin: 0; flex-grow: 1;">
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <b style="white-space: nowrap; width: 100px;">비상연락처:</b>
+            <input type="text" id="leave-emergency-contact" placeholder="휴가 중 연락 가능한 번호" style="margin: 0; flex-grow: 1;">
+        </div>
+
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">
+
+        <!-- 신청 일자 테이블 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <button type="button" class="btn-batch-delete" onclick="deleteCheckedLeaveRows()" style="margin: 0;">삭제</button>
+            <div class="summary-box" style="margin: 0;">
+                총 신청 일수: <span id="leave-total-days" style="font-weight: bold; color: #222;">0.0 일</span>
+            </div>
+        </div>
+
+        <table id="leave-table">
+            <thead>
+                <tr>
+                    <th style="width: 8%;"></th>
+                    <th style="width: 40%;">날짜</th>
+                    <th style="width: 32%;">구분</th>
+                    <th style="width: 20%;">일수</th>
+                </tr>
+            </thead>
+            <tbody id="leave-tbody"></tbody>
+        </table>
+
+        <div class="row-control-area">
+            <button onclick="addLeaveRow()" class="btn-batch-delete" style="margin: 0;">+ 행 추가</button>
+        </div>
+    </div>
+
+    <!-- 내역 조회 모달 -->
+    <div id="leave-history-modal" class="modal">
+        <div class="modal-content" style="max-width: 700px; width: 90%;">
+            <h3 id="leave-history-title">나의 연차 신청 내역</h3>
+            <table style="margin: 0;">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;"></th>
+                        <th style="width: 42%;">사유</th>
+                        <th style="width: 30%;">일자/일수</th>
+                        <th style="width: 20%;">상태</th>
+                    </tr>
+                </thead>
+                <tbody id="leave-history-tbody"></tbody>
+            </table>
+
+            <div id="leave-history-actions" style="display: flex; justify-content: center; gap: 8px; margin-top: 15px;"></div>
+
+            <div id="leave-detail-view" style="display: none; margin-top: 20px; text-align: left;"></div>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <button type="button" style="width: auto; padding: 8px 25px;" onclick="closeLeaveHistoryModal()">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="leave-employee.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+/* ==========================================
+   사내 통합 관리 시스템 - 대문 포털 전용 스타일 (상단 고정형)
+   ========================================== */
+
+/* 대문 화면 전체 컨테이너 (중앙 정렬 빼고 상단에 예쁘게 여백 주고 고정!) */
+#portal-main-screen {
+    display: block;
+    width: 100%;
+    max-width: 600px;
+    margin: 40px auto; /* 상단에서 40px 떨어지고 좌우는 중앙 정렬 */
+    padding: 20px;
+    box-sizing: border-box;
+    font-family: 'Malgun Gothic', sans-serif;
+}
+
+/* 포털 메인 카드 박스 디자인 */
+#portal-main-screen .card {
+    width: 100%;
+    background: #fff;
+    padding: 40px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    box-sizing: border-box;
+}
+
+/* 포털 제목 및 안내 문구 */
+#portal-main-screen h2 {
+    font-size: 24px;
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+#portal-main-screen p {
+    color: #666;
+    font-size: 15px;
+    margin-bottom: 30px;
+}
+
+/* 버튼 배치 영역 */
+#portal-main-screen .portal-btn-group {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* 포털 선택 버튼 공통 */
+#portal-main-screen button {
+    flex: 1;
+    min-width: 200px;
+    padding: 25px 20px;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+/* 연장근무일지 버튼 색상 */
+#portal-main-screen button.btn-ot {
+    background-color: #2c3e50;
+    color: white;
+}
+#portal-main-screen button.btn-ot:hover {
+    opacity: 0.9;
+}
+
+/* 연차신청 버튼 색상 */
+#portal-main-screen button.btn-leave {
+    background-color: #4a90e2;
+    color: white;
+}
+#portal-main-screen button.btn-leave:hover {
+    opacity: 0.9;
+}
+
+/* ==========================================
+   로그인 컨테이너 상단 고정 및 정렬 보완 스타일
+   ========================================== */
+#login-container {
+    display: block;
+    width: 100%;
+    max-width: 450px;
+    margin: 40px auto; /* 대문과 똑같이 상단에서 40px 떨어지고 가운데 정렬 */
+    padding: 0 15px;
+    box-sizing: border-box;
+    font-family: 'Malgun Gothic', sans-serif;
+}
+
+/* 로그인 내부 카드 박스가 틀어지지 않도록 고정 */
+#login-container .card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
+    background: #fff !important;
+    box-sizing: border-box;
+}
