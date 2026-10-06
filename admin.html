@@ -76,7 +76,10 @@
 
         
         <!-- 2. 결재 대기 내역 -->
-        <h3>📜 결재 대기 내역</h3>
+        <h3>📜 결재 대기 내역
+            <b>추가 수당은 경비형태로 지급 필요</b>
+        </h3>
+
         <table>
             <thead>
                 <tr>
@@ -100,17 +103,19 @@
                 <span onclick="closeEmpModal()" style="cursor:pointer; font-size: 24px; color: #aaa; font-weight: bold;">&times;</span>
             </div>
             
-            <!-- 신규 사원 추가 (등록 버튼을 흰색 배경의 대기/삭제 스타일 버튼으로 적용) -->
+            <!-- 신규 사원 추가 (통상임금 입력칸 추가) -->
             <div style="background: var(--gray-color); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
                 <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; text-align: left;">신규 사원 추가</h4>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="new-emp-name" placeholder="사원 이름" style="margin: 0;">
-                    <input type="text" id="new-emp-phone" placeholder="휴대폰 뒤 4자리" style="margin: 0;">
-                    <button onclick="registerEmployee()" class="btn-batch-delete" style="margin: 0; height: 42px; line-height: 40px; padding: 0 20px; font-weight: bold; background: #fff; flex-shrink: 0; min-width: 75px; white-space: nowrap;">등록</button>
+                    <input type="text" id="new-emp-name" placeholder="사원 이름" style="margin: 0; flex: 1;">
+                    <input type="text" id="new-emp-phone" placeholder="휴대폰 뒤 4자리" style="margin: 0; flex: 1;">
+                    <!-- ✨ 💰 통상임금(시급) 입력칸 추가 -->
+                    <input type="number" id="new-emp-wage" placeholder="통상시급 (원)" style="margin: 0; flex: 1;">
+                    <button onclick="registerEmployee()" class="btn-batch-delete" style="margin: 0; height: 42px; line-height: 40px; padding: 0 16px; font-weight: bold; background: #fff; flex-shrink: 0; white-space: nowrap;">등록</button>
                 </div>
             </div>
 
-            <!-- 등록된 사원 목록 (테이블 높이를 잡고 세로 스크롤바가 자연스럽게 작동하도록 수정) -->
+            <!-- 등록된 사원 목록 (통상시급 헤더 열 추가) -->
             <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; text-align: left;">📋 등록된 사원 목록</h4>
             <div style="max-height: 250px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
                 <table style="margin: 0; table-layout: auto; width: 100%;">
@@ -118,6 +123,8 @@
                         <tr>
                             <th>이름</th>
                             <th>번호(뒤4자리)</th>
+                            <!-- ✨ 💰 통상시급 열 추가 -->
+                            <th>통상시급</th>
                             <th style="width: 80px;">관리</th>
                         </tr>
                     </thead>
