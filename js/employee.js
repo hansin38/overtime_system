@@ -13,7 +13,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const FIX_OT_HOURS = 43.5; // 기존 값을 40으로 변경
+const FIX_OT_HOURS = 43.5; // 기존 값을 43.5으로 변경
 
 // 중복 선언을 방지하기 위한 안전한 window 객체 바인딩 패턴 적용
 if (typeof window.currentUser === 'undefined') {
