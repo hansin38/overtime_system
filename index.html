@@ -15,12 +15,12 @@
 </head>
 <body>
 
-    <!-- 1. [처음에 뜨는 대문 선택 화면] -->
-    <div id="portal-main-screen">
+    <!-- 2. [로그인 후 메뉴 화면] 서비스 선택 -->
+    <div id="portal-main-screen" style="display: none;">
         <div class="card">
             <h2>사내 통합 관리 시스템</h2>
-            <p>이용하실 서비스를 선택해 주세요.</p>
-            
+            <p><b id="portal-user-name"></b>님, 이용하실 서비스를 선택해 주세요.</p>
+
             <div class="portal-btn-group">
                 <!-- 연장근무 선택 버튼 -->
                 <button class="btn-ot" onclick="selectSystem('ot')">
@@ -32,24 +32,22 @@
                     🏖️ 연차신청
                 </button>
             </div>
+
+            <span class="portal-logout" onclick="logoutUser()">로그아웃</span>
         </div>
     </div>
 
 
-    <!-- 2. [선택 후 숨겨져 있다가 뜨는 로그인 화면] (기존 style.css의 .login-container 스타일을 그대로 받습니다) -->
+    <!-- 1. [처음에 뜨는 로그인 화면] (로그인 후 메뉴 화면으로 이동) -->
     <div id="login-container" class="login-container" style="display: none; max-width: 450px;">
-        
-        <!-- 뒤로 가기 -->
-        <button onclick="goBackToPortal()" style="margin-bottom: 15px; background: none; border: none; color: #666; cursor: pointer; font-size: 14px; padding: 0; width: auto;">
-            ← 메인 선택 화면으로 돌아가기
-        </button>
-        
         <!-- 사원 로그인 섹션 (관리자 로그인은 admin.html에서 별도 진행) -->
         <div id="login-section-user" class="card">
+            <h2 style="margin-bottom: 5px;">사내 통합 관리 시스템</h2>
             <h3>사원 로그인</h3>
             <!-- autocomplete="username"과 "current-password"를 넣어 브라우저 경고 방지 및 입력 편의성 제공 -->
             <input type="text" id="login-name" placeholder="이름" autocomplete="username">
-            <input type="password" id="login-phone" placeholder="휴대폰 뒷자리" autocomplete="current-password">
+            <input type="password" id="login-phone" placeholder="휴대폰 뒷자리" autocomplete="current-password"
+                   onkeydown="if (event.key === 'Enter') handleLogin()">
             <button onclick="handleLogin()">시스템 접속</button>
         </div>
     </div>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>휴가신청서 결재</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/leave-style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="sign-page">
+
+    <!-- 안내 배너 (서명할 칸 / 만료 / 완료 상태 안내) -->
+    <div id="sign-banner" class="sign-banner">신청서를 불러오는 중...</div>
+
+    <!-- 휴가신청서 (읽기 전용) -->
+    <div class="print-paper sign-paper">
+        <div id="sign-sheet"></div>
+    </div>
+
+    <!-- 하단 고정 서명 버튼 -->
+    <div id="sign-bottom-bar" class="sign-bottom-bar" style="display: none;">
+        <button type="button" id="sign-bottom-btn" onclick="openSignPad()">✍ 서명하기</button>
+    </div>
+
+    <!-- ✍️ 서명 팝업 -->
+    <div id="sign-pad-modal" class="modal">
+        <div class="modal-content sign-pad-content">
+            <h3 id="sign-pad-title" style="margin: 0 0 10px 0;">서명</h3>
+            <!-- 서명할 결재칸 선택 (과장 / 전무) -->
+            <div id="sign-slot-choice" class="sign-slot-choice"></div>
+            <p style="margin: 0 0 10px 0; font-size: 13px; color: #666;">아래 칸에 손가락이나 마우스로 서명해 주세요.</p>
+            <canvas id="sign-canvas" class="sign-canvas"></canvas>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button type="button" class="btn-batch-delete" style="flex: 1; margin: 0;" onclick="clearSignPad()">다시 쓰기</button>
+                <button type="button" class="btn-batch-delete" style="flex: 1; margin: 0;" onclick="closeSignPad()">닫기</button>
+                <button type="button" class="btn-submit" style="flex: 2; margin: 0;" onclick="confirmSignature()">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/ot-rules.js"></script> <!-- 공휴일 목록(holidays) 공용 -->
+    <script src="../js/leavejs/leave-common.js"></script>
+    <script src="../js/leavejs/leave-sign.js"></script>
+</body>
+</html>

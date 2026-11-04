@@ -2,6 +2,7 @@
 // leave-employee.js (연차 신청 화면 전용 로직)
 // ⚠️ 로그인/라우팅은 index.html + index.js가 담당합니다.
 //    이 파일은 employee.js와 같은 역할 - "로그인 이후" 화면 로직입니다.
+// ⚠️ 휴가 종류·연차 계산·휴가신청서 양식은 leave-common.js, 공휴일은 ot-rules.js에서 공통 관리
 // ==========================================
 
 // -----------------------------------------------------------------
@@ -24,14 +25,31 @@ const db = firebase.firestore();
 let currentUser = { name: "", phone: "" };
 let currentTempDocId = null;      // 불러온 임시저장 문서 ID
 let originDocIdForRewrite = null; // 반려 후 재작성 시 원본 문서 ID
-let myEmployeeData = null;        // employees 컬렉션에서 읽어온 내 정보(hireDate 포함)
+let myEmployeeData = null;        // employees 컬렉션에서 읽어온 내 정보(hireDate·소속·직위 포함)
+let myLeaveRequests = [];         // 내 연차 신청 내역 전체 [{ id, data }]
 
 const FISCAL_YEAR = new Date().getFullYear(); // 회계연도 = 달력 연도(1/1~12/31) 기준
 
 // -----------------------------------------------------------------
 // 2. 로그인 가드 / 로그아웃 (employee.js와 동일한 패턴)
 // -----------------------------------------------------------------
+// 작성 중인 내용이 있는지 (연차 페이지는 자동 저장이 없으므로 이동 전 확인용)
+function isLeaveFormDirty() {
+    if (getSelectedLeaveType()) return true;
+    return ['leave-start-date', 'leave-reason', 'leave-emergency-contact', 'leave-type-etc']
+        .some(id => (document.getElementById(id)?.value || '').trim() !== '');
+}
+function confirmLeaveDiscard() {
+    return !isLeaveFormDirty() || confirm("작성 중인 내용이 사라집니다. 이동할까요?\n(보관하려면 [임시저장]을 먼저 눌러주세요)");
+}
+
+// 메뉴·연장근무 화면으로 이동 (로그인 유지)
+function leaveNavigate(url) {
+    if (confirmLeaveDiscard()) location.href = url;
+}
+
 function logoutLeaveUser() {
+    if (!confirmLeaveDiscard()) return;
     currentUser = { name: "", phone: "" };
     sessionStorage.removeItem('currentUser');
     location.href = '../index.html';
@@ -58,45 +76,35 @@ window.addEventListener('DOMContentLoaded', () => {
         dateSpan.textContent = `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}.`;
     }
 
+    // 날짜 입력 범위 제한 (연도 4자리 초과 입력 방지)
+    ['leave-start-date', 'leave-end-date'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.min = `${FISCAL_YEAR - 1}-01-01`; el.max = `${FISCAL_YEAR + 1}-12-31`; }
+    });
+
     resetFormRows();
     loadMyLeaveBalance();
 });
 
 // -----------------------------------------------------------------
-// 3. 연차 자동계산 로직 (핵심)
+// 3. 연차 현황 (계산 규칙은 leave-common.js의 calcAnnualLeaveEntitlement)
 // -----------------------------------------------------------------
 
-/**
- * 입사일자와 회계연도를 기준으로 해당 연도의 "발생 연차 일수"를 계산합니다.
- * - 입사 연도: 입사월부터 12월까지 근무 개월수만큼 부여 (최대 11일)
- * - 1년 이상 근속: 15일, 3년차부터 2년마다 1일씩 가산 (최대 25일) - 근로기준법 제60조 기준
- * 회사의 실제 취업규칙과 다를 수 있으니, 정책이 다르면 이 함수만 수정하면 됩니다.
- */
-function calcAnnualLeaveEntitlement(hireDateStr, fiscalYear) {
-    if (!hireDateStr) return 0;
-    const hireDate = new Date(hireDateStr);
-    if (isNaN(hireDate.getTime())) return 0;
-
-    const hireYear = hireDate.getFullYear();
-    const hireMonth = hireDate.getMonth() + 1; // 1~12
-
-    if (fiscalYear < hireYear) return 0;
-
-    if (fiscalYear === hireYear) {
-        // 입사 연도: 입사월 포함 12월까지 근무 개월수 (최대 11일)
-        const monthsWorked = 12 - hireMonth + 1;
-        return Math.max(0, Math.min(monthsWorked, 11));
-    }
-
-    // 만 1년 이상 근속: (해당 회계연도 1/1 기준) 근속 연수
-    const serviceYears = fiscalYear - hireYear;
-    const entitlement = 15 + Math.floor((serviceYears - 1) / 2);
-    return Math.min(entitlement, 25);
+// 해당 연도의 발생/사용/잔여 (사용 = 대기+재전송+승인 중 년차·월차)
+function getLeaveBalance(year) {
+    const entitlement = calcAnnualLeaveEntitlement(myEmployeeData?.hireDate, year);
+    let used = 0;
+    myLeaveRequests.forEach(({ data }) => {
+        if (data.fiscalYear === year && ACTIVE_STATUSES.includes(data.status) && isDeductible(data)) {
+            used += (data.totalDays || 0);
+        }
+    });
+    return { entitlement, used, remaining: Math.max(0, entitlement - used) };
 }
 
 /**
- * 내 정보(입사일자)와 신청 내역을 불러와 상단 연차 현황(발생/사용/잔여)을 갱신합니다.
- * '작성'(회수됨) 상태는 사용량에서 제외하고, '대기'+'승인'만 사용량으로 집계합니다.
+ * 내 정보(입사일자)와 신청 내역을 불러와 상단 연차 현황(발생/사용/잔여)과 월별 사용 현황을 갱신합니다.
+ * '작성'(회수됨)·'반려' 상태는 사용량에서 제외합니다.
  */
 function loadMyLeaveBalance() {
     const box = document.getElementById('leave-balance-box');
@@ -107,36 +115,16 @@ function loadMyLeaveBalance() {
         .where("phoneLast4", "==", currentUser.phone)
         .get()
         .then((snapshot) => {
-            if (snapshot.empty) {
-                if (box) box.innerHTML = `<span style="color:#dc3545;">사원 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.</span>`;
-                return;
-            }
-            myEmployeeData = snapshot.docs[0].data();
-
-            if (!myEmployeeData.hireDate) {
-                if (box) box.innerHTML = `<span style="color:#dc3545;">입사일자가 등록되지 않았습니다. 관리자에게 등록을 요청해주세요.</span>`;
-                return;
-            }
-
-            const entitlement = calcAnnualLeaveEntitlement(myEmployeeData.hireDate, FISCAL_YEAR);
-
-            // 올해(회계연도) 신청 내역 중 대기/승인 건만 집계
-            db.collection("leave_requests")
+            myEmployeeData = snapshot.empty ? null : snapshot.docs[0].data();
+            return db.collection("leave_requests")
                 .where("employeeName", "==", currentUser.name)
                 .where("employeePhone", "==", currentUser.phone)
-                .where("fiscalYear", "==", FISCAL_YEAR)
-                .get()
-                .then((reqSnap) => {
-                    let used = 0;
-                    reqSnap.forEach(doc => {
-                        const d = doc.data();
-                        if (d.status === "대기" || d.status === "승인" || d.status === "재전송") {
-                            used += (d.totalDays || 0);
-                        }
-                    });
-                    const remaining = Math.max(0, entitlement - used);
-                    renderBalanceBox(entitlement, used, remaining);
-                });
+                .get();
+        })
+        .then((reqSnap) => {
+            myLeaveRequests = reqSnap.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+            renderBalanceBox();
+            renderMonthlyUsage();
         })
         .catch(err => {
             console.error("연차 정보 조회 실패:", err);
@@ -144,40 +132,155 @@ function loadMyLeaveBalance() {
         });
 }
 
-function renderBalanceBox(entitlement, used, remaining) {
+function renderBalanceBox() {
     const box = document.getElementById('leave-balance-box');
     if (!box) return;
+    if (!myEmployeeData) {
+        box.innerHTML = `<span style="color:#dc3545;">사원 정보를 찾을 수 없습니다. 관리자에게 문의해주세요.</span>`;
+        return;
+    }
+    if (!myEmployeeData.hireDate) {
+        box.innerHTML = `<span style="color:#dc3545;">입사일자가 등록되지 않았습니다. 관리자에게 등록을 요청해주세요.</span>`;
+        return;
+    }
+    const { entitlement, used, remaining } = getLeaveBalance(FISCAL_YEAR);
     box.innerHTML = `
         <span>${FISCAL_YEAR}년도 발생 연차: <b>${entitlement}일</b></span>
-        <span style="margin-left:14px;">사용(대기+승인): <b>${used}일</b></span>
-        <span style="margin-left:14px; color:#007bff;">잔여 연차: <b>${remaining}일</b></span>
+        <span style="margin-left:14px;">사용(대기+승인): <b>${formatDays(used)}일</b></span>
+        <span style="margin-left:14px; color:#007bff;">잔여 연차: <b>${formatDays(remaining)}일</b></span>
     `;
 }
 
 // -----------------------------------------------------------------
-// 4. 신청 폼 (사유 / 비상연락처)
+// 4. 월별 사용 현황 (년차·월차 누적)
 // -----------------------------------------------------------------
-// ⚠️ TODO: 날짜 입력 UI는 추후 별도 논의 후 추가 예정입니다.
-//    그 전까지는 totalDays를 0으로 저장하므로, 상단 "잔여 연차" 자동차감은
-//    날짜 입력이 추가되기 전까지는 실제 사용일수를 반영하지 못합니다.
+function renderMonthlyUsage() {
+    const box = document.getElementById('leave-monthly-box');
+    const title = document.getElementById('leave-monthly-title');
+    if (title) title.innerText = `📅 ${FISCAL_YEAR}년 연차 사용 현황 (년차·월차)`;
+    if (box) box.innerHTML = renderMonthlyTableHtml(FISCAL_YEAR, myLeaveRequests, 'leave-monthly-table');
+}
+
+// -----------------------------------------------------------------
+// 5. 신청 폼 (휴가 종류 / 기간 / 사유 / 비상연락처)
+// -----------------------------------------------------------------
+
+// 기간 → 날짜별 내역 (주말·공휴일 제외, 하루만 선택 시 반차 0.5일)
+function buildLeaveLogs(startDate, endDate, halfDay) {
+    if (!startDate || !endDate || startDate > endDate) return [];
+    const logs = [];
+    const cur = parseYmd(startDate);
+    const last = parseYmd(endDate);
+    for (let guard = 0; cur <= last && guard < 366; guard++) {
+        const ymd = toYmd(cur);
+        if (!isOffDay(ymd)) logs.push({ date: ymd, type: 'full', days: 1 });
+        cur.setDate(cur.getDate() + 1);
+    }
+    // 반차: 하루면 그날, 여러 날이면 오후반차=첫날 / 오전반차=마지막 날만 0.5일
+    if (logs.length > 0 && halfDay !== 'full') {
+        const target = halfDay === 'pm' ? logs[0] : logs[logs.length - 1];
+        target.type = halfDay;
+        target.days = 0.5;
+    }
+    return logs;
+}
+
+function getSelectedLeaveType() {
+    const checked = document.querySelector('input[name="leave-type"]:checked');
+    return checked ? checked.value : "";
+}
+
+function onLeaveTypeChange() {
+    const type = getSelectedLeaveType();
+    const etcInput = document.getElementById('leave-type-etc');
+    if (etcInput) etcInput.style.display = (type === 'etc') ? 'inline-block' : 'none';
+    const hint = document.getElementById('leave-type-hint');
+    if (hint) {
+        if (!type) hint.innerText = "휴가 종류를 선택해 주세요.";
+        else if (LEAVE_TYPES[type].deduct) hint.innerText = "잔여 연차에서 차감됩니다.";
+        else hint.innerText = "잔여 연차에서 차감되지 않습니다.";
+    }
+}
+
+// 기간·반차 변경 시 일수 재계산 (반차는 항상 선택 가능)
+const PERIOD_HINT = "주말·공휴일은 자동으로 제외됩니다. 여러 날 + 반차: 오후반차는 첫날, 오전반차는 마지막 날이 0.5일입니다.";
+
+function updateLeavePeriod() {
+    const startEl = document.getElementById('leave-start-date');
+    const endEl = document.getElementById('leave-end-date');
+    const halfEl = document.getElementById('leave-half-day');
+
+    if (startEl.value && (!endEl.value || endEl.value < startEl.value)) endEl.value = startEl.value;
+    endEl.min = startEl.value || `${FISCAL_YEAR - 1}-01-01`;
+
+    const logs = buildLeaveLogs(startEl.value, endEl.value, halfEl.value);
+    const total = logs.reduce((sum, l) => sum + l.days, 0);
+    document.getElementById('leave-total-days').innerText = `${total.toFixed(1)} 일`;
+
+    const hint = document.getElementById('leave-period-hint');
+    if (hint) {
+        if (startEl.value && logs.length === 0) {
+            hint.innerHTML = `<span style="color:#dc3545;">선택한 기간이 모두 주말·공휴일입니다.</span>`;
+        } else {
+            hint.innerText = PERIOD_HINT;
+        }
+    }
+}
+
+function readLeaveForm() {
+    const leaveType = getSelectedLeaveType();
+    const startDate = document.getElementById('leave-start-date').value;
+    const endDate = document.getElementById('leave-end-date').value;
+    const halfDay = document.getElementById('leave-half-day').value;
+    const detailLogs = buildLeaveLogs(startDate, endDate, halfDay);
+    return {
+        leaveType,
+        leaveTypeEtc: leaveType === 'etc' ? document.getElementById('leave-type-etc').value.trim() : "",
+        startDate,
+        endDate,
+        halfDay,
+        reason: document.getElementById('leave-reason').value.trim(),
+        emergencyContact: document.getElementById('leave-emergency-contact').value.trim(),
+        detailLogs,
+        totalDays: detailLogs.reduce((sum, l) => sum + l.days, 0)
+    };
+}
+
 function resetFormRows() {
-    const reasonInput = document.getElementById('leave-reason');
-    if (reasonInput) reasonInput.value = "";
-    const contactInput = document.getElementById('leave-emergency-contact');
-    if (contactInput) contactInput.value = "";
+    document.querySelectorAll('input[name="leave-type"]').forEach(r => { r.checked = false; });
+    ['leave-type-etc', 'leave-start-date', 'leave-end-date', 'leave-reason', 'leave-emergency-contact'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+    const halfEl = document.getElementById('leave-half-day');
+    if (halfEl) halfEl.value = 'full';
+    onLeaveTypeChange();
+    updateLeavePeriod();
     currentTempDocId = null;
     originDocIdForRewrite = null;
 }
 
+// 임시저장/재작성 내역을 입력 폼으로 복원
+function loadLeaveTempData(data) {
+    document.querySelectorAll('input[name="leave-type"]').forEach(r => { r.checked = (r.value === data.leaveType); });
+    document.getElementById('leave-type-etc').value = data.leaveTypeEtc || "";
+    document.getElementById('leave-start-date').value = data.startDate || "";
+    document.getElementById('leave-end-date').value = data.endDate || "";
+    document.getElementById('leave-reason').value = data.reason || "";
+    document.getElementById('leave-emergency-contact').value = data.emergencyContact || "";
+    document.getElementById('leave-half-day').value = data.halfDay || 'full';
+    onLeaveTypeChange();
+    updateLeavePeriod();
+}
+
 // -----------------------------------------------------------------
-// 5. 임시저장
+// 6. 임시저장
 // -----------------------------------------------------------------
 function saveLeaveTemporary(event) {
     if (event) event.preventDefault();
-    const reason = document.getElementById('leave-reason').value.trim();
-    const contact = document.getElementById('leave-emergency-contact').value.trim();
+    const form = readLeaveForm();
 
-    if (!reason && !contact) {
+    if (!form.leaveType && !form.startDate && !form.reason && !form.emergencyContact) {
         alert("내용이 없습니다. 내용을 입력해 주세요.");
         return;
     }
@@ -186,16 +289,14 @@ function saveLeaveTemporary(event) {
     const timestampStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') +
         String(now.getDate()).padStart(2, '0') + "_" + String(now.getHours()).padStart(2, '0') +
         String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
-    const docId = `${currentUser.name}_${currentUser.phone}_leavetemp_${timestampStr}`;
+    // 불러온 임시저장본이 있으면 그 문서를 덮어씀
+    const docId = currentTempDocId || `${currentUser.name}_${currentUser.phone}_leavetemp_${timestampStr}`;
 
     db.collection("leave_temp_requests").doc(docId).set({
-        reason: reason,
-        emergencyContact: contact,
+        ...form,
         employeeName: currentUser.name,
         employeePhone: currentUser.phone,
-        savedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        totalDays: 0, // TODO: 날짜 UI 추가 후 연결
-        detailLogs: []
+        savedAt: firebase.firestore.FieldValue.serverTimestamp()
     })
     .then(() => {
         alert("임시저장 되었습니다.");
@@ -207,40 +308,65 @@ function saveLeaveTemporary(event) {
     });
 }
 
-function loadLeaveTempData(data) {
-    if (document.getElementById('leave-reason')) document.getElementById('leave-reason').value = data.reason || "";
-    if (document.getElementById('leave-emergency-contact')) document.getElementById('leave-emergency-contact').value = data.emergencyContact || "";
-}
-
 // -----------------------------------------------------------------
-// 6. 최종 제출
+// 7. 최종 제출
 // -----------------------------------------------------------------
 function submitLeaveForm(event) {
     event.preventDefault();
+    const form = readLeaveForm();
 
-    const reason = document.getElementById('leave-reason').value.trim();
-    const contact = document.getElementById('leave-emergency-contact').value.trim();
+    if (!form.leaveType) { alert("휴가 종류를 선택해주세요."); return; }
+    if (form.leaveType === 'etc' && !form.leaveTypeEtc) { alert("기타 휴가 내용을 입력해주세요."); document.getElementById('leave-type-etc').focus(); return; }
+    if (!form.startDate || !form.endDate) { alert("휴가 기간을 입력해주세요."); document.getElementById('leave-start-date').focus(); return; }
+    if (form.startDate.slice(0, 4) !== form.endDate.slice(0, 4)) { alert("연도가 바뀌는 휴가는 연도별로 나누어 신청해주세요."); return; }
+    if (form.totalDays <= 0) { alert("선택한 기간이 모두 주말·공휴일입니다. 기간을 다시 확인해주세요."); return; }
+    if (!form.reason) { alert("휴가 사유를 입력해주세요."); document.getElementById('leave-reason').focus(); return; }
+    if (!form.emergencyContact) { alert("비상연락처를 입력해주세요. (없으면 - 입력)"); document.getElementById('leave-emergency-contact').focus(); return; }
 
-    if (!reason) { alert("사유를 입력해주세요."); document.getElementById('leave-reason').focus(); return; }
-    if (!contact) { alert("비상연락처를 입력해주세요."); document.getElementById('leave-emergency-contact').focus(); return; }
+    // 이미 신청(대기·승인)된 날짜와 겹치는지 확인
+    const newDates = new Set(form.detailLogs.map(l => l.date));
+    const overlapDates = [];
+    myLeaveRequests.forEach(({ data }) => {
+        if (!ACTIVE_STATUSES.includes(data.status)) return;
+        (data.detailLogs || []).forEach(l => { if (newDates.has(l.date)) overlapDates.push(l.date); });
+    });
+    if (overlapDates.length > 0) {
+        alert(`이미 신청된 날짜가 포함되어 있습니다.\n${[...new Set(overlapDates)].sort().join(', ')}`);
+        return;
+    }
 
-    if (!confirm(`연차를 신청하시겠습니까?`)) return;
+    const fiscalYear = Number(form.startDate.slice(0, 4));
+    const deductible = LEAVE_TYPES[form.leaveType].deduct;
+    if (deductible && myEmployeeData?.hireDate) {
+        const { remaining } = getLeaveBalance(fiscalYear);
+        if (form.totalDays > remaining &&
+            !confirm(`신청 일수(${formatDays(form.totalDays)}일)가 ${fiscalYear}년 잔여 연차(${formatDays(remaining)}일)보다 많습니다.\n그래도 제출하시겠습니까?`)) {
+            return;
+        }
+    }
+
+    const periodText = form.startDate === form.endDate
+        ? `${form.startDate} ${HALF_LABELS[form.halfDay]}`
+        : `${form.startDate} ~ ${form.endDate}`;
+    if (!confirm(`${leaveTypeLabel(form)} ${formatDays(form.totalDays)}일 (${periodText})\n신청하시겠습니까?`)) return;
 
     const finalStatus = originDocIdForRewrite ? "재전송" : "대기";
     const leaveData = {
-        reason: reason,
-        emergencyContact: contact,
+        ...form,
         employeeName: currentUser.name,
         employeePhone: currentUser.phone,
+        department: myEmployeeData?.department || "",
+        position: myEmployeeData?.position || "",
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        totalDays: 0, // TODO: 날짜 UI 추가 후 연결 - 잔여연차 자동차감에 사용됨
-        fiscalYear: FISCAL_YEAR,
-        status: finalStatus,
-        detailLogs: []
+        deductible: deductible,
+        fiscalYear: fiscalYear,
+        status: finalStatus
     };
 
     db.collection("leave_requests").add(leaveData)
-        .then(() => {
+        .then((ref) => {
+            lastSubmittedDocId = ref.id;
+            lastSubmittedData = leaveData;
             let promises = [];
             if (originDocIdForRewrite) {
                 promises.push(db.collection("leave_requests").doc(originDocIdForRewrite).delete());
@@ -251,9 +377,7 @@ function submitLeaveForm(event) {
             return Promise.all(promises);
         })
         .then(() => {
-            alert("연차 신청이 성공적으로 제출되었습니다.");
-            originDocIdForRewrite = null;
-            currentTempDocId = null;
+            showLeaveDone(form); // 완료 창에서 바로 결재 요청 링크 복사
             resetFormRows();
             loadMyLeaveBalance();
         })
@@ -264,7 +388,7 @@ function submitLeaveForm(event) {
 }
 
 // -----------------------------------------------------------------
-// 7. 내역 조회 모달 (제출내역 / 임시저장내역 공용)
+// 8. 내역 조회 모달 (제출내역 / 임시저장내역 공용)
 // -----------------------------------------------------------------
 function viewMyLeaveRequests() {
     openLeaveHistoryModal("submitted");
@@ -294,6 +418,7 @@ function openLeaveHistoryModal(mode) {
         .then(snapshot => {
             let items = [];
             snapshot.forEach(doc => items.push({ id: doc.id, data: doc.data() }));
+            if (mode !== 'temp') myLeaveRequests = items.slice(); // 서명 진행 상황 최신화
             items.sort((a, b) => {
                 const ta = (mode === 'temp') ? (a.data.savedAt?.toDate?.().getTime() || 0) : (a.data.submittedAt?.toDate?.().getTime() || 0);
                 const tb = (mode === 'temp') ? (b.data.savedAt?.toDate?.().getTime() || 0) : (b.data.submittedAt?.toDate?.().getTime() || 0);
@@ -308,16 +433,13 @@ function openLeaveHistoryModal(mode) {
 
             items.forEach(item => {
                 const d = item.data;
-                const dateStr = (mode === 'temp')
-                    ? (d.savedAt?.toDate?.().toLocaleDateString() || '-')
-                    : (d.submittedAt?.toDate?.().toLocaleDateString() || '-');
                 const statusCell = (mode === 'temp') ? '' : `<td style="padding:10px; text-align:center;">${renderStatusBadge(d.status)}</td>`;
                 const tr = document.createElement('tr');
                 tr.style.cursor = 'pointer';
                 tr.innerHTML = `
                     <td style="padding:10px; text-align:center;"><input type="checkbox" class="leave-row-check" data-doc-id="${item.id}" onclick="event.stopPropagation();"></td>
-                    <td style="padding:10px; text-align:center; font-weight:bold;">${d.reason || '(사유 없음)'}</td>
-                    <td style="padding:10px; text-align:center;">${dateStr} / ${d.totalDays || 0}일</td>
+                    <td style="padding:10px; text-align:center; font-weight:bold;">${d.leaveType || d.startDate ? leaveTypeLabel(d) + ' · ' : ''}${d.reason || '(사유 없음)'}</td>
+                    <td style="padding:10px; text-align:center;">${periodSummary(d)} / ${formatDays(d.totalDays || 0)}일</td>
                     ${statusCell}
                 `;
                 tr.onclick = () => showLeaveDetail(d, item.id, mode);
@@ -339,6 +461,8 @@ function openLeaveHistoryModal(mode) {
             `;
         } else {
             actionBox.innerHTML = `
+                <button type="button" class="btn-submit" onclick="copyCheckedSignLink(this)">🔗 결재 요청 링크 복사</button>
+                <button type="button" class="btn-batch-delete" onclick="printCheckedLeaveRequest()">인쇄</button>
                 <button type="button" class="btn-batch-delete" onclick="withdrawCheckedLeaveRequest()">회수</button>
                 <button type="button" class="btn-batch-delete" onclick="rewriteCheckedLeaveRequest()">재작성</button>
             `;
@@ -347,7 +471,7 @@ function openLeaveHistoryModal(mode) {
 }
 
 function renderStatusBadge(status) {
-    const colors = { "승인": "#007bff", "반려": "#dc3545", "작성": "#e67e22", "대기": "#2c3e50", "재전송": "#2c3e50" };
+    const colors = { "승인": "#007bff", "반려": "#dc3545", "승인취소": "#dc3545", "작성": "#e67e22", "대기": "#2c3e50", "재전송": "#2c3e50" };
     const c = colors[status] || "#6c757d";
     return `<span style="color:${c}; font-weight:bold;">${status || '-'}</span>`;
 }
@@ -360,15 +484,27 @@ function showLeaveDetail(data, docId, mode) {
     detailBox.dataset.mode = mode;
 
     const rowsHtml = (data.detailLogs || []).map(log => {
-        const typeLabel = { full: '전일', am: '오전 반차', pm: '오후 반차' }[log.type] || log.type;
+        const typeLabel = HALF_LABELS[log.type] || log.type;
         return `<tr><td style="text-align:center;">${log.date}</td><td style="text-align:center;">${typeLabel}</td><td style="text-align:center;">${log.days}일</td></tr>`;
     }).join('');
 
+    // 제출된 신청서는 결재란(서명 이미지 포함)을 위에 표시
+    const approvalHtml = data.status
+        ? `<div class="lp-sheet" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">${renderApprovalTableHtml(data.signatures, false)}</div>`
+        : '';
+
     detailBox.innerHTML = `
+        ${approvalHtml}
         <table style="margin:0;">
-            <tr><th style="width:20%;">사유</th><td colspan="3">${data.reason || '-'}</td></tr>
+            <tr><th style="width:20%;">휴가 종류</th><td colspan="3">${leaveTypeLabel(data)}</td></tr>
+            <tr><th>휴가 기간</th><td colspan="3">${periodSummary(data)} (${formatDays(data.totalDays || 0)}일)</td></tr>
+            <tr><th>사유</th><td colspan="3">${data.reason || '-'}</td></tr>
             <tr><th>비상연락처</th><td colspan="3">${data.emergencyContact || '-'}</td></tr>
             ${data.status ? `<tr><th>상태</th><td colspan="3">${renderStatusBadge(data.status)}</td></tr>` : ''}
+            ${data.status ? `<tr><th>결재</th><td colspan="3">${Object.keys(SIGN_SLOTS).map(slot =>
+                `${SIGN_SLOTS[slot].replace(' ', '')} ${data.signatures && data.signatures[slot] ? '✅ 서명 완료' : '⬜ 미서명'}`).join('　')}</td></tr>` : ''}
+            ${data.rejectReason ? `<tr><th>반려 사유</th><td colspan="3">${data.rejectReason}</td></tr>` : ''}
+            ${data.cancelReason ? `<tr><th>승인취소 사유</th><td colspan="3">${data.cancelReason}</td></tr>` : ''}
         </table>
         <table style="margin-top:10px;">
             <thead><tr><th>날짜</th><th>구분</th><th>일수</th></tr></thead>
@@ -383,8 +519,9 @@ function loadCheckedLeaveTemp() {
     const docId = checked.dataset.docId;
     db.collection("leave_temp_requests").doc(docId).get().then(doc => {
         if (doc.exists) {
-            currentTempDocId = docId;
             loadLeaveTempData(doc.data());
+            currentTempDocId = docId;
+            originDocIdForRewrite = null;
             document.getElementById('leave-history-modal').style.display = 'none';
         }
     });
@@ -431,4 +568,149 @@ function rewriteCheckedLeaveRequest() {
 
 function closeLeaveHistoryModal() {
     document.getElementById('leave-history-modal').style.display = 'none';
+}
+
+// -----------------------------------------------------------------
+// 9. 휴가신청서 인쇄 (종이 양식과 같은 배치)
+// -----------------------------------------------------------------
+function printCheckedLeaveRequest() {
+    const checked = document.querySelector('#leave-history-tbody .leave-row-check:checked');
+    if (!checked) { alert("인쇄할 내역을 선택해주세요."); return; }
+    db.collection("leave_requests").doc(checked.dataset.docId).get().then(doc => {
+        if (!doc.exists) { alert("신청 내역을 찾을 수 없습니다."); return; }
+        openLeavePrint(doc.data());
+    }).catch(err => {
+        console.error("인쇄 데이터 로드 실패:", err);
+        alert("인쇄 데이터를 불러오는 중 오류가 발생했습니다.");
+    });
+}
+
+function openLeavePrint(data) {
+    const body = document.getElementById('leave-print-body');
+    const modal = document.getElementById('print-modal');
+    if (!body || !modal) return;
+
+    body.innerHTML = renderLeaveSheetHtml({
+        ...data,
+        department: data.department || myEmployeeData?.department || '',
+        position: data.position || myEmployeeData?.position || ''
+    }, myLeaveRequests);
+
+    document.getElementById('leave-history-modal').style.display = 'none';
+    modal.style.display = 'flex';
+    modal.scrollTop = 0;
+}
+
+function closeLeavePrint() {
+    const modal = document.getElementById('print-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// -----------------------------------------------------------------
+// 10. ✍️ 결재 서명 요청 링크 복사 (사원이 카카오톡에 붙여넣어 결재자에게 전달)
+// - 링크는 신청서당 1개, 받은 사람이 비어 있는 결재칸(과장/전무)을 골라 서명
+// - SIGN_LINK_HOURS(3시간) 후 만료, 새로 복사하면 이전 링크는 즉시 무효
+// -----------------------------------------------------------------
+let lastSubmittedDocId = null;   // 방금 제출한 신청서 (완료 창의 [공유하기]용)
+let lastSubmittedData = null;
+
+function makeSignToken() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 알림 토스트: anchorEl(누른 버튼)이 있으면 그 버튼 바로 위에 표시
+function showLeaveToast(message, anchorEl) {
+    const toast = document.getElementById('leave-toast');
+    if (!toast) return;
+    toast.innerText = message;
+    if (anchorEl) {
+        const r = anchorEl.getBoundingClientRect();
+        toast.style.left = `${r.left + r.width / 2}px`;
+        toast.style.top = `${Math.max(r.top - 8, 50)}px`;
+    } else {
+        toast.style.left = '50%';
+        toast.style.top = '60px';
+    }
+    toast.classList.add('show');
+    clearTimeout(showLeaveToast.timer);
+    showLeaveToast.timer = setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+// 클립보드 복사 (지원하지 않는 환경은 예전 방식 → 그래도 안 되면 직접 복사 안내)
+function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok ? resolve() : reject(new Error('copy failed'));
+    });
+}
+
+function formatDateTime(ms) {
+    const dt = new Date(ms);
+    return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+}
+
+// 새 서명 링크 생성·저장 (이전 링크는 무효) → { url, text, expiresAt }
+function createSignLink(docId, d) {
+    const token = makeSignToken();
+    const expiresAt = Date.now() + SIGN_LINK_HOURS * 60 * 60 * 1000;
+    const url = new URL(`leave-sign.html?id=${encodeURIComponent(docId)}&t=${token}`, location.href).href;
+    const text = `[연차 결재 요청] ${d.employeeName} · ${leaveTypeLabel(d)} ${formatDays(d.totalDays || 0)}일 (${periodSummary(d)})\n${formatDateTime(expiresAt)}까지 서명 부탁드립니다.\n${url}`;
+
+    db.collection("leave_requests").doc(docId).update({ signLink: { token, expiresAt } })
+        .catch(err => {
+            console.error("서명 링크 저장 실패:", err);
+            alert("링크 저장에 실패했습니다. 보낸 링크가 작동하지 않을 수 있으니 다시 복사해주세요.");
+        });
+    return { url, text, expiresAt };
+}
+
+function copyLinkText(link, anchorEl) {
+    copyTextToClipboard(link.text)
+        .then(() => showLeaveToast("링크가 복사되었습니다", anchorEl))
+        .catch(() => prompt("자동 복사가 되지 않았습니다. 아래 링크를 복사해서 보내주세요.", link.url));
+}
+
+// 제출내역조회의 [결재 요청 링크 복사]: 누를 때마다 새 링크(3시간) 생성
+function copyCheckedSignLink(anchorEl) {
+    const checked = document.querySelector('#leave-history-tbody .leave-row-check:checked');
+    if (!checked) { alert("결재를 요청할 신청서를 선택해주세요."); return; }
+    const docId = checked.dataset.docId;
+    const req = myLeaveRequests.find(r => r.id === docId);
+    if (!req) { alert("신청 내역을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요."); return; }
+    const d = req.data;
+    if (!ACTIVE_STATUSES.includes(d.status)) { alert("대기 중인 신청서만 결재를 요청할 수 있습니다."); return; }
+    if (Object.keys(SIGN_SLOTS).every(slot => d.signatures && d.signatures[slot])) { alert("결재 서명이 모두 완료된 신청서입니다."); return; }
+    copyLinkText(createSignLink(docId, d), anchorEl);
+}
+
+// 제출 완료 창: 창을 띄울 때 링크를 만들어 두고, 유효시간을 그대로 표시
+let preparedSignLink = null;
+
+function showLeaveDone(form) {
+    preparedSignLink = createSignLink(lastSubmittedDocId, lastSubmittedData);
+    document.getElementById('leave-done-summary').innerText =
+        `${leaveTypeLabel(form)} ${formatDays(form.totalDays)}일 (${periodSummary(form)})`;
+    document.getElementById('leave-done-hours').innerText = `링크 유효시간: ~${formatDateTime(preparedSignLink.expiresAt)}`;
+    document.getElementById('leave-done-modal').style.display = 'block';
+}
+
+function copyPreparedSignLink(anchorEl) {
+    if (!preparedSignLink) return;
+    copyLinkText(preparedSignLink, anchorEl);
+}
+
+function closeLeaveDone() {
+    document.getElementById('leave-done-modal').style.display = 'none';
 }

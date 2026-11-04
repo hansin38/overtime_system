@@ -320,3 +320,11 @@ th { background-color: #f1f3f5; }
         display: none !important;
     }
 }
+/* 서비스 전환 탭 (연장근무 ↔ 연차신청, 로그인 유지) */
+.service-nav { display: flex; align-items: center; gap: 14px; }
+.service-tab {
+    font-size: 13px; font-weight: bold; color: #6c757d; cursor: pointer;
+    padding: 5px 12px; border-radius: 16px; border: 1px solid #dee2e6; user-select: none;
+}
+.service-tab:hover { background: #f1f3f5; color: #212529; }
+.service-tab.active { background: var(--dark-color); color: #fff; border-color: var(--dark-color); cursor: default; }

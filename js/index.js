@@ -16,21 +16,35 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 // -----------------------------------------------------------------
-// ✨ [추가된 부분] 대문 선택 화면 제어용 함수 2개
+// 화면 흐름: 로그인 → 메뉴(연장근무일지 / 연차신청) 선택
+// 이미 로그인한 상태(같은 탭)면 바로 메뉴 화면을 보여줌
 // -----------------------------------------------------------------
-let currentSystemMode = 'ot'; // 기본값은 연장근무
+window.addEventListener('DOMContentLoaded', () => {
+    let savedUser = null;
+    try { savedUser = JSON.parse(sessionStorage.getItem('currentUser')); } catch (e) {}
+    if (savedUser && savedUser.name && savedUser.phone) {
+        showPortalMenu(savedUser.name);
+    } else {
+        document.getElementById('login-container').style.display = 'block';
+    }
+});
 
-function selectSystem(mode) {
-    currentSystemMode = mode;
-    document.getElementById('portal-main-screen').style.display = 'none';
-    document.getElementById('login-container').style.display = 'block';
+function showPortalMenu(name) {
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('portal-user-name').innerText = name;
+    document.getElementById('portal-main-screen').style.display = 'block';
 }
 
-// 대문으로 돌아가기 함수
-function goBackToPortal() {
-    document.getElementById('login-container').style.display = 'none';
-    const portal = document.getElementById('portal-main-screen');
-    portal.style.display = 'block'; // 상단 고정 위치로 깔끔하게 복귀
+function selectSystem(mode) {
+    location.href = (mode === 'leave') ? 'leave/leave-apply.html' : 'employee.html';
+}
+
+function logoutUser() {
+    sessionStorage.removeItem('currentUser');
+    document.getElementById('login-name').value = '';
+    document.getElementById('login-phone').value = '';
+    document.getElementById('portal-main-screen').style.display = 'none';
+    document.getElementById('login-container').style.display = 'block';
 }
 // -----------------------------------------------------------------
 
@@ -71,12 +85,8 @@ function handleLogin() {
             // 💡 [원복 완료] 기존 employee.js가 읽어갈 수 있도록 오리지널 키와 JSON 포맷으로 저장합니다!
             const currentUser = { name: nameInput, phone: phoneInput };
             sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
-            // 연차 선택 시 연차 신청 페이지로, 아니면 기존 연장근무 페이지로 이동
-            if (currentSystemMode === 'leave') {
-                location.href = 'leave/leave-apply.html';
-            } else {
-                location.href = 'employee.html';
-            }
+            // 로그인 후 메뉴 화면에서 연장근무일지 / 연차신청 선택
+            showPortalMenu(nameInput);
         })
         .catch(err => {
             console.error("로그인 조회 실패 원인 상세:", err);

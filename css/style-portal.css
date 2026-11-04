@@ -67,6 +67,16 @@
     opacity: 0.9;
 }
 
+/* 메뉴 화면 하단 로그아웃 링크 */
+#portal-main-screen .portal-logout {
+    display: inline-block;
+    margin-top: 25px;
+    font-size: 13px;
+    color: #888;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
 /* 연차신청 버튼 색상 */
 #portal-main-screen button.btn-leave {
     background-color: #4a90e2;

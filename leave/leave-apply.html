@@ -13,23 +13,29 @@
     <div id="main-system" class="container">
         <!-- 상단 네비게이션 -->
         <div class="top-nav" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 10px; margin-bottom: 25px;">
-            <span class="nav-link" onclick="logoutLeaveUser()">메인화면 돌아가기</span>
+            <!-- 서비스 전환 (로그인 유지한 채 이동, 작성 중이면 확인) -->
+            <div class="service-nav">
+                <span class="nav-link" onclick="leaveNavigate('../index.html')">☰ 메뉴</span>
+                <span class="service-tab" onclick="leaveNavigate('../employee.html')">📝 연장근무</span>
+                <span class="service-tab active">🏖️ 연차신청</span>
+            </div>
             <div style="text-align: right; line-height: 1.4;">
                 <div style="font-size: 13px; color: #333; font-weight: bold;">
                     작성자: <span id="user-display">로드 중...</span> | 제출일자: <span id="top-today-date"></span>
+                    <span class="nav-link" style="margin-left: 10px;" onclick="logoutLeaveUser()">로그아웃</span>
                 </div>
             </div>
         </div>
 
-        <div style="margin: 20px 0 15px 0;">
-            <h2>연차 신청</h2>
+        <div style="margin: 60px 0 50px 0;">
+            <h2 style="margin: 0;">연차 신청</h2>
         </div>
 
         <!-- 연차 현황 박스 -->
         <div id="leave-balance-box" class="leave-balance-box">연차 정보를 불러오는 중...</div>
 
         <!-- 상단 버튼 -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin: 15px 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 50px 0 15px 0;">
             <div style="display: flex; gap: 6px;">
                 <button type="button" class="btn-submit" onclick="submitLeaveForm(event)">제출하기</button>
                 <button type="button" class="btn-batch-delete" onclick="saveLeaveTemporary(event)">임시저장</button>
@@ -42,40 +48,83 @@
 
         <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">
 
-        <!-- 사유 / 비상연락처 -->
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <b style="white-space: nowrap; width: 100px;">사 유:</b>
-            <input type="text" id="leave-reason" placeholder="예) 개인 사유로 인한 연차 사용" style="margin: 0; flex-grow: 1;">
-        </div>
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-            <b style="white-space: nowrap; width: 100px;">비상연락처:</b>
-            <input type="text" id="leave-emergency-contact" placeholder="휴가 중 연락 가능한 번호" style="margin: 0; flex-grow: 1;">
-        </div>
+        <!-- 휴가 신청 입력 (종이 휴가신청서와 같은 항목) -->
+        <!-- 항목별 카드 (색상·이모지로 구분) -->
+        <div class="leave-form">
+            <div class="leave-field leave-field-type">
+                <div class="leave-field-title">🏷️ 휴가 종류</div>
+                <div class="leave-type-group" id="leave-type-group">
+                    <label><input type="radio" name="leave-type" value="annual" onchange="onLeaveTypeChange()"> 년차</label>
+                    <label><input type="radio" name="leave-type" value="monthly" onchange="onLeaveTypeChange()"> 월차</label>
+                    <label><input type="radio" name="leave-type" value="summer" onchange="onLeaveTypeChange()"> 여름휴가</label>
+                    <label><input type="radio" name="leave-type" value="family" onchange="onLeaveTypeChange()"> 경조사</label>
+                    <label><input type="radio" name="leave-type" value="etc" onchange="onLeaveTypeChange()"> 기타</label>
+                    <input type="text" id="leave-type-etc" placeholder="기타 내용 (예: 공가)" style="display: none; margin: 0; width: 180px;">
+                </div>
+                <small id="leave-type-hint" class="leave-field-hint">휴가 종류를 선택해 주세요.</small>
+            </div>
 
-        <hr style="border: none; border-top: 1px solid #dee2e6; margin-bottom: 20px;">
+            <div class="leave-field leave-field-period">
+                <div class="leave-field-title">📅 휴가 기간</div>
+                <div class="leave-period-group">
+                    <input type="date" id="leave-start-date" onchange="updateLeavePeriod()">
+                    <span>~</span>
+                    <input type="date" id="leave-end-date" onchange="updateLeavePeriod()">
+                    <select id="leave-half-day" onchange="updateLeavePeriod()">
+                        <option value="full">전일</option>
+                        <option value="am">오전반차</option>
+                        <option value="pm">오후반차</option>
+                    </select>
+                    <span class="leave-total-chip">총 <span id="leave-total-days">0.0 일</span></span>
+                </div>
+                <small id="leave-period-hint" class="leave-field-hint">주말·공휴일은 자동으로 제외됩니다. 여러 날 + 반차: 오후반차는 첫날, 오전반차는 마지막 날이 0.5일입니다.</small>
+            </div>
 
-        <!-- 신청 일자 테이블 -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <button type="button" class="btn-batch-delete" onclick="deleteCheckedLeaveRows()" style="margin: 0;">삭제</button>
-            <div class="summary-box" style="margin: 0;">
-                총 신청 일수: <span id="leave-total-days" style="font-weight: bold; color: #222;">0.0 일</span>
+            <div class="leave-field leave-field-reason">
+                <div class="leave-field-title">📝 휴가 사유</div>
+                <input type="text" id="leave-reason" placeholder="예) 개인 사정">
+            </div>
+
+            <div class="leave-field leave-field-contact">
+                <div class="leave-field-title">📞 비상연락처</div>
+                <input type="text" id="leave-emergency-contact" placeholder="휴가 중 연락 가능한 번호 (없으면 - 입력)">
             </div>
         </div>
 
-        <table id="leave-table">
-            <thead>
-                <tr>
-                    <th style="width: 8%;"></th>
-                    <th style="width: 40%;">날짜</th>
-                    <th style="width: 32%;">구분</th>
-                    <th style="width: 20%;">일수</th>
-                </tr>
-            </thead>
-            <tbody id="leave-tbody"></tbody>
-        </table>
+        <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
 
-        <div class="row-control-area">
-            <button onclick="addLeaveRow()" class="btn-batch-delete" style="margin: 0;">+ 행 추가</button>
+        <!-- 월별 사용 현황 (년차·월차 누적) -->
+        <h4 id="leave-monthly-title" style="margin: 0 0 8px 0;">📅 연차 사용 현황 (년차·월차)</h4>
+        <div id="leave-monthly-box"></div>
+        <small style="color: #888;">괄호 안 숫자는 올해 누적 사용일수입니다. 회색은 결재 대기 중인 신청입니다.</small>
+    </div>
+
+    <!-- ✅ 제출 완료 창 (결재 요청 링크 복사) -->
+    <div id="leave-done-modal" class="modal">
+        <div class="modal-content leave-done-content">
+            <h3 style="margin: 0 0 10px 0;">✅ 연차 신청이 제출되었습니다</h3>
+            <p id="leave-done-summary" style="margin: 0 0 12px 0; font-weight: bold;"></p>
+            <p style="margin: 0; font-size: 14px; color: #555; line-height: 1.6;">
+                아래 버튼을 눌러 링크를 복사한 뒤<br>카카오톡으로 결재자에게 보내주세요.
+            </p>
+            <p id="leave-done-hours" class="leave-done-expire"></p>
+            <!-- 두 버튼은 같은 모양, 색만 다르게 -->
+            <div class="leave-done-buttons">
+                <button type="button" class="leave-done-btn leave-done-share" onclick="copyPreparedSignLink(this)">🔗 공유하기 (링크 복사)</button>
+                <button type="button" class="leave-done-btn leave-done-close" onclick="closeLeaveDone()">닫기</button>
+            </div>
+        </div>
+    </div>
+    <div id="leave-toast" class="leave-toast"></div>
+
+    <!-- 🖨️ 휴가신청서 인쇄 모달 (style.css의 #print-modal 인쇄 규칙 사용) -->
+    <div id="print-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 99999; overflow-y: auto; padding: 20px 0;">
+        <div class="print-paper" style="max-height: 85vh; overflow-y: auto; box-sizing: border-box; margin: auto;">
+            <div id="leave-print-body"></div>
+            <div style="text-align: center; margin-top: 20px; display: flex; justify-content: center; gap: 8px;">
+                <button type="button" style="width: auto; padding: 8px 25px;" onclick="window.print()">인쇄</button>
+                <button type="button" style="width: auto; padding: 8px 25px; background: #6c757d;" onclick="closeLeavePrint()">닫기</button>
+            </div>
         </div>
     </div>
 
@@ -87,8 +136,8 @@
                 <thead>
                     <tr>
                         <th style="width: 8%;"></th>
-                        <th style="width: 42%;">사유</th>
-                        <th style="width: 30%;">일자/일수</th>
+                        <th style="width: 37%;">종류 · 사유</th>
+                        <th style="width: 35%;">휴가 기간 / 일수</th>
                         <th style="width: 20%;">상태</th>
                     </tr>
                 </thead>
@@ -105,6 +154,8 @@
         </div>
     </div>
 
+    <script src="../js/ot-rules.js"></script> <!-- 공휴일 목록(holidays) 공용 -->
+    <script src="../js/leavejs/leave-common.js"></script>
     <script src="../js/leavejs/leave-employee.js"></script>
 </body>
 </html>

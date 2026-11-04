@@ -23,6 +23,7 @@ function openEmpModal() {
 // 👤 사원 관리 모달 닫기
 function closeEmpModal() {
     document.getElementById('emp-manage-modal').style.display = 'none';
+    cancelEditEmployee(); // 수정 중이던 내용 초기화
 }
 
 // 1. 페이지 로드 시 처리
@@ -98,44 +99,95 @@ function loadSearchEmployeeList() {
         });
 }
 
-// 3. 사원 등록 (통상임금 수집 및 초기화 로직 수정)
+// 3. 사원 등록 / 수정 (수정 중이면 editingEmployeeId에 문서 ID가 들어 있음)
+let editingEmployeeId = null;
+
 function registerEmployee() {
     const name = document.getElementById('new-emp-name').value.trim();
     const phone = document.getElementById('new-emp-phone').value.trim();
     const wageInput = document.getElementById('new-emp-wage');
     const wageVal = wageInput ? wageInput.value.trim() : "";
+    const hireDate = document.getElementById('new-emp-hiredate').value;
+    const department = document.getElementById('new-emp-dept').value.trim();
+    const position = document.getElementById('new-emp-position').value.trim();
 
-    if (!name || phone.length !== 4) { 
-        alert("이름과 휴대폰 뒷자리 4자리를 정확히 입력해주세요."); 
-        return; 
+    if (!name || phone.length !== 4) {
+        alert("이름과 휴대폰 뒷자리 4자리를 정확히 입력해주세요.");
+        return;
     }
 
     // 통상임금 미입력 시 기본값 10,000원 적용
     const hourlyWage = wageVal ? parseInt(wageVal, 10) : 10000;
+    if (isNaN(hourlyWage) || hourlyWage <= 0) {
+        alert("올바른 통상시급을 입력해 주세요.");
+        return;
+    }
+    const empInfo = { hourlyWage, hireDate, department, position };
+
+    if (editingEmployeeId) {
+        db.collection("employees").doc(editingEmployeeId).update(empInfo)
+            .then(() => {
+                alert("수정 완료!");
+                cancelEditEmployee();
+                loadEmployeeList();
+                applyFilters(); // 시급 변경 시 결재 내역 금액 갱신
+            })
+            .catch(err => { console.error("사원 수정 실패:", err); alert("수정 중 오류가 발생했습니다."); });
+        return;
+    }
 
     db.collection("employees").where("name", "==", name).where("phoneLast4", "==", phone).get()
         .then((snapshot) => {
-            if (!snapshot.empty) { 
-                alert("이미 등록된 사원입니다."); 
+            if (!snapshot.empty) {
+                alert("이미 등록된 사원입니다.");
             } else {
-                db.collection("employees").add({ 
-                    name, 
-                    phoneLast4: phone, 
-                    hourlyWage: hourlyWage, // 💰 DB 저장
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp() 
+                db.collection("employees").add({
+                    name,
+                    phoneLast4: phone,
+                    ...empInfo,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 })
-                .then(() => { 
-                    alert("등록 완료!"); 
-                    // 등록 성공 후 입력창 모두 비우기
-                    document.getElementById('new-emp-name').value = '';
-                    document.getElementById('new-emp-phone').value = '';
-                    if (wageInput) wageInput.value = '';
-
-                    loadEmployeeList(); 
-                    loadSearchEmployeeList(); 
+                .then(() => {
+                    alert("등록 완료!");
+                    cancelEditEmployee(); // 입력창 모두 비우기
+                    loadEmployeeList();
+                    loadSearchEmployeeList();
                 });
             }
         });
+}
+
+// 사원 정보 수정: 목록의 값을 입력창으로 불러옴 (이름·번호는 신청 내역과 연결되어 있어 잠금)
+function editEmployee(docId) {
+    db.collection("employees").doc(docId).get().then(doc => {
+        if (!doc.exists) return alert("사원 정보를 찾을 수 없습니다.");
+        const data = doc.data();
+        editingEmployeeId = docId;
+        const nameEl = document.getElementById('new-emp-name');
+        const phoneEl = document.getElementById('new-emp-phone');
+        nameEl.value = data.name || '';
+        phoneEl.value = data.phoneLast4 || '';
+        nameEl.disabled = true;
+        phoneEl.disabled = true;
+        document.getElementById('new-emp-wage').value = data.hourlyWage || '';
+        document.getElementById('new-emp-hiredate').value = data.hireDate || '';
+        document.getElementById('new-emp-dept').value = data.department || '';
+        document.getElementById('new-emp-position').value = data.position || '';
+        document.getElementById('emp-form-title').innerText = `사원 정보 수정 (${data.name})`;
+        document.getElementById('emp-save-btn').innerText = '저장';
+        document.getElementById('emp-cancel-btn').style.display = 'inline-block';
+    });
+}
+
+function cancelEditEmployee() {
+    editingEmployeeId = null;
+    ['new-emp-name', 'new-emp-phone', 'new-emp-wage', 'new-emp-hiredate', 'new-emp-dept', 'new-emp-position'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.value = ''; el.disabled = false; }
+    });
+    document.getElementById('emp-form-title').innerText = '신규 사원 추가';
+    document.getElementById('emp-save-btn').innerText = '등록';
+    document.getElementById('emp-cancel-btn').style.display = 'none';
 }
 
 // 사원 삭제
@@ -146,24 +198,6 @@ function deleteEmployee(docId) {
             loadSearchEmployeeList(); 
         });
     }
-}
-
-// 사원 통상시급 수정 함수
-function updateEmployeeWage(docId, currentWage) {
-    const newWage = prompt("변경할 통상시급(원)을 입력하세요:", currentWage);
-    if (newWage === null) return;
-    
-    const parsedWage = parseInt(newWage.replace(/[^0-9]/g, ''), 10);
-    if (isNaN(parsedWage) || parsedWage <= 0) {
-        alert("올바른 금액을 입력해 주세요.");
-        return;
-    }
-
-    db.collection("employees").doc(docId).update({ hourlyWage: parsedWage }).then(() => {
-        alert("통상시급이 수정되었습니다.");
-        loadEmployeeList();
-        applyFilters();
-    });
 }
 
 // 4. 📅 기간 퀵 버튼 설정 헬퍼 함수
@@ -233,14 +267,17 @@ function loadEmployeeList() {
             return `<tr>
                 <td style="vertical-align: middle;">${data.name}</td>
                 <td style="vertical-align: middle;">${data.phoneLast4}</td>
+                <td style="vertical-align: middle;">${data.department || '-'} / ${data.position || '-'}</td>
+                <!-- 입사일 미등록 시 연차 계산이 안 되므로 빨간색 안내 -->
+                <td style="vertical-align: middle;">${data.hireDate || '<span style="color: var(--danger-color);">미등록</span>'}</td>
                 <!-- 💰 통상시급 칸 -->
-                <td style="vertical-align: middle; text-align: center;">
-                    ${wage}원
-                    <button onclick="updateEmployeeWage('${doc.id}', ${data.hourlyWage || 10000})" style="padding: 2px 6px; font-size: 11px; margin-left: 4px; cursor: pointer;">수정</button>
-                </td>
-                <!-- 🗑 관리(삭제) 칸 -->
-                <td style="vertical-align: middle; text-align: center;">
-                    <button onclick="deleteEmployee('${doc.id}')" class="btn-batch-delete" style="margin: 0 auto; padding: 0 14px; font-size: 13px; height: 32px; line-height: 30px; font-weight: bold; display: inline-block; white-space: nowrap; min-width: 60px;">
+                <td style="vertical-align: middle; text-align: center;">${wage}원</td>
+                <!-- ✏️ 관리(수정·삭제) 칸 -->
+                <td style="vertical-align: middle; text-align: center; white-space: nowrap;">
+                    <button onclick="editEmployee('${doc.id}')" class="btn-batch-delete" style="margin: 0 2px; padding: 0 10px; font-size: 13px; height: 32px; line-height: 30px; font-weight: bold; display: inline-block; white-space: nowrap; width: auto;">
+                        수정
+                    </button>
+                    <button onclick="deleteEmployee('${doc.id}')" class="btn-batch-delete" style="margin: 0 2px; padding: 0 10px; font-size: 13px; height: 32px; line-height: 30px; font-weight: bold; display: inline-block; white-space: nowrap; width: auto;">
                         삭제
                     </button>
                 </td>
@@ -499,4 +536,169 @@ function calculateOvertimePay(detailLogs, hourlyWage = 10000) {
         lines,
         text: `${detail} 초과 (${overtimePay.toLocaleString()}원)`
     };
+}
+
+
+// ==========================================
+// 🏖️ 연차 관리 (관리자는 연차 갯수 관리·사용촉진용 / 서명은 결재자가 링크로 진행)
+// 휴가 종류·연차 계산·휴가신청서 양식은 js/leavejs/leave-common.js 공용
+// ==========================================
+let leaveAdminRequests = []; // 전체 연차 신청 [{ id, data }]
+let leaveAdminLoaded = false;
+
+function switchAdminTab(tab) {
+    const isLeave = tab === 'leave';
+    document.getElementById('ot-admin-section').style.display = isLeave ? 'none' : 'block';
+    document.getElementById('leave-admin-section').style.display = isLeave ? 'block' : 'none';
+    document.getElementById('tab-ot-admin').classList.toggle('active', !isLeave);
+    document.getElementById('tab-leave-admin').classList.toggle('active', isLeave);
+    if (isLeave && !leaveAdminLoaded) {
+        initLeaveYearSelect();
+        loadLeaveAdmin();
+        leaveAdminLoaded = true;
+    }
+}
+
+function initLeaveYearSelect() {
+    const sel = document.getElementById('leave-year-select');
+    if (!sel || sel.options.length) return;
+    const thisYear = new Date().getFullYear();
+    for (let y = thisYear + 1; y >= thisYear - 3; y--) {
+        sel.innerHTML += `<option value="${y}" ${y === thisYear ? 'selected' : ''}>${y}년</option>`;
+    }
+}
+
+function loadLeaveAdmin() {
+    const year = Number(document.getElementById('leave-year-select').value);
+    Promise.all([db.collection("employees").get(), db.collection("leave_requests").get()])
+        .then(([empSnap, reqSnap]) => {
+            leaveAdminRequests = reqSnap.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+            renderLeaveSummary(year, empSnap.docs.map(doc => doc.data()));
+            renderLeaveRequestList(year);
+        })
+        .catch(err => console.error("연차 관리 데이터 로드 실패:", err));
+}
+
+// 사원별 발생/사용/대기/잔여 (잔여 많은 순 → 사용촉진 대상이 위로)
+function renderLeaveSummary(year, employees) {
+    const tbody = document.getElementById('leave-summary-tbody');
+    if (!tbody) return;
+    const rows = employees.map(emp => {
+        let used = 0, pending = 0;
+        leaveAdminRequests.forEach(({ data }) => {
+            if (data.employeeName !== emp.name || data.employeePhone !== emp.phoneLast4) return;
+            if (data.fiscalYear !== year || !isDeductible(data)) return;
+            if (data.status === "승인") used += data.totalDays || 0;
+            else if (data.status === "대기" || data.status === "재전송") pending += data.totalDays || 0;
+        });
+        const entitlement = calcAnnualLeaveEntitlement(emp.hireDate, year);
+        const remaining = entitlement - used - pending;
+        return { emp, entitlement, used, pending, remaining };
+    }).sort((a, b) => b.remaining - a.remaining);
+
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">등록된 사원이 없습니다.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const noHire = !r.emp.hireDate;
+        const rate = r.entitlement > 0 ? Math.round((r.used / r.entitlement) * 100) : 0;
+        // 잔여가 발생의 절반 이상이면 주황(사용촉진 대상), 마이너스면 빨강
+        const remainColor = r.remaining < 0 ? 'var(--danger-color)' : (r.entitlement > 0 && r.remaining >= r.entitlement / 2 ? '#e67e22' : '#333');
+        return `<tr>
+            <td>${r.emp.name}</td>
+            <td>${r.emp.department || '-'} / ${r.emp.position || '-'}</td>
+            <td>${noHire ? '<span style="color: var(--danger-color);">미등록</span>' : r.emp.hireDate}</td>
+            <td>${noHire ? '-' : r.entitlement + '일'}</td>
+            <td>${formatDays(r.used)}일</td>
+            <td>${r.pending > 0 ? formatDays(r.pending) + '일' : '-'}</td>
+            <td><b style="color: ${remainColor};">${noHire ? '-' : formatDays(r.remaining) + '일'}</b></td>
+            <td>${noHire ? '-' : rate + '%'}</td>
+        </tr>`;
+    }).join('');
+}
+
+// 결재 칸 표시 (표 머리글 순서: 과장 / 전무)
+function leaveSignStatusHtml(data) {
+    return ['manager', 'director'].map(slot => {
+        const s = data.signatures && data.signatures[slot];
+        return s ? `✅ ${signatureDateText(s)}` : '⬜';
+    }).join(' / ');
+}
+
+function renderLeaveRequestList(year) {
+    const tbody = document.getElementById('leave-admin-tbody');
+    if (!tbody) return;
+    const list = leaveAdminRequests
+        .filter(({ data }) => data.fiscalYear === year && data.status !== "작성") // 회수(작성) 건 제외
+        .sort((a, b) => (b.data.submittedAt?.toMillis?.() || 0) - (a.data.submittedAt?.toMillis?.() || 0));
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년 연차 신청 내역이 없습니다.</td></tr>`;
+        return;
+    }
+    const statusColors = { "승인": "var(--success-color)", "반려": "var(--danger-color)", "승인취소": "var(--danger-color)", "대기": "#f39c12", "재전송": "#3498db" };
+    const btnStyle = "padding: 5px 8px; font-size: 12px; height: 32px; width: auto;";
+    const dangerStyle = `${btnStyle} color: var(--danger-color); border-color: var(--danger-color);`;
+    tbody.innerHTML = list.map(({ id, data }) => {
+        const submitted = data.submittedAt ? data.submittedAt.toDate().toLocaleDateString() : '-';
+        const canReject = data.status === "대기" || data.status === "재전송";
+        return `<tr>
+            <td>${submitted}</td>
+            <td>${data.employeeName}</td>
+            <td>${leaveTypeLabel(data)}</td>
+            <td style="font-size: 13px;">${periodSummary(data)}</td>
+            <td>${formatDays(data.totalDays || 0)}일</td>
+            <td>${leaveSignStatusHtml(data)}</td>
+            <td><span class="status-badge" style="color: ${statusColors[data.status] || '#888'};">${data.status}</span></td>
+            <td style="white-space: nowrap;">
+                <button onclick="viewLeaveDetail('${id}')" class="btn-batch-delete" style="${btnStyle}">상세보기</button>
+                ${canReject ? `<button onclick="rejectLeaveRequest('${id}')" class="btn-batch-delete" style="${dangerStyle}">반려</button>` : ''}
+                ${data.status === "승인" ? `<button onclick="cancelLeaveApproval('${id}')" class="btn-batch-delete" style="${dangerStyle}">승인취소</button>` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function viewLeaveDetail(docId) {
+    const req = leaveAdminRequests.find(r => r.id === docId);
+    if (!req) return;
+    const d = req.data;
+    const sameEmployee = leaveAdminRequests.filter(r => r.data.employeeName === d.employeeName && r.data.employeePhone === d.employeePhone);
+    document.getElementById('leave-detail-sheet').innerHTML = renderLeaveSheetHtml(d, sameEmployee);
+    const extra = [];
+    if (d.rejectReason) extra.push(`<div><b>반려 사유:</b> ${d.rejectReason}</div>`);
+    if (d.cancelReason) extra.push(`<div><b>승인취소 사유:</b> ${d.cancelReason} (${d.canceledAt ? d.canceledAt.toDate().toLocaleString() : ''})</div>`);
+    document.getElementById('leave-detail-extra').innerHTML = extra.join('');
+    document.getElementById('leave-detail-modal').style.display = 'block';
+}
+
+function closeLeaveDetail() {
+    document.getElementById('leave-detail-modal').style.display = 'none';
+}
+
+// 반려: 서명 전(대기·재전송) 신청만 가능 → 사원이 재작성 가능
+function rejectLeaveRequest(docId) {
+    const reason = prompt("반려 사유를 입력하세요:");
+    if (reason === null) return;
+    db.collection("leave_requests").doc(docId).update({
+        status: "반려",
+        rejectReason: reason.trim() || "사유 미입력",
+        signLink: firebase.firestore.FieldValue.delete() // 보낸 서명 링크도 무효화
+    }).then(() => { alert("반려되었습니다."); loadLeaveAdmin(); })
+      .catch(err => { console.error("반려 실패:", err); alert("반려 중 오류가 발생했습니다."); });
+}
+
+// 승인취소: 잘못 승인된 경우에만 관리자가 사용 (서명 기록은 그대로 남고, 사유·시각 기록)
+function cancelLeaveApproval(docId) {
+    const reason = prompt("승인취소 사유를 입력하세요 (필수):\n※ 서명 기록은 그대로 남고, 이 신청은 연차 사용에서 제외됩니다.");
+    if (reason === null) return;
+    if (!reason.trim()) { alert("승인취소 사유를 입력해야 합니다."); return; }
+    db.collection("leave_requests").doc(docId).update({
+        status: "승인취소",
+        cancelReason: reason.trim(),
+        canceledAt: firebase.firestore.FieldValue.serverTimestamp(),
+        signLink: firebase.firestore.FieldValue.delete()
+    }).then(() => { alert("승인취소 되었습니다."); loadLeaveAdmin(); })
+      .catch(err => { console.error("승인취소 실패:", err); alert("승인취소 중 오류가 발생했습니다."); });
 }

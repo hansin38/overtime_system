@@ -1,0 +1,153 @@
+/* ==========================================
+   연차 신청 화면 전용 스타일 (style.css 다음에 로드)
+   ========================================== */
+
+/* 상단 연차 현황 박스 */
+.leave-balance-box {
+    background: var(--gray-color);
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 14px;
+}
+
+/* 신청 입력 폼: 항목별 카드 (왼쪽 색 띠 + 이모지 제목) */
+.leave-form { display: flex; flex-direction: column; gap: 36px; margin: 36px 0; }
+.leave-field {
+    border: 1px solid #e3e6ea;
+    border-left: 5px solid var(--field-color);
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #fff;
+}
+.leave-field-title { font-weight: bold; font-size: 15px; color: var(--field-color); margin-bottom: 10px; }
+.leave-field-hint { display: block; margin-top: 8px; color: #888; }
+.leave-field input[type="text"] { margin: 0; }
+.leave-field-type    { --field-color: #2f6fdd; }  /* 파랑 */
+.leave-field-period  { --field-color: #1e9e5a; }  /* 초록 */
+.leave-field-reason  { --field-color: #e67e22; }  /* 주황 */
+.leave-field-contact { --field-color: #8e44ad; }  /* 보라 */
+.leave-total-chip {
+    background: #e8f6ee; color: #1e9e5a; font-weight: bold;
+    padding: 8px 12px; border-radius: 16px; white-space: nowrap;
+}
+.leave-type-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.leave-type-group label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.leave-type-group input[type="radio"] { width: auto; margin: 0; }
+.leave-period-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.leave-period-group input[type="date"] { width: auto; margin: 0; }
+.leave-period-group select { padding: 11px; border: 1px solid #ddd; border-radius: 4px; }
+.leave-period-group select:disabled { background: #f1f3f5; color: #999; }
+
+/* 월별 사용 현황 표 (화면) */
+.leave-monthly-table { margin: 0 0 6px 0; font-size: 13px; }
+.leave-monthly-table th, .leave-monthly-table td { padding: 6px 2px; vertical-align: top; }
+.leave-monthly-table td div + div { margin-top: 6px; }
+.leave-pending { color: #aaa; }
+
+/* ==========================================
+   휴가신청서 인쇄 양식 (lp-*)
+   ========================================== */
+.lp-sheet { font-size: 13px; color: #000; }
+.lp-sheet table { margin: 0; table-layout: auto; }
+.lp-sheet th, .lp-sheet td { border: 1px solid #333; padding: 6px; }
+.lp-sheet th { background: #e9ecef; font-weight: normal; }
+
+.lp-header .lp-company { width: 22%; font-weight: bold; font-size: 14px; }
+.lp-header .lp-title { font-size: 22px; font-weight: bold; letter-spacing: 4px; }
+.lp-header th { width: 14%; font-size: 12px; padding: 3px; }
+.lp-header td:last-child { width: 16%; font-size: 12px; padding: 3px; }
+
+.lp-approval-row { display: flex; justify-content: space-between; align-items: center; margin: 18px 0; }
+.lp-approval-row p { margin: 0; flex: 1; text-align: center; }
+.lp-approval { width: 200px !important; }
+.lp-approval th, .lp-approval td { padding: 3px; font-size: 12px; }
+.lp-approval .lp-approval-label { width: 24px; }
+.lp-sign-row td { height: 55px; width: 80px; }
+.lp-sign-row img { max-width: 76px; max-height: 50px; display: block; margin: 0 auto; }
+
+.lp-main th { width: 22%; letter-spacing: 2px; }
+.lp-main td { height: 26px; }
+.lp-types { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 6px; }
+.lp-type { white-space: nowrap; }
+
+.lp-monthly { margin-top: 18px !important; font-size: 12px; }
+.lp-monthly th { padding: 4px 2px; }
+.lp-monthly td { height: 60px; padding: 4px 2px; vertical-align: middle; font-size: 11px; }
+.lp-monthly td div + div { margin-top: 4px; }
+
+.lp-request { text-align: center; margin: 22px 0; }
+.lp-date { text-align: center; margin: 30px 0; letter-spacing: 2px; }
+.lp-signer { margin: 30px 0 10px auto; width: 260px; line-height: 2.2; }
+
+/* ==========================================
+   결재자 서명 화면 (leave-sign.html)
+   ========================================== */
+body.sign-page { margin: 0; padding: 0 0 100px 0; }
+.sign-banner { padding: 14px 16px; font-size: 14px; line-height: 1.6; text-align: center; }
+.sign-banner-action { background: #fff3cd; color: #664d03; border-bottom: 2px solid #ffc107; }
+.sign-banner-done { background: #d1e7dd; color: #0f5132; border-bottom: 2px solid #28a745; }
+.sign-banner-error { background: #f8d7da; color: #842029; border-bottom: 2px solid #dc3545; }
+.sign-paper { width: auto; max-width: 700px; margin: 16px auto; padding: 20px; overflow-x: auto; box-sizing: border-box; }
+
+/* 서명할 칸: 깜빡이는 빨간 테두리 */
+.lp-sign-target {
+    cursor: pointer;
+    color: #dc3545;
+    font-size: 11px;
+    font-weight: bold;
+    background: #fff5f5;
+    outline: 3px solid #dc3545;
+    outline-offset: -3px;
+    animation: sign-blink 1.2s ease-in-out infinite;
+}
+@keyframes sign-blink { 50% { outline-color: transparent; } }
+
+.sign-bottom-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 12px 16px; background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1); text-align: center; z-index: 500;
+}
+.sign-bottom-bar button { max-width: 420px; font-size: 17px; padding: 14px; background: #dc3545; }
+
+.sign-pad-content { max-width: 480px; width: 92%; box-sizing: border-box; }
+.sign-slot-choice { display: flex; gap: 8px; margin-bottom: 10px; }
+.sign-slot-btn { flex: 1; background: #fff; color: #333; border: 2px solid #ccc; padding: 10px; }
+.sign-slot-btn.active { border-color: #dc3545; color: #dc3545; background: #fff5f5; }
+
+/* 제출 완료 창 */
+.leave-done-content { max-width: 420px; width: 90%; text-align: center; box-sizing: border-box; }
+.leave-done-expire { margin: 10px 0 0 0; font-size: 13px; font-weight: bold; color: #dc3545; }
+.leave-done-buttons { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.leave-done-btn {
+    width: 100%; margin: 0; padding: 14px; font-size: 16px; font-weight: bold;
+    border: none; border-radius: 8px; cursor: pointer;
+}
+.leave-done-share { background: #fee500; color: #191919; }  /* 카카오 노랑 */
+.leave-done-close { background: #495057; color: #fff; }
+
+/* 복사 알림 토스트 (누른 버튼 바로 위에 표시) */
+.leave-toast {
+    position: fixed; left: 50%; top: 40px; transform: translate(-50%, -100%);
+    background: rgba(0, 0, 0, 0.85); color: #fff; padding: 10px 20px; border-radius: 24px;
+    font-size: 14px; white-space: nowrap; z-index: 100000; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+}
+.leave-toast.show { opacity: 1; }
+.sign-canvas {
+    width: 100%; height: 200px; display: block;
+    border: 2px dashed #adb5bd; border-radius: 6px; background: #fff;
+    touch-action: none; /* 서명 중 화면 스크롤 방지 */
+}
+
+@media (max-width: 600px) {
+    .sign-paper { padding: 10px; margin: 8px; }
+    .lp-sheet { font-size: 11px; }
+    .lp-header .lp-title { font-size: 16px; letter-spacing: 2px; }
+    .lp-approval-row { flex-direction: column; gap: 10px; }
+    .lp-monthly td { font-size: 10px; }
+}
+
+@media print {
+    .lp-sheet th { background: #e9ecef !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .leave-pending { color: #888 !important; }
+}
