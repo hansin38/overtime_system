@@ -69,7 +69,8 @@ window.addEventListener('DOMContentLoaded', () => {
     }
         
     // 1. 사원 페이지(employee.html) 권한 유효성 체크
-    if (location.pathname.includes('employee.html')) {
+    // (Vercel 주소에서 .html이 생략되므로 주소 대신 입력표 존재 여부로 판단)
+    if (document.getElementById('ot-tbody')) {
         if (currentUser && currentUser.name && currentUser.phone) {
             // 권한 통과 시 로그인 가림막 치우고 메인 시스템 활성화
             const mainSystem = document.getElementById('main-system');
@@ -331,8 +332,8 @@ function loadTempRequest(tempData) {
         makeSmartSelect(tr, 'end', tr.dataset.workType, log.end);
     });
     const currentRows = tbody.querySelectorAll('tr').length;
-    if(currentRows < 5) {
-        for(let i=0; i < (5 - currentRows); i++) { addRow(); }
+    if(currentRows < 10) {
+        for(let i=0; i < (10 - currentRows); i++) { addRow(); }
     }    
     calculateTotalHours();
 }
@@ -615,7 +616,7 @@ function handleDateChange(dateInput) {
 // ==========================================
 function resetFormRows() {
     document.getElementById('ot-tbody').innerHTML = "";
-    for(let i=0; i<5; i++) { addRow(); }
+    for(let i=0; i<10; i++) { addRow(); }
     const masterCheck = document.getElementById('master-check');
     if (masterCheck) masterCheck.checked = false;    
     currentTempDocId = null; 
