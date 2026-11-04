@@ -437,12 +437,30 @@ function openLeaveHistoryModal(mode) {
                 const tr = document.createElement('tr');
                 tr.style.cursor = 'pointer';
                 tr.innerHTML = `
-                    <td style="padding:10px; text-align:center;"><input type="checkbox" class="leave-row-check" data-doc-id="${item.id}" onclick="event.stopPropagation();"></td>
+                    <td style="padding:10px; text-align:center;"><input type="checkbox" class="leave-row-check" data-doc-id="${item.id}" style="cursor:pointer;" onclick="event.stopPropagation(); this.closest('tr').classList.toggle('leave-row-selected', this.checked);"></td>
                     <td style="padding:10px; text-align:center; font-weight:bold;">${d.leaveType || d.startDate ? leaveTypeLabel(d) + ' · ' : ''}${d.reason || '(사유 없음)'}</td>
                     <td style="padding:10px; text-align:center;">${periodSummary(d)} / ${formatDays(d.totalDays || 0)}일</td>
                     ${statusCell}
                 `;
-                tr.onclick = () => showLeaveDetail(d, item.id, mode);
+                // 행 아무 데나 클릭해도 선택 (연장근무 제출내역과 동일한 방식)
+                tr.onclick = () => {
+                    const check = tr.querySelector('.leave-row-check');
+                    if (mode === 'temp') {
+                        // 임시저장: 여러 건 선택 삭제가 가능하도록 클릭할 때마다 체크 켜기/끄기
+                        check.checked = !check.checked;
+                        tr.classList.toggle('leave-row-selected', check.checked);
+                    } else {
+                        // 제출내역: 한 건만 선택 (인쇄·회수·재작성·링크 복사 대상)
+                        tbody.querySelectorAll('tr').forEach(row => {
+                            row.classList.remove('leave-row-selected');
+                            const cb = row.querySelector('.leave-row-check');
+                            if (cb) cb.checked = false;
+                        });
+                        check.checked = true;
+                        tr.classList.add('leave-row-selected');
+                    }
+                    showLeaveDetail(d, item.id, mode);
+                };
                 tbody.appendChild(tr);
             });
         })
@@ -570,25 +588,57 @@ function closeLeaveHistoryModal() {
     document.getElementById('leave-history-modal').style.display = 'none';
 }
 
+// ESC 키 단계별 닫기 (연장근무일지 페이지와 동일)
+// 1단계: 제출 완료 창 → 2단계: 내역 창 안의 상세내역(선택 해제) → 3단계: 내역 창 전체
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const doneModal = document.getElementById('leave-done-modal');
+    const historyModal = document.getElementById('leave-history-modal');
+    const detailBox = document.getElementById('leave-detail-view');
+
+    if (doneModal && doneModal.style.display === 'block') {
+        doneModal.style.display = 'none';
+        return;
+    }
+    if (historyModal && historyModal.style.display === 'block') {
+        if (detailBox && detailBox.style.display === 'block') {
+            detailBox.style.display = 'none';
+            document.querySelectorAll('#leave-history-tbody tr').forEach(row => {
+                row.classList.remove('leave-row-selected');
+                const cb = row.querySelector('.leave-row-check');
+                if (cb) cb.checked = false;
+            });
+            return;
+        }
+        historyModal.style.display = 'none';
+    }
+});
+
 // -----------------------------------------------------------------
 // 9. 휴가신청서 인쇄 (종이 양식과 같은 배치)
 // -----------------------------------------------------------------
+// 인쇄 대상: 방금 클릭해서 상세를 연 신청서 → 없으면 체크한 신청서
 function printCheckedLeaveRequest() {
+    const detailBox = document.getElementById('leave-detail-view');
     const checked = document.querySelector('#leave-history-tbody .leave-row-check:checked');
-    if (!checked) { alert("인쇄할 내역을 선택해주세요."); return; }
-    db.collection("leave_requests").doc(checked.dataset.docId).get().then(doc => {
+    const docId = (detailBox && detailBox.style.display !== 'none' && detailBox.dataset.mode === 'submitted')
+        ? detailBox.dataset.docId
+        : (checked ? checked.dataset.docId : null);
+    if (!docId) { alert("인쇄할 내역을 클릭하거나 선택해주세요."); return; }
+
+    db.collection("leave_requests").doc(docId).get().then(doc => {
         if (!doc.exists) { alert("신청 내역을 찾을 수 없습니다."); return; }
-        openLeavePrint(doc.data());
+        printLeaveSheet(doc.data());
     }).catch(err => {
         console.error("인쇄 데이터 로드 실패:", err);
         alert("인쇄 데이터를 불러오는 중 오류가 발생했습니다.");
     });
 }
 
-function openLeavePrint(data) {
+// 미리보기 없이 바로 인쇄창 열기 (로고·서명 이미지가 다 불러와진 뒤 인쇄)
+function printLeaveSheet(data) {
     const body = document.getElementById('leave-print-body');
-    const modal = document.getElementById('print-modal');
-    if (!body || !modal) return;
+    if (!body) return;
 
     body.innerHTML = renderLeaveSheetHtml({
         ...data,
@@ -596,9 +646,10 @@ function openLeavePrint(data) {
         position: data.position || myEmployeeData?.position || ''
     }, myLeaveRequests);
 
-    document.getElementById('leave-history-modal').style.display = 'none';
-    modal.style.display = 'flex';
-    modal.scrollTop = 0;
+    const images = Array.from(body.querySelectorAll('img'));
+    Promise.all(images.map(img => img.complete ? Promise.resolve()
+        : new Promise(resolve => { img.onload = img.onerror = resolve; })))
+        .then(() => window.print());
 }
 
 function closeLeavePrint() {

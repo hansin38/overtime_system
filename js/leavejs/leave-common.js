@@ -4,7 +4,8 @@
 // ⚠️ 공휴일 목록(holidays)은 js/ot-rules.js에서 공통 관리 (이 파일보다 먼저 로드)
 // ==========================================
 
-const COMPANY_NAME = "(주)한신컨설턴트"; // 휴가신청서 인쇄 상단 회사명
+const COMPANY_NAME = "(주)한신콘설탄트";           // 로고 이미지를 못 불러올 때 대신 표시
+const COMPANY_LOGO = "/images/hanshin-logo.png";   // 휴가신청서 왼쪽 상단 로고 (사이트 최상위 기준 경로)
 
 // 휴가 종류 - deduct: 잔여 연차에서 차감 여부 (년차·월차만 차감)
 const LEAVE_TYPES = {
@@ -179,7 +180,7 @@ function renderLeaveSheetHtml(data, requests, options = {}) {
         <div class="lp-sheet">
             <table class="lp-header">
                 <tr>
-                    <td class="lp-company" rowspan="4">${COMPANY_NAME}</td>
+                    <td class="lp-company" rowspan="4"><img src="${COMPANY_LOGO}" alt="${COMPANY_NAME}"></td>
                     <td class="lp-title" rowspan="4">휴 가 신 청 서</td>
                     <th>문서번호</th><td></td>
                 </tr>

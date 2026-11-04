@@ -53,12 +53,13 @@
 .lp-sheet th, .lp-sheet td { border: 1px solid #333; padding: 6px; }
 .lp-sheet th { background: #e9ecef; font-weight: normal; }
 
-.lp-header .lp-company { width: 22%; font-weight: bold; font-size: 14px; }
+.lp-header .lp-company { width: 22%; font-weight: bold; font-size: 14px; padding: 4px 8px; }
+.lp-header .lp-company img { display: block; width: 100%; max-width: 150px; height: auto; margin: 0 auto; }
 .lp-header .lp-title { font-size: 22px; font-weight: bold; letter-spacing: 4px; }
 .lp-header th { width: 14%; font-size: 12px; padding: 3px; }
 .lp-header td:last-child { width: 16%; font-size: 12px; padding: 3px; }
 
-.lp-approval-row { display: flex; justify-content: space-between; align-items: center; margin: 18px 0; }
+.lp-approval-row { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 48px 0; }
 .lp-approval-row p { margin: 0; flex: 1; text-align: center; }
 .lp-approval { width: 200px !important; }
 .lp-approval th, .lp-approval td { padding: 3px; font-size: 12px; }
@@ -147,7 +148,21 @@ body.sign-page { margin: 0; padding: 0 0 100px 0; }
     .lp-monthly td { font-size: 10px; }
 }
 
+/* 월별 표: 12칸 너비 동일 */
+.lp-sheet .lp-monthly, .leave-monthly-table { table-layout: fixed; }
+
+/* 휴가신청서 인쇄 여백: 프린터 여백 설정과 관계없이 항상 같은 여백(위·양옆 15mm)으로 출력 */
+@page { size: A4; margin: 0; }
+
 @media print {
+    /* 숨긴 화면도 자리를 차지해 빈 2페이지가 생기므로 인쇄 시 아예 제외 */
+    #main-system, #leave-history-modal, #leave-done-modal, #leave-toast { display: none !important; }
+    .print-paper { padding: 0 !important; }
+    .lp-sheet { padding: 25mm 15mm 0 15mm; box-sizing: border-box; }
+    .lp-signer { margin-bottom: 0; }
     .lp-sheet th { background: #e9ecef !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .leave-pending { color: #888 !important; }
 }
+
+/* 제출내역조회에서 클릭한 행 강조 */
+.leave-row-selected td { background: #eef5ff; }
