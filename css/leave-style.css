@@ -57,11 +57,15 @@
 /* ==========================================
    휴가신청서 인쇄 양식 (lp-*)
    ========================================== */
-.lp-sheet { font-size: 13px; color: #000; }
+/* 연장근로 신청 확인서 톤: 옅은 선 + 표마다 위아래 굵은 가로줄, 세로선 최소화 */
+.lp-sheet { --lp-hair: #c9ccd1; --lp-bold: 2px solid #222; font-size: 13px; color: #000; }
 .lp-sheet table { margin: 0; table-layout: auto; }
-.lp-sheet th, .lp-sheet td { border: 1px solid #333; padding: 6px; }
-.lp-sheet th { background: #e9ecef; font-weight: normal; }
+.lp-sheet th, .lp-sheet td { border: 1px solid var(--lp-hair); padding: 6px; }
+.lp-sheet th { background: #f3f4f6; font-weight: normal; }
 
+.lp-header { border-top: var(--lp-bold); border-bottom: var(--lp-bold); }
+.lp-header th, .lp-header td { border-left: 0; border-right: 0; }
+.lp-header .lp-company, .lp-header .lp-title { border-right: 1px solid var(--lp-hair); }
 .lp-header .lp-company { width: 22%; font-weight: bold; font-size: 14px; padding: 4px 8px; }
 .lp-header .lp-company img { display: block; width: 100%; max-width: 150px; height: auto; margin: 0 auto; }
 .lp-header .lp-title { font-size: 22px; font-weight: bold; letter-spacing: 4px; }
@@ -71,24 +75,31 @@
 .lp-approval-row { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 48px 0; }
 .lp-approval-row p { margin: 0; flex: 1; text-align: center; }
 .lp-approval { width: 200px !important; }
-.lp-approval th, .lp-approval td { padding: 3px; font-size: 12px; }
+.lp-approval th, .lp-approval td { padding: 3px; font-size: 12px; border-color: #555; }
 .lp-approval .lp-approval-label { width: 24px; }
 .lp-sign-row td { height: 55px; width: 80px; }
 .lp-sign-row img { max-width: 76px; max-height: 50px; display: block; margin: 0 auto; }
 
-.lp-main th { width: 22%; letter-spacing: 2px; }
-.lp-main td { height: 26px; }
+.lp-main { border-top: var(--lp-bold); border-bottom: var(--lp-bold); }
+.lp-main th, .lp-main td { border-left: 0; border-right: 0; }
+.lp-main th { width: 22%; letter-spacing: 2px; color: #555; }
+.lp-main td { height: 30px; text-align: left; padding-left: 14px; }
 .lp-types { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 6px; }
 .lp-type { white-space: nowrap; }
 
-.lp-monthly { margin-top: 18px !important; font-size: 12px; }
-.lp-monthly th { padding: 4px 2px; }
-.lp-monthly td { height: 60px; padding: 4px 2px; vertical-align: middle; font-size: 11px; }
+/* 월별 현황: 제목 줄 + 위아래 굵은 줄 */
+.lp-monthly-cap { display: flex; justify-content: space-between; align-items: baseline; margin-top: 28px; padding-bottom: 6px; font-weight: bold; }
+.lp-monthly-cap span + span { font-weight: normal; font-size: 11px; color: #666a70; }
+.lp-monthly { border-top: var(--lp-bold); border-bottom: var(--lp-bold); font-size: 12px; }
+.lp-monthly th { padding: 5px 2px; font-weight: bold; border-top: 0; border-bottom: 1px solid #222; }
+.lp-monthly td { height: 64px; padding: 4px 2px; vertical-align: middle; font-size: 11px; border-top: 0; border-bottom: 0; }
 .lp-monthly td div + div { margin-top: 4px; }
 
-.lp-request { text-align: center; margin: 22px 0; }
-.lp-date { text-align: center; margin: 30px 0; letter-spacing: 2px; }
-.lp-signer { margin: 30px 0 10px auto; width: 260px; line-height: 2.2; }
+/* 하단: 연장근로 신청 확인서(.ot-lead/.ot-date/.ot-signer)와 같은 배치 */
+.lp-closing { text-align: center; margin: 60px 0 0 0; }
+.lp-date { text-align: center; margin: 24px 0 0 0; }
+.lp-signer { width: 60%; margin: 44px 0 0 auto; padding-top: 12px; border-top: 1px solid #c9ccd1; text-align: right; line-height: 1.9; }
+.lp-signer b { font-size: 15px; letter-spacing: 3px; }
 
 /* ==========================================
    결재자 서명 화면 (leave-sign.html)
@@ -169,7 +180,7 @@ body.sign-page { margin: 0; padding: 0 0 100px 0; }
     .print-paper { padding: 0 !important; }
     .lp-sheet { padding: 25mm 15mm 0 15mm; box-sizing: border-box; }
     .lp-signer { margin-bottom: 0; }
-    .lp-sheet th { background: #e9ecef !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .lp-sheet th { background: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .leave-pending { color: #888 !important; }
 }
 

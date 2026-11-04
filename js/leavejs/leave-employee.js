@@ -510,6 +510,25 @@ function showLeaveDetail(data, docId, mode) {
     detailBox.dataset.docId = docId;
     detailBox.dataset.mode = mode;
 
+    // 제출내역: 인쇄되는 휴가신청서와 같은 모습으로 표시 (반려·승인취소 사유는 양식에 없으니 위에 따로 안내)
+    if (mode === 'submitted') {
+        const notes = [
+            data.rejectReason ? `반려 사유: ${data.rejectReason}` : '',
+            data.cancelReason ? `승인취소 사유: ${data.cancelReason}` : ''
+        ].filter(Boolean).map(text => `<div style="color:#dc3545; font-weight:bold; margin-bottom:8px;">${text}</div>`).join('');
+        detailBox.innerHTML = `
+            ${notes}
+            <div class="print-paper" style="width:100%; box-sizing:border-box; padding:30px;">
+                ${renderLeaveSheetHtml({
+                    ...data,
+                    department: data.department || myEmployeeData?.department || '',
+                    position: data.position || myEmployeeData?.position || ''
+                }, myLeaveRequests)}
+            </div>
+        `;
+        return;
+    }
+
     const rowsHtml = (data.detailLogs || []).map(log => {
         const typeLabel = HALF_LABELS[log.type] || log.type;
         return `<tr><td style="text-align:center;">${log.date}</td><td style="text-align:center;">${typeLabel}</td><td style="text-align:center;">${log.days}일</td></tr>`;

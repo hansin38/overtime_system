@@ -207,14 +207,13 @@ function renderLeaveSheetHtml(data, requests, options = {}) {
                 <tr><th>비상연락처</th><td>${data.emergencyContact || ''}</td></tr>
             </table>
 
+            <div class="lp-monthly-cap"><span>${data.fiscalYear || new Date().getFullYear()}년 연차 사용 현황</span><span>괄호: 누적 사용일수</span></div>
             ${renderMonthlyTableHtml(data.fiscalYear || new Date().getFullYear(), requests, 'lp-monthly')}
 
-            <p class="lp-request">위와 같이 휴가를 신청하오니 허락하여 주시기 바랍니다.</p>
-            <p class="lp-date">${submitted.getFullYear()} 년　${submitted.getMonth() + 1} 월　${submitted.getDate()} 일</p>
-            <div class="lp-signer">
-                <div>소　속 : ${dept}</div>
-                <div>성　명 : ${data.employeeName || ''}　(서명 생략)</div>
-            </div>
+            <!-- 하단: 연장근로 신청 확인서와 같은 배치 (문구·날짜 가운데, 오른쪽 선 아래 신청인) -->
+            <p class="lp-closing">위와 같이 휴가를 신청하오니 허락하여 주시기 바랍니다.</p>
+            <p class="lp-date">${submitted.getFullYear()}년 ${submitted.getMonth() + 1}월 ${submitted.getDate()}일</p>
+            <div class="lp-signer">신청인<br><b>${data.employeeName || ''}</b>　(서명 생략)</div>
         </div>
     `;
 }

@@ -1139,71 +1139,13 @@ function openTab(tabId, element) {
 }
 
 function showDetailInModal(data) {
-    // 기존 detail-view-area 대신 새로 변경한 확인증 디자인 컨테이너를 사용합니다.
+    // 화면 상세보기도 인쇄 양식(연장근로 신청 확인서)과 같은 디자인으로 표시
     const detailContainer = document.getElementById('detail-view-container');
-    
-    // 확인증 내부 데이터 바인딩 엘리먼트들
-    const viewName = document.getElementById('detail-view-name');
-    const viewDate = document.getElementById('detail-view-date');
-    const viewTitle = document.getElementById('detail-view-title');
-    const viewStatus = document.getElementById('detail-view-status'); // ★ 상태 엘리먼트 추가
-    const detailTbody = document.getElementById('detail-view-tbody');
-    const totalHoursEl = document.getElementById('detail-view-total-hours');
-    
-    // 상세 영역 컨테이너 노출
-    if (detailContainer) {
-        detailContainer.style.display = 'block';
-    }
-    
-    // 기본 정보 매핑 (작성자, 제출일자, 신청 제목)
-    if (viewName) viewName.innerText = data.employeeName || currentUser.name || '-';
-    
-    if (viewDate) {
-        // submittedAt 타임스탬프 포맷팅 처리 안전장치
-        if (data.submittedAt && typeof data.submittedAt.toDate === 'function') {
-            viewDate.innerText = data.submittedAt.toDate().toLocaleDateString();
-        } else {
-            viewDate.innerText = '-';
-        }
-    }
-    
-    if (viewTitle) viewTitle.innerText = data.title || '제목 없음';
-    
-    // ★ [추가] 상태 값 및 색상 지정 로직
-    if (viewStatus) {
-        let statusText = data.status || '작성';
-        let statusColor = '#6c757d';
-        if (statusText === '승인') statusColor = '#007bff';
-        else if (statusText === '반송') statusColor = '#dc3545';
-        else if (statusText === '작성') statusColor = '#e67e22';
-        else if (statusText === '대기' || statusText === '재전송') statusColor = '#2c3e50';
+    const detailBody = document.getElementById('detail-view-body');
+    if (!detailContainer || !detailBody) return;
 
-        viewStatus.innerHTML = `<span style="color: ${statusColor}; font-weight: bold; font-size: 14px;">${statusText}</span>`;
-    }
-
-    // 상세 로그 내역 리스트 바인딩
-    if (detailTbody) {
-        if (data.detailLogs && Array.isArray(data.detailLogs)) {
-            detailTbody.innerHTML = data.detailLogs.map(log => `
-                <tr>
-                    <td style="text-align:center; width: 15%;">${log.date || '-'}</td>
-                    <td style="text-align:center; width: 15%;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
-                    <td style="text-align:center; width: 10%;">${log.start || '-'}</td>
-                    <td style="text-align:center; width: 10%;">${log.end || '-'}</td>
-                    <!-- ★ [핵심 수정] 사유 칸에 word-break와 white-space 속성을 주어 긴 글자가 자연스럽게 줄바꿈되도록 처리 -->
-                    <td style="text-align:left; width: 35%; word-break: break-all; white-space: normal; padding: 8px;">${log.reason || '-'}</td>
-                    <td style="text-align:center; width: 15%; white-space: nowrap;">${log.hours || 0} 시간</td>
-                </tr>
-            `).join('');
-        } else {
-            detailTbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#888;">상세 내역이 없습니다.</td></tr>`;
-        }
-    }
-    
-    // 총 연장근로 시간 바인딩
-    if (totalHoursEl) {
-        totalHoursEl.innerText = `${data.totalHours || 0.0} 시간`;
-    }
+    detailBody.innerHTML = renderOvertimeSheetHtml({ ...data, employeeName: data.employeeName || currentUser.name });
+    detailContainer.style.display = 'block';
 }
 
 function handleBulkAction(actionType) {
@@ -1360,83 +1302,7 @@ function printSelectedHistory() {
                 alert("해당 문서 데이터를 찾을 수 없습니다.");
                 return;
             }
-            const data = doc.data();
-
-            const modal = document.getElementById('print-modal');
-            if (!modal) return;
-
-            const userNameEl = document.getElementById('print-user-name');
-            const submitDateEl = document.getElementById('print-submit-date');
-            const printTitleEl = document.getElementById('print-title');
-
-            if (userNameEl) userNameEl.innerText = data.employeeName || "-";
-            if (submitDateEl) submitDateEl.innerText = data.submittedAt ? data.submittedAt.toDate().toLocaleDateString() : "-";
-            if (printTitleEl) printTitleEl.innerText = data.title || "제목 없음";
-
-            const printTableHead = document.querySelector('#print-modal table thead tr');
-            if (printTableHead && !printTableHead.innerHTML.includes('사유')) {
-                printTableHead.innerHTML = `
-                    <th>날짜</th>
-                    <th>구분</th>
-                    <th>시작 시간</th>
-                    <th>종료 시간</th>
-                    <th>사유</th>
-                    <th>시간</th>
-                `;
-            }
-
-            const printTbody = document.getElementById('print-tbody');
-            if (!printTbody) return;
-            printTbody.innerHTML = "";
-
-            let totalH = 0;
-            if (data.detailLogs && Array.isArray(data.detailLogs)) {
-                data.detailLogs.forEach(log => {
-                    const hoursNum = parseFloat(log.hours) || 0;
-                    totalH += hoursNum;
-
-                    const rowTr = document.createElement('tr');
-                    // ★ 8번(상세보기) 영역과 동일한 옵션/스타일 적용
-                    rowTr.innerHTML = `
-                        <td style="text-align:center; width: 15%;">${log.date || '-'}</td>
-                        <td style="text-align:center; width: 15%;">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
-                        <td style="text-align:center; width: 10%;">${log.start || '-'}</td>
-                        <td style="text-align:center; width: 10%;">${log.end || '-'}</td>
-                        <td style="text-align:left; width: 35%; word-break: break-all; white-space: normal; padding: 8px;">${log.reason || log.memo || '-'}</td>
-                        <td style="text-align:center; width: 15%; white-space: nowrap;">${log.hours || 0} 시간</td>
-                    `;
-                    printTbody.appendChild(rowTr);
-                });
-            }
-
-            const totalHoursEl = document.getElementById('print-total-hours');
-            if (totalHoursEl) totalHoursEl.innerText = `${totalH.toFixed(1)} 시간`;
-
-            // 인쇄 모달 띄우기
-            modal.style.display = 'flex';
-            modal.style.zIndex = '99999';
-
-            // ★ [추가] 모달이 열릴 때 스크롤 위치를 맨 위로 초기화
-            modal.scrollTop = 0;
-            const modalContent = modal.querySelector('.print-paper') || modal.querySelector('.modal-content');
-            if (modalContent) modalContent.scrollTop = 0;
-
-            const printBtn = document.getElementById('modal-print-btn');
-            const closeBtn = document.getElementById('modal-close-btn');
-
-            if (printBtn) {
-                printBtn.onclick = function(e) {
-                    e.stopPropagation();
-                    window.print();
-                };
-            }
-
-            if (closeBtn) {
-                closeBtn.onclick = function(e) {
-                    e.stopPropagation();
-                    closePrintModal();
-                };
-            }
+            printOvertimeSheet(doc.data());
         })
         .catch(err => {
             console.error("인쇄 데이터 로드 실패:", err);
@@ -1444,7 +1310,88 @@ function printSelectedHistory() {
         });
 }
 
-function closePrintModal() {
-    const modal = document.getElementById('print-modal');
-    if (modal) modal.style.display = 'none';
+// 미리보기 없이 바로 인쇄창 열기 (연차 휴가신청서와 같은 방식, 로고 이미지가 다 불러와진 뒤 인쇄)
+const OT_COMPANY_NAME = "(주)한신콘설탄트";
+const OT_COMPANY_LOGO = "/images/hanshin-logo.png";
+
+function printOvertimeSheet(data) {
+    const body = document.getElementById('ot-print-body');
+    if (!body) return;
+    body.innerHTML = renderOvertimeSheetHtml(data);
+
+    const images = Array.from(body.querySelectorAll('img'));
+    Promise.all(images.map(img => img.complete ? Promise.resolve()
+        : new Promise(resolve => { img.onload = img.onerror = resolve; })))
+        .then(() => window.print());
+}
+
+function escapeOtHtml(text) {
+    return String(text ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+
+// 진행 상태 칸: 네 가지 중 해당 상태만 ■ 표시 (재전송 = 반송 후 재작성해서 다시 제출한 건)
+const OT_STATUS_BOXES = [
+    { label: '승인',   statuses: ['승인'] },
+    { label: '반송',   statuses: ['반송'] },
+    { label: '작성',   statuses: ['작성'] },
+    { label: '재작성', statuses: ['재전송'] }
+];
+
+// 연장근로 신청 확인서 양식 (화면 상세보기·인쇄 공용)
+function renderOvertimeSheetHtml(data) {
+    const submitted = data.submittedAt?.toDate ? data.submittedAt.toDate() : new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const submittedText = `${submitted.getFullYear()}. ${pad(submitted.getMonth() + 1)}. ${pad(submitted.getDate())}.`;
+    const name = escapeOtHtml(data.employeeName || '');
+    const logs = Array.isArray(data.detailLogs) ? data.detailLogs : [];
+    const totalH = logs.reduce((sum, log) => sum + (parseFloat(log.hours) || 0), 0);
+
+    const rows = logs.length
+        ? logs.map(log => `
+            <tr>
+                <td>${escapeOtHtml(log.date || '-')}</td>
+                <td>${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
+                <td>${escapeOtHtml(log.start || '-')}</td>
+                <td>${escapeOtHtml(log.end || '-')}</td>
+                <td class="ot-reason">${escapeOtHtml(log.reason || log.memo || '-')}</td>
+                <td>${(parseFloat(log.hours) || 0).toFixed(1)}</td>
+            </tr>`).join('')
+        : `<tr><td colspan="6">상세 내역이 없습니다.</td></tr>`;
+
+    const status = data.status || '작성';
+    const statusBoxes = OT_STATUS_BOXES.map(box =>
+        `<span class="ot-status${box.statuses.includes(status) ? ' on' : ''}">${box.statuses.includes(status) ? '■' : '□'} ${box.label}</span>`
+    ).join('');
+    const statusPill = status === '재전송' ? '재작성' : status;
+
+    // 머리글(로고·문서정보 / 제목)은 B안, 본문(신청인·요약 3칸·가로줄 표)은 E안
+    return `
+        <div class="ot-sheet">
+            <div class="ot-top">
+                <img class="ot-logo" src="${OT_COMPANY_LOGO}" alt="${OT_COMPANY_NAME}">
+                <div class="ot-meta">문서번호　-<br>작성일자　${submittedText}</div>
+            </div>
+            <div class="ot-title">연장근로 신청 확인서</div>
+
+            <div class="ot-name"><span>신청인</span><b>${name}</b><span class="ot-pill">${escapeOtHtml(statusPill)}</span></div>
+            <div class="ot-subject">${escapeOtHtml(data.title || '제목 없음')}</div>
+
+            <div class="ot-stats">
+                <div><small>총 연장근로</small><strong>${totalH.toFixed(1)}<em>시간</em></strong></div>
+                <div><small>근로 일수</small><strong>${logs.length}<em>건</em></strong></div>
+                <div><small>진행 상태</small><div class="ot-statuses">${statusBoxes}</div></div>
+            </div>
+
+            <table class="ot-items">
+                <thead>
+                    <tr><th style="width:16%;">날짜</th><th style="width:15%;">구분</th><th style="width:10%;">시작</th><th style="width:10%;">종료</th><th>사유</th><th style="width:10%;">시간</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+
+            <p class="ot-lead">위와 같이 연장근로 내역을 제출합니다.</p>
+            <p class="ot-date">${submitted.getFullYear()}년 ${submitted.getMonth() + 1}월 ${submitted.getDate()}일</p>
+            <div class="ot-signer">신청인<br><b>${name}</b>　(서명 생략)</div>
+        </div>
+    `;
 }
