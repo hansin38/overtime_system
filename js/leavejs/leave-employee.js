@@ -614,10 +614,20 @@ function closeLeavePrint() {
 let lastSubmittedDocId = null;   // 방금 제출한 신청서 (완료 창의 [공유하기]용)
 let lastSubmittedData = null;
 
+// 짧은 링크 코드 (영문 대소문자+숫자 10자리, 짐작 불가)
 function makeSignToken() {
-    const bytes = new Uint8Array(16);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = new Uint8Array(10);
     crypto.getRandomValues(bytes);
-    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(bytes, b => chars[b % chars.length]).join('');
+}
+
+// 실제 사이트는 /s/코드 짧은 주소, 내 컴퓨터 미리보기는 짧은 주소가 없어 파일 경로 사용
+function buildSignUrl(token) {
+    const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname) || location.protocol === 'file:';
+    return isLocal
+        ? new URL(`leave-sign.html?c=${token}`, location.href).href
+        : `${location.origin}/s/${token}`;
 }
 
 // 알림 토스트: anchorEl(누른 버튼)이 있으면 그 버튼 바로 위에 표시
@@ -665,7 +675,7 @@ function formatDateTime(ms) {
 function createSignLink(docId, d) {
     const token = makeSignToken();
     const expiresAt = Date.now() + SIGN_LINK_HOURS * 60 * 60 * 1000;
-    const url = new URL(`leave-sign.html?id=${encodeURIComponent(docId)}&t=${token}`, location.href).href;
+    const url = buildSignUrl(token);
     const text = `[연차 결재 요청] ${d.employeeName} · ${leaveTypeLabel(d)} ${formatDays(d.totalDays || 0)}일 (${periodSummary(d)})\n${formatDateTime(expiresAt)}까지 서명 부탁드립니다.\n${url}`;
 
     db.collection("leave_requests").doc(docId).update({ signLink: { token, expiresAt } })

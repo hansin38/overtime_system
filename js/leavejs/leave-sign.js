@@ -1,6 +1,7 @@
 // ==========================================
 // leave-sign.js (결재자 서명 화면 - 사원이 보낸 링크로 접속, 로그인 없음)
-// 주소: leave-sign.html?id=신청서ID&t=토큰  (링크는 신청서당 1개)
+// 주소: /s/짧은코드 (Vercel rewrite) 또는 leave-sign.html?c=짧은코드 (내 컴퓨터 미리보기)
+//       코드(signLink.token)로 신청서를 찾음 - 링크는 신청서당 1개
 // - 토큰이 일치하고 만료 전(SIGN_LINK_HOURS)일 때만 서명 가능
 // - 받은 사람이 비어 있는 결재칸(과장/전무)을 골라 서명 → 즉시 승인, 이후 수정·삭제 불가
 // ==========================================
@@ -20,8 +21,9 @@ if (!firebase.apps.length) {
 const db = firebase.firestore();
 
 const params = new URLSearchParams(location.search);
-const signDocId = params.get('id');
-const signToken = params.get('t');
+const shortPath = location.pathname.match(/\/s\/([A-Za-z0-9]+)/);
+const signToken = shortPath ? shortPath[1] : (params.get('c') || params.get('t')); // t: 예전 긴 링크
+let signDocId = null;
 let signRequestData = null;
 let selectedSignSlot = null;
 let signPadDrawn = false;
@@ -51,15 +53,16 @@ function getLinkProblem(data) {
 }
 
 function loadSignRequest() {
-    if (!signDocId || !signToken) {
+    if (!signToken) {
         setBanner("잘못된 링크입니다. 신청자에게 링크를 다시 요청해 주세요.", "error");
         return;
     }
 
-    db.collection("leave_requests").doc(signDocId).get()
-        .then(doc => {
-            if (!doc.exists) throw new Error("NOT_FOUND");
-            signRequestData = doc.data();
+    db.collection("leave_requests").where("signLink.token", "==", signToken).limit(1).get()
+        .then(snap => {
+            if (snap.empty) throw new Error("NOT_FOUND");
+            signDocId = snap.docs[0].id;
+            signRequestData = snap.docs[0].data();
             // 월별 누적표를 위해 같은 신청자의 다른 신청서도 조회
             return db.collection("leave_requests")
                 .where("employeeName", "==", signRequestData.employeeName)
@@ -72,7 +75,9 @@ function loadSignRequest() {
         })
         .catch(err => {
             console.error("신청서 조회 실패:", err);
-            setBanner(err.message === "NOT_FOUND" ? "신청서를 찾을 수 없습니다. 삭제되었을 수 있습니다." : "신청서를 불러오는 중 오류가 발생했습니다.", "error");
+            setBanner(err.message === "NOT_FOUND"
+                ? "유효하지 않은 링크입니다. 새 링크가 발송되었거나 신청서가 삭제되었을 수 있습니다. 신청자에게 링크를 다시 요청해 주세요."
+                : "신청서를 불러오는 중 오류가 발생했습니다.", "error");
         });
 }
 
