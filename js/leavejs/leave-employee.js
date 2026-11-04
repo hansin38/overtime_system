@@ -36,8 +36,15 @@ const FISCAL_YEAR = new Date().getFullYear(); // 회계연도 = 달력 연도(1/
 // 작성 중인 내용이 있는지 (연차 페이지는 자동 저장이 없으므로 이동 전 확인용)
 function isLeaveFormDirty() {
     if (getSelectedLeaveType()) return true;
-    return ['leave-start-date', 'leave-reason', 'leave-emergency-contact', 'leave-type-etc']
+    if (isLeavePeriodChanged()) return true;
+    return ['leave-reason', 'leave-emergency-contact', 'leave-type-etc']
         .some(id => (document.getElementById(id)?.value || '').trim() !== '');
+}
+// 휴가 기간이 기본값(오늘~오늘)에서 바뀌었는지
+function isLeavePeriodChanged() {
+    const today = toYmd(new Date());
+    return ['leave-start-date', 'leave-end-date']
+        .some(id => (document.getElementById(id)?.value || '') !== today);
 }
 function confirmLeaveDiscard() {
     return !isLeaveFormDirty() || confirm("작성 중인 내용이 사라집니다. 이동할까요?\n(보관하려면 [임시저장]을 먼저 눌러주세요)");
@@ -261,6 +268,10 @@ function resetFormRows() {
         const el = document.getElementById(id);
         if (el) el.value = "";
     });
+    // 휴가 기간은 오늘~오늘로 기본 입력
+    const today = toYmd(new Date());
+    document.getElementById('leave-start-date').value = today;
+    document.getElementById('leave-end-date').value = today;
     const halfEl = document.getElementById('leave-half-day');
     if (halfEl) halfEl.value = 'full';
     onLeaveTypeChange();
@@ -289,7 +300,7 @@ function saveLeaveTemporary(event) {
     if (event) event.preventDefault();
     const form = readLeaveForm();
 
-    if (!form.leaveType && !form.startDate && !form.reason && !form.emergencyContact) {
+    if (!form.leaveType && !isLeavePeriodChanged() && !form.reason && !form.emergencyContact) {
         alert("내용이 없습니다. 내용을 입력해 주세요.");
         return;
     }

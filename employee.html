@@ -51,6 +51,9 @@
 
         <!-- 3. 제목 입력 영역 (CSS의 input 기본 스타일 연동) -->
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <!-- 작성 월: 매월 1~5일은 지난달, 그 외는 이번 달이 기본 (달력 범위·제목이 따라 바뀜) -->
+            <b style="white-space: nowrap;">작성 월:</b>
+            <select id="ot-month" onchange="handleOtMonthChange(this)" style="margin: 0 20px 0 0; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; height: 38px; cursor: pointer;"></select>
             <b style="white-space: nowrap;">제 목:</b>
             <input type="text" id="ot-title" placeholder="00월 연장근로일지 제출" style="margin: 0; flex-grow: 1;">
         </div>

@@ -165,12 +165,28 @@ th { background-color: #f1f3f5; }
 /* --- style.css 맨 밑에 추가 --- */
 /* 테이블 칸별 너비 비율 조정 (삭제 칸 제거 및 사유 칸 확장) */
 #ot-table th:nth-child(1), #ot-tbody td:nth-child(1) { width: 5%; }  /* 체크박스 */
-#ot-table th:nth-child(2), #ot-tbody td:nth-child(2) { width: 15%; } /* 날짜 */
+#ot-table th:nth-child(2), #ot-tbody td:nth-child(2) { width: 19%; } /* 날짜 */
 #ot-table th:nth-child(3), #ot-tbody td:nth-child(3) { width: 12%; } /* 구분 */
 #ot-table th:nth-child(4), #ot-tbody td:nth-child(4) { width: 10%; } /* 시작 */
 #ot-table th:nth-child(5), #ot-tbody td:nth-child(5) { width: 10%; } /* 종료 */
-#ot-table th:nth-child(6), #ot-tbody td:nth-child(6) { width: 38%; } /* 사유 (대폭 확장) */
+#ot-table th:nth-child(6), #ot-tbody td:nth-child(6) { width: 34%; } /* 사유 (대폭 확장) */
 #ot-table th:nth-child(7), #ot-tbody td:nth-child(7) { width: 10%; } /* 시간 */
+
+/* 날짜 칸: [2026.10.] [일 선택 ▼] [📅] — 실제 날짜 값은 숨긴 달력 입력칸(.work-date)에 보관 */
+/* 세 부분을 테두리 하나로 묶어 날짜 입력칸 하나처럼 보이게 함 */
+.date-cell { display: inline-flex; align-items: stretch; height: 34px; border: 1px solid #ccc; border-radius: 4px; background: #fff; position: relative; }
+/* 연.월: 작성 월은 파란 글씨, 눌러서 지난달로 바꾼 줄은 주황 글씨 */
+.date-cell .date-prefix { width: auto; margin: 0; padding: 0 8px 0 10px; border: none; border-radius: 0; background: transparent; color: #0b5ed7; font-size: 13px; font-weight: bold; white-space: nowrap; cursor: pointer; }
+.date-cell .date-prefix:hover { background: #f1f3f5; }
+.date-cell .date-prefix:disabled { cursor: default; background: transparent; }
+.date-cell .date-prefix.other-month { color: #e67e22; }
+.date-cell .row-month-menu { display: none; position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 2px; min-width: 120px; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); }
+.date-cell .row-month-menu div { padding: 8px 12px; font-size: 13px; text-align: left; cursor: pointer; }
+.date-cell .row-month-menu div:hover { background: #f1f3f5; }
+.date-cell .work-day { min-width: 0; padding: 0 2px; border: none; border-left: 1px solid #e3e3e3; background: transparent; font-size: 13px; cursor: pointer; outline: none; }
+.date-cell .date-cal-btn { width: auto; padding: 0 8px; margin: 0; border: none; border-left: 1px solid #e3e3e3; border-radius: 0; background: transparent; color: #333; font-size: 14px; line-height: 1; }
+.date-cell .date-cal-btn:hover { background: #f1f3f5; }
+.date-cell .work-date { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; padding: 0; margin: 0; border: 0; opacity: 0; pointer-events: none; }
 
 
 

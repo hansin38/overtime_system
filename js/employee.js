@@ -31,15 +31,206 @@ var currentUser = window.currentUser;
 var originDocIdForRewrite = window.originDocIdForRewrite;
 var currentTempDocId = window.currentTempDocId;
 
-let minDateStr = "2026-05-25"; 
-let maxDateStr = "";
+const SYSTEM_START_DATE = "2026-05-25"; // 이 날짜 이전은 입력 불가
+const OT_DRAFT_DAYS = 5;                 // 매월 1~5일에 열면 지난달을 작성 월로 선택
 
-function initDatePickerLimits() {
+function ymdOf(dt) {
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function getDefaultOtMonth() {
     const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    maxDateStr = `${yyyy}-${mm}-${dd}`; 
+    const base = today.getDate() <= OT_DRAFT_DAYS
+        ? new Date(today.getFullYear(), today.getMonth() - 1, 1)
+        : today;
+    return ymdOf(base).slice(0, 7);
+}
+
+function prevMonthOf(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return ymdOf(new Date(y, m - 2, 1)).slice(0, 7);
+}
+
+// 그 달에서 입력 가능한 날짜 범위 (시스템 시작일 이전·오늘 이후 불가)
+function monthRange(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    const first = `${ym}-01`;
+    const last = ymdOf(new Date(y, m, 0));
+    const today = ymdOf(new Date());
+    return {
+        min: first > SYSTEM_START_DATE ? first : SYSTEM_START_DATE,
+        max: last < today ? last : today
+    };
+}
+
+// 줄마다 고를 수 있는 달: 작성 월 + 예외로 지난달
+function getRowMonths() {
+    const ym = getOtMonth();
+    const prev = prevMonthOf(ym);
+    return prev >= SYSTEM_START_DATE.slice(0, 7) ? [ym, prev] : [ym];
+}
+
+// 작성 월 선택칸: 이번 달 포함 최근 3개월 (시스템 시작 월 이전 제외)
+function initDatePickerLimits() {
+    const sel = document.getElementById('ot-month');
+    if (!sel) return;
+    const today = new Date();
+    sel.innerHTML = "";
+    for (let i = 0; i < 3; i++) {
+        const ym = ymdOf(new Date(today.getFullYear(), today.getMonth() - i, 1)).slice(0, 7);
+        if (ym < SYSTEM_START_DATE.slice(0, 7)) break;
+        sel.innerHTML += `<option value="${ym}">${Number(ym.slice(5))}월분</option>`;
+    }
+    setOtMonth(getDefaultOtMonth());
+}
+
+// 작성 월을 바꾸면 각 줄의 달·제목을 같이 맞춤
+function setOtMonth(ym) {
+    const sel = document.getElementById('ot-month');
+    if (!sel) return;
+    if (![...sel.options].some(o => o.value === ym)) {
+        // 예전 달 내역을 불러온 경우 선택칸에 그 달을 추가
+        sel.innerHTML += `<option value="${ym}">${Number(ym.slice(5))}월분</option>`;
+    }
+    sel.value = ym;
+    sel.dataset.prev = ym;
+
+    // 날짜가 없는 줄은 작성 월로 되돌림 (지난달 날짜가 들어간 줄은 유지)
+    document.querySelectorAll('#ot-tbody .date-cell').forEach(cell => {
+        const dateInput = cell.querySelector('.work-date');
+        if (!dateInput.value) cell.dataset.month = ym;
+        syncDayPicker(dateInput);
+    });
+
+    // 제목이 비었거나 자동 제목 형식일 때만 바꿈 (직접 쓴 제목은 유지)
+    const titleInput = document.getElementById('ot-title');
+    if (titleInput && (!titleInput.value.trim() || /^\d{1,2}월 연장근로일지 제출$/.test(titleInput.value.trim()))) {
+        titleInput.value = `${Number(ym.slice(5))}월 연장근로일지 제출`;
+    }
+}
+
+// ------------------------------------------
+// 날짜 칸: [연.월 ▾] [일 선택] [📅]
+// 연.월은 작성 월이 기본이고, 눌러서 그 줄만 지난달로 바꿀 수 있음 (주황색 표시)
+// ------------------------------------------
+const OT_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function getOtMonth() {
+    const sel = document.getElementById('ot-month');
+    return (sel && sel.value) || getDefaultOtMonth();
+}
+
+function dayOptionsHtml(ym, selectedYmd) {
+    const [y, m] = ym.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const range = monthRange(ym);
+    let html = `<option value="">일 선택</option>`;
+    for (let d = 1; d <= lastDay; d++) {
+        const ymd = `${ym}-${String(d).padStart(2, '0')}`;
+        const dow = new Date(y, m - 1, d).getDay();
+        const isOff = dow === 0 || dow === 6 || holidays.includes(ymd);
+        const disabled = ymd < range.min || ymd > range.max;
+        html += `<option value="${ymd}" ${ymd === selectedYmd ? 'selected' : ''} ${disabled ? 'disabled' : ''}`
+              + ` style="color:${disabled ? '#bbb' : isOff ? '#dc3545' : '#333'};">${d}일(${OT_WEEKDAYS[dow]})</option>`;
+    }
+    return html;
+}
+
+function dateCellHtml(value) {
+    const ym = value ? value.slice(0, 7) : getOtMonth();
+    const range = monthRange(ym);
+    return `
+        <div class="date-cell" data-month="${ym}">
+            <button type="button" class="date-prefix" onclick="toggleRowMonthMenu(event, this)"></button>
+            <select class="work-day" onchange="handleDaySelect(this)">${dayOptionsHtml(ym, value)}</select>
+            <button type="button" class="date-cal-btn" onclick="openDatePicker(this)" title="달력에서 선택">📅</button>
+            <input type="date" class="work-date" min="${range.min}" max="${range.max}" value="${value}" onchange="handleDateChange(this)" tabindex="-1">
+            <div class="row-month-menu"></div>
+        </div>`;
+}
+
+// 숨긴 달력 입력칸 값 → 연.월 글자·일 목록·달력 범위에 반영
+function syncDayPicker(dateInput) {
+    const cell = dateInput.closest('.date-cell');
+    if (!cell) return;
+    if (dateInput.value) cell.dataset.month = dateInput.value.slice(0, 7);
+    const ym = cell.dataset.month || getOtMonth();
+    const range = monthRange(ym);
+    dateInput.min = range.min;
+    dateInput.max = range.max;
+
+    const prefix = cell.querySelector('.date-prefix');
+    const canSwitch = getRowMonths().length > 1;
+    prefix.textContent = `${ym.replace('-', '.')}.${canSwitch ? ' ▾' : ''}`;
+    prefix.classList.toggle('other-month', ym !== getOtMonth());
+    prefix.disabled = !canSwitch;
+    cell.querySelector('.work-day').innerHTML = dayOptionsHtml(ym, dateInput.value);
+}
+
+function toggleRowMonthMenu(e, btn) {
+    e.stopPropagation();
+    const menu = btn.closest('.date-cell').querySelector('.row-month-menu');
+    const isOpen = menu.style.display === 'block';
+    closeRowMonthMenus();
+    if (isOpen) return;
+    const [ym, prev] = getRowMonths();
+    menu.innerHTML = `
+        <div onclick="setRowMonth(this, '${ym}')">${Number(ym.slice(5))}월 (작성 월)</div>
+        <div onclick="setRowMonth(this, '${prev}')">${Number(prev.slice(5))}월 (지난달)</div>`;
+    menu.style.display = 'block';
+}
+
+function closeRowMonthMenus() {
+    document.querySelectorAll('.row-month-menu').forEach(menu => { menu.style.display = 'none'; });
+}
+document.addEventListener('click', closeRowMonthMenus);
+
+// 그 줄의 달을 바꿈 (이미 고른 날짜는 지움)
+function setRowMonth(item, ym) {
+    const cell = item.closest('.date-cell');
+    const dateInput = cell.querySelector('.work-date');
+    closeRowMonthMenus();
+    if (cell.dataset.month === ym) return;
+    cell.dataset.month = ym;
+    if (dateInput.value) {
+        dateInput.value = "";
+        handleDateChange(dateInput);
+    } else {
+        syncDayPicker(dateInput);
+    }
+}
+
+function handleDaySelect(sel) {
+    const dateInput = sel.closest('.date-cell').querySelector('.work-date');
+    dateInput.value = sel.value;
+    handleDateChange(dateInput);
+}
+
+function openDatePicker(btn) {
+    const dateInput = btn.closest('.date-cell').querySelector('.work-date');
+    try {
+        dateInput.showPicker();
+    } catch (e) {
+        // 달력 열기를 지원하지 않는 브라우저: 잠깐 보이게 해서 직접 누르도록
+        dateInput.style.cssText = 'position:static; width:auto; height:auto; opacity:1; pointer-events:auto;';
+        dateInput.focus();
+    }
+}
+
+function handleOtMonthChange(sel) {
+    const ym = sel.value;
+    const allowed = [ym, prevMonthOf(ym)];
+    const outside = [...document.querySelectorAll('#ot-tbody .work-date')]
+        .filter(input => input.value && !allowed.includes(input.value.slice(0, 7)));
+    if (outside.length > 0) {
+        if (!confirm(`${Number(ym.slice(5))}월분에 넣을 수 없는 날짜가 ${outside.length}개 있습니다.\n해당 행의 날짜를 지우고 작성 월을 바꿀까요?`)) {
+            sel.value = sel.dataset.prev;
+            return;
+        }
+        outside.forEach(input => { input.value = ""; handleDateChange(input); });
+    }
+    setOtMonth(ym);
+    saveDraft();
 }
 
 // ==========================================
@@ -310,7 +501,11 @@ function deleteCheckedTempRequests() {
 function loadTempRequest(tempData) {
     if(document.getElementById('ot-title') && tempData.title) {
         document.getElementById('ot-title').value = tempData.title;
-    }    
+    }
+    // 불러온 내역의 가장 늦은 날짜 기준으로 작성 월 맞춤 (앞선 날짜는 지난달 예외 줄로 표시됨)
+    const lastDate = (tempData.detailLogs || []).map(log => log.date).filter(Boolean).sort().pop();
+    if (lastDate) setOtMonth(lastDate.slice(0, 7));
+
     const tbody = document.getElementById('ot-tbody');
     tbody.innerHTML = "";
     
@@ -320,7 +515,7 @@ function loadTempRequest(tempData) {
         
         tr.innerHTML = `
             <td><input type="checkbox" class="row-check" style="margin:0; width:auto;"></td>
-            <td><input type="date" class="work-date" min="${minDateStr}" max="${maxDateStr}" value="${log.date}" onchange="handleDateChange(this)" required></td>
+            <td>${dateCellHtml(log.date)}</td>
             <td><span class="type-text ${log.type === 'weekend' ? 'type-weekend' : 'type-weekday'}">${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</span></td>
             <td><div class="start-time-container" data-value="${log.start}"></div></td>
             <td><div class="end-time-container" data-value="${log.end}"></div></td>
@@ -372,7 +567,8 @@ function saveTemporary(event) {
     const titleInput = document.getElementById('ot-title');
     const titleVal = titleInput ? titleInput.value.trim() : "";
 
-    if (!hasAnyData && !titleVal) {
+    // 자동으로 채워진 제목만 있는 경우도 빈 내용으로 봄
+    if (!hasAnyData && (!titleVal || /^\d{1,2}월 연장근로일지 제출$/.test(titleVal))) {
         alert("내용이 없습니다. 내용을 입력해 주세요.");
         return;
     }
@@ -564,6 +760,8 @@ function toggleDropdown(el) {
 }
 
 function handleDateChange(dateInput) {
+    syncDayPicker(dateInput);
+
     // 🛑 [핵심 수정] 함수가 시작하자마자 중복 날짜부터 체크합니다!
     if (checkDuplicateDate(dateInput)) {
         return;
@@ -619,7 +817,8 @@ function resetFormRows() {
     for(let i=0; i<10; i++) { addRow(); }
     const masterCheck = document.getElementById('master-check');
     if (masterCheck) masterCheck.checked = false;    
-    currentTempDocId = null; 
+    currentTempDocId = null;
+    setOtMonth(getDefaultOtMonth());
     calculateTotalHours();
 }
 
@@ -627,9 +826,9 @@ function clearFormWithConfirm() {
     if (confirm("작성 중인 내역이 초기화됩니다. 계속하시겠습니까?")) {
         const titleInput = document.getElementById('ot-title');
         if (titleInput) {
-            titleInput.value = "00월 연장근로일지 제출";
+            titleInput.value = "";
         }
-        resetFormRows(); 
+        resetFormRows();
     }
 }
 
@@ -638,7 +837,7 @@ function addRow() {
     tr.dataset.workType = 'weekday';     
     tr.innerHTML = `
         <td><input type="checkbox" class="row-check" style="margin:0; width:auto;"></td>
-        <td><input type="date" class="work-date" min="${minDateStr}" max="${maxDateStr}" onchange="handleDateChange(this)" required></td>
+        <td>${dateCellHtml('')}</td>
         <td><span class="type-text">-</span></td>
         <td><div class="start-time-container" data-value=""></div></td>
         <td><div class="end-time-container" data-value=""></div></td>
@@ -824,8 +1023,8 @@ function submitForm(event) {
         })
         .then(() => {
             alert("성공적으로 제출되었습니다.");
-            titleInput.value = "00월 연장근로일지 제출";
-            originDocIdForRewrite = null; 
+            titleInput.value = "";
+            originDocIdForRewrite = null;
             currentTempDocId = null;            
             resetFormRows();
         })
