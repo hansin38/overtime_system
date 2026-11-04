@@ -13,7 +13,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const FIX_OT_HOURS = 43.5; // 기존 값을 43.5으로 변경
+// 고정OT(FIX_OT_LIMITS)·공휴일(holidays)·splitWorkLog는 js/ot-rules.js에서 공통 관리
 
 // 중복 선언을 방지하기 위한 안전한 window 객체 바인딩 패턴 적용
 if (typeof window.currentUser === 'undefined') {
@@ -31,7 +31,6 @@ var currentUser = window.currentUser;
 var originDocIdForRewrite = window.originDocIdForRewrite;
 var currentTempDocId = window.currentTempDocId;
 
-const holidays2026 = ["2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19", "2026-03-01", "2026-03-02", "2026-05-01", "2026-05-05", "2026-05-24", "2026-05-25", "2026-06-03", "2026-06-06", "2026-08-15", "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-03", "2026-10-09", "2026-12-25"];
 let minDateStr = "2026-05-25"; 
 let maxDateStr = "";
 
@@ -98,6 +97,7 @@ window.addEventListener('DOMContentLoaded', () => {
             if (typeof resetFormRows === 'function') {
                 resetFormRows();
             }
+            restoreDraft();
         } else {
             alert("로그인 권한이 없습니다. 로그인 페이지로 이동합니다.");
             location.href = 'index.html';
@@ -405,6 +405,80 @@ function saveTemporary(event) {
 }
 
 // ==========================================
+// 4-1. 작성 중 내역 자동 저장 (뒤로가기·새로고침·창 닫힘 대비, 이 브라우저에만 보관)
+// ==========================================
+let draftReady = false; // 복원 여부를 묻기 전에는 저장하지 않음 (초기 빈 화면이 기존 내역을 덮어쓰지 않도록)
+
+function getDraftKey() {
+    return `ot-draft:${currentUser.name}_${currentUser.phone}`;
+}
+
+function saveDraft() {
+    if (!draftReady || !currentUser || !currentUser.name) return;
+    const logs = [];
+    document.querySelectorAll('#ot-tbody tr').forEach(row => {
+        const dateInput = row.querySelector('.work-date');
+        const reasonInput = row.querySelector('.work-reason');
+        if (!dateInput || !reasonInput) return;
+        const start = row.querySelector('.start-time-container').dataset.value || "";
+        const end = row.querySelector('.end-time-container').dataset.value || "";
+        if (!dateInput.value && !start && !end && !reasonInput.value.trim()) return;
+        logs.push({
+            date: dateInput.value,
+            type: row.dataset.workType || "weekday",
+            start: start,
+            end: end,
+            hours: parseFloat(row.querySelector('.row-calculated-hours').innerText) || 0,
+            reason: reasonInput.value
+        });
+    });
+
+    try {
+        if (logs.length === 0) {
+            localStorage.removeItem(getDraftKey());
+            return;
+        }
+        const titleInput = document.getElementById('ot-title');
+        localStorage.setItem(getDraftKey(), JSON.stringify({
+            title: titleInput ? titleInput.value : "",
+            detailLogs: logs,
+            originDocIdForRewrite: originDocIdForRewrite,
+            currentTempDocId: currentTempDocId,
+            savedAt: Date.now()
+        }));
+    } catch (e) {
+        console.warn("자동 저장 실패:", e);
+    }
+}
+
+function restoreDraft() {
+    let draft = null;
+    try {
+        draft = JSON.parse(localStorage.getItem(getDraftKey()));
+    } catch (e) {
+        draft = null;
+    }
+
+    if (draft && Array.isArray(draft.detailLogs) && draft.detailLogs.length > 0) {
+        const savedTime = new Date(draft.savedAt).toLocaleString();
+        if (confirm(`작성 중이던 내역이 있습니다. (${savedTime} 자동 저장)\n불러오시겠습니까?`)) {
+            loadTempRequest(draft);
+            originDocIdForRewrite = draft.originDocIdForRewrite || null;
+            currentTempDocId = draft.currentTempDocId || null;
+        } else {
+            try { localStorage.removeItem(getDraftKey()); } catch (e) {}
+        }
+    }
+    draftReady = true;
+
+    // 업무 내용·제목 입력도 즉시 저장 (날짜·시간 변경은 calculateTotalHours에서 저장)
+    const form = document.getElementById('main-system') || document;
+    form.addEventListener('input', (e) => {
+        if (e.target.closest('#ot-tbody') || e.target.id === 'ot-title') saveDraft();
+    });
+}
+
+// ==========================================
 // 5. 셀렉트 박스 및 동적 시간 계산 로직
 // ==========================================
 
@@ -517,7 +591,7 @@ function handleDateChange(dateInput) {
     const dayOfWeek = new Date(selectedDateStr).getDay(); 
     
     // 2. 날짜를 선택했을 때 평일/주말 판별 및 시작 시간 자동 지정!
-    if (dayOfWeek === 0 || dayOfWeek === 6 || holidays2026.includes(selectedDateStr)) {
+    if (dayOfWeek === 0 || dayOfWeek === 6 || holidays.includes(selectedDateStr)) {
         typeTextSpan.innerText = "주말/공휴일"; 
         typeTextSpan.className = "type-text type-weekend"; 
         row.dataset.workType = 'weekend';
@@ -621,21 +695,48 @@ function calculateRowHours(el) {
 function calculateTotalHours() {
     let total = 0;
     document.querySelectorAll('.row-calculated-hours').forEach(s => total += parseFloat(s.innerText) || 0);
-    
+
+    // 고정OT 구분별 사용 시간 집계 (관리자 수당 계산과 같은 splitWorkLog 사용)
+    const used = { overtime: 0, holiday: 0, night: 0 };
+    document.querySelectorAll('#ot-tbody tr').forEach(row => {
+        const dateEl = row.querySelector('.work-date');
+        const startEl = row.querySelector('.start-time-container');
+        const endEl = row.querySelector('.end-time-container');
+        if (!dateEl || !startEl || !endEl) return;
+        splitWorkLog({
+            date: dateEl.value,
+            type: row.dataset.workType,
+            start: startEl.dataset.value,
+            end: endEl.dataset.value
+        }).forEach(({ bucket, hours }) => { if (hours > 0) used[bucket] += hours; });
+    });
+    const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
+    const overKeys = Object.keys(FIX_OT_LIMITS).filter(k => used[k] > FIX_OT_LIMITS[k]);
+
     const totalDisplay = document.getElementById('total-hours');
     const badge = document.getElementById('ot-status');
-    
+    const breakdown = document.getElementById('ot-breakdown');
+
     if(totalDisplay) totalDisplay.innerText = total.toFixed(1) + " 시간";
-    
+
+    // 구분별 사용/한도 표시 (초과한 항목은 빨간색)
+    if(breakdown) {
+        breakdown.innerHTML = Object.keys(FIX_OT_LIMITS).map(k => {
+            const color = overKeys.includes(k) ? 'var(--danger-color)' : '#888';
+            return `<span style="color: ${color};">${labels[k]} ${used[k].toFixed(1)}/${Math.floor(FIX_OT_LIMITS[k] * 2) / 2}</span>`; // 근무는 0.5시간 단위라 한도도 0.5 단위로 내림 표시
+        }).join(' · ');
+    }
+
     if(badge) {
-        if (total > FIX_OT_HOURS) { 
-            badge.innerText = "★초과수당 지급대상"; 
+        if (overKeys.length > 0) {
+            badge.innerText = `★초과수당 지급대상 (${overKeys.map(k => labels[k]).join('·')} 초과)`;
             badge.className = "status-badge over-ot"; 
         } else { 
             badge.innerText = "고정OT 범위 내"; 
-            badge.className = "status-badge under-ot"; 
+            badge.className = "status-badge under-ot";
         }
     }
+    saveDraft();
     return total;
 }
 
@@ -1190,8 +1291,9 @@ function handleBulkAction(actionType) {
                     }
 
                     // ★ [수정 핵심] 앞의 'let' 키워드를 완전히 제거하여 전역 변수값만 변경시킵니다!
-                    originDocIdForRewrite = docId; 
-                    currentTempDocId = null; 
+                    originDocIdForRewrite = docId;
+                    currentTempDocId = null;
+                    saveDraft();
 
                     const historyModal = document.getElementById('history-modal');
                     if (historyModal) historyModal.style.display = 'none';

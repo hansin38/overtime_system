@@ -35,45 +35,7 @@ function goBackToPortal() {
 // -----------------------------------------------------------------
 
 
-// 탭 전환 로직 (CSS .tab-btn.active 클래스와 완벽 연동)
-function switchLoginTab(type) {
-    const userBox = document.getElementById('login-section-user');
-    const adminBox = document.getElementById('login-section-admin');
-    const btnUser = document.getElementById('tab-user');
-    const btnAdmin = document.getElementById('tab-admin');
-    
-    if (type === 'user') {
-        userBox.style.display = ''; 
-        adminBox.style.display = 'none';
-        btnUser.classList.add('active'); 
-        btnAdmin.classList.remove('active');
-    } else {
-        userBox.style.display = 'none'; 
-        adminBox.style.display = '';
-        btnUser.classList.remove('active'); 
-        btnAdmin.classList.add('active');
-    }
-}
-
-// 관리자 로그인 (기존 오리지널 + 연차 모드 목적지 분기만 안전 추가!)
-function handleAdminLogin() {
-    const name = document.getElementById('admin-name').value.trim();
-    const pw = document.getElementById('admin-pw').value.trim();
-    
-    // admin.js의 계정 정보와 완벽하게 일치
-    if (name === "김은지" && pw === "1234") { 
-        sessionStorage.setItem('boss_authenticated', 'true');
-        location.href = 'admin.html'; 
-        // 연차 선택 시 연차 관리자로, 아니면 기존 연장근무 관리자로 이동
-        if (currentSystemMode === 'leave') {
-            location.href = 'leave/leave-admin.html';
-        } else {
-            location.href = 'admin.html'; 
-        }
-    } else {
-        alert("관리자 정보가 일치하지 않습니다.");
-    }
-}
+// 관리자 로그인은 메인 화면에 노출하지 않고 admin.html에서 별도 진행
 
 
 // 사원 로그인 (기존 오리지널 DB 조회 로직 토씨 하나 안 틀리고 그대로!)

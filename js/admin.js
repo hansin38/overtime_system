@@ -10,6 +10,8 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let currentTabStatus = "대기";
+let wageMapCache = {}; // 상세보기에서 쓰는 사원별 통상시급 (결재 내역 로드 시 갱신)
+// 🔐 관리자 계정 (비밀번호는 이 한 곳에서만 관리 - 바꿀 때는 pw 값만 수정)
 const ADMIN_ACCOUNT = { name: "김은지", pw: "1234" };
 
 // 👤 사원 관리 모달 열기
@@ -24,21 +26,39 @@ function closeEmpModal() {
 }
 
 // 1. 페이지 로드 시 처리
+// 로그인 전에는 관리자 로그인 화면을, 로그인 후에는 결재 화면을 보여줌
 window.addEventListener('DOMContentLoaded', () => {
     if (sessionStorage.getItem('boss_authenticated') === 'true') {
-        document.getElementById('admin-system').style.display = 'block';
-        
-        // 날짜 기본 필터 설정 (기본은 전체 조회로 날짜 비워둠)
-        setDateRange('all');
-        
-        loadAdminData(); 
-        loadSearchEmployeeList(); 
-        bindSearchAndActionEvents();
+        startAdminSystem();
     } else {
-        alert("권한이 없습니다. 다시 로그인해주세요.");
-        location.href = 'index.html';
+        document.getElementById('admin-login').style.display = 'block';
     }
 });
+
+function startAdminSystem() {
+    document.getElementById('admin-login').style.display = 'none';
+    document.getElementById('admin-system').style.display = 'block';
+
+    // 날짜 기본 필터 설정 (기본은 전체 조회로 날짜 비워둠)
+    setDateRange('all');
+
+    loadAdminData();
+    loadSearchEmployeeList();
+    bindSearchAndActionEvents();
+}
+
+// 🔐 관리자 로그인
+function handleAdminLogin() {
+    const name = document.getElementById('admin-name').value.trim();
+    const pw = document.getElementById('admin-pw').value.trim();
+
+    if (name === ADMIN_ACCOUNT.name && pw === ADMIN_ACCOUNT.pw) {
+        sessionStorage.setItem('boss_authenticated', 'true');
+        startAdminSystem();
+    } else {
+        alert("관리자 정보가 일치하지 않습니다.");
+    }
+}
 
 // 드롭다운 변경 시 필터 즉시 적용 바인딩
 function bindSearchAndActionEvents() {
@@ -231,7 +251,7 @@ function loadEmployeeList() {
 
 function logoutAdmin() {
     sessionStorage.removeItem('boss_authenticated');
-    location.href = 'index.html'; 
+    location.reload(); // 새로고침하면 관리자 로그인 화면으로 돌아감
 }
 
 // 6. 결재 내역 로드 (사원별 등록된 통상시급 정확한 매핑 반영)
@@ -248,6 +268,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
                 wageMap[cleanName] = !isNaN(wageNum) && wageNum > 0 ? wageNum : 10000;
             }
         });
+        wageMapCache = wageMap;
 
         // 2) 신청 내역 가져오기
         let query = db.collection("overtime_requests");
@@ -273,7 +294,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
             }
             
             if (snapshot.empty) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">내역이 존재하지 않습니다.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 20px; color: #888;">내역이 존재하지 않습니다.</td></tr>`;
                 return;
             }
 
@@ -295,7 +316,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
             }
 
             if (docs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">지정된 기간 내의 결재 내역이 존재하지 않습니다.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 20px; color: #888;">지정된 기간 내의 결재 내역이 존재하지 않습니다.</td></tr>`;
                 return;
             }
 
@@ -314,7 +335,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
                 // 신청 내역 자체에 hourlyWage가 포함되어 있다면 그걸 우선 사용하고, 없으면 DB 시급 적용
                 const empWage = data.hourlyWage || wageMap[empNameKey] || 10000; 
                 
-                const payInfo = calculateOvertimePay(data.totalHours, empWage);
+                const payInfo = calculateOvertimePay(data.detailLogs, empWage);
 
                 let statusColor = "var(--success-color)";
                 if (data.status === '반송') statusColor = "var(--danger-color)";
@@ -325,9 +346,11 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
                     <td>${formattedDate}</td>
                     <td>${data.employeeName}</td>
                     <td>${data.employeePhone ? data.employeePhone.slice(-4) : "-"}</td>
+                    <td><b>${data.totalHours} 시간</b></td>
                     <td>
-                        <b>${data.totalHours} 시간</b>
-                        ${payInfo.overtimeHours > 0 ? `<br><small style="color: #e74c3c; font-weight: bold;">(초과${payInfo.overtimeHours}h,  ${payInfo.overtimePay.toLocaleString()}원)</small>` : ''}
+                        ${payInfo.overtimePay > 0
+                            ? `<b style="color: var(--danger-color);">${payInfo.overtimePay.toLocaleString()}원</b>`
+                            : `<small style="color: #888;">고정OT 범위 내</small>`}
                     </td>
                     <td>
                         <span class="status-badge" style="color: ${statusColor};">${data.status}</span>
@@ -365,11 +388,17 @@ function processRequest(docId, status) {
 // 7. 결재 건별 상세 내역 
 function viewDetails(docId) {
     db.collection("overtime_requests").doc(docId).get().then(doc => {
+        if (!doc.exists) return alert("신청 내역을 찾을 수 없습니다.");
         const data = doc.data();
         const modalTbody = document.getElementById('modal-tbody');
         if (!modalTbody) return;
-        
-        modalTbody.innerHTML = data.detailLogs.map(log => 
+
+        const logs = Array.isArray(data.detailLogs) ? data.detailLogs : [];
+        const empNameKey = data.employeeName ? data.employeeName.trim() : "";
+        const empWage = data.hourlyWage || wageMapCache[empNameKey] || 10000;
+        renderPaySummary(data.employeeName || "-", empWage, calculateOvertimePay(logs, empWage));
+
+        modalTbody.innerHTML = logs.map(log =>
             `<tr>
                 <td>${log.date}</td>
                 <td>${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
@@ -382,27 +411,92 @@ function viewDetails(docId) {
     });
 }
 
-function closeModal() { 
-    document.getElementById('detail-modal').style.display = "none"; 
+function closeModal() {
+    document.getElementById('detail-modal').style.display = "none";
+}
+
+// 💰 상세보기 상단 요약: 구분별 사용/한도(사원 화면과 동일 형식) + 가산율별 초과수당 + 총 지급액
+function renderPaySummary(name, wage, payInfo) {
+    const box = document.getElementById('modal-summary');
+    if (!box) return;
+    const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
+    const overKeys = Object.keys(FIX_OT_LIMITS).filter(k => payInfo.used[k] > FIX_OT_LIMITS[k]);
+
+    const usage = Object.keys(FIX_OT_LIMITS).map(k => {
+        const color = overKeys.includes(k) ? 'var(--danger-color)' : '#888';
+        return `<span style="color: ${color};">${labels[k]} ${payInfo.used[k].toFixed(1)}/${Math.floor(FIX_OT_LIMITS[k] * 2) / 2}</span>`;
+    }).join(' · ');
+
+    const badge = overKeys.length > 0
+        ? `<span class="status-badge over-ot">★초과수당 지급대상 (${overKeys.map(k => labels[k]).join('·')} 초과)</span>`
+        : `<span class="status-badge under-ot">고정OT 범위 내</span>`;
+
+    const lines = payInfo.lines.map(l =>
+        `<div style="display: flex; justify-content: space-between;">
+            <span>${labels[l.bucket]} 초과 ${Math.round(l.hours * 100) / 100}h × ${Math.round(l.rate * 100)}%</span>
+            <span>${Math.round(l.pay).toLocaleString()}원</span>
+        </div>`
+    ).join('');
+
+    box.innerHTML = `
+        <div style="font-weight: bold; margin-bottom: 6px;">${name} · 통상시급 ${Number(wage).toLocaleString()}원</div>
+        <div style="margin-bottom: 8px;">${usage}</div>
+        <div style="margin-bottom: 10px;">${badge}</div>
+        ${lines ? `<div style="border-top: 1px solid #dee2e6; padding-top: 8px;">${lines}</div>` : ''}
+        <div style="display: flex; justify-content: space-between; border-top: 1px solid #dee2e6; margin-top: 8px; padding-top: 8px; font-weight: bold;">
+            <span>총 지급액 <small style="color: #888; font-weight: normal;">(백원 단위 올림)</small></span>
+            <span style="color: ${payInfo.overtimePay > 0 ? 'var(--danger-color)' : '#888'};">${payInfo.overtimePay.toLocaleString()}원</span>
+        </div>`;
 }
 
 
 
-// 💰 초과근무 수당 계산 함수
-function calculateOvertimePay(totalHours, hourlyWage = 10000) {
-    const BASE_HOURS = 43.5;
-    const hours = parseFloat(totalHours) || 0;
-    
-    if (hours <= BASE_HOURS) {
-        return { overtimeHours: 0, overtimePay: 0, text: "초과 없음 (43.5시간 이하)" };
+// 💰 초과근무 수당 계산 함수 (날짜순으로 고정시간을 채우고, 넘긴 시간은 해당 가산율로 지급)
+function calculateOvertimePay(detailLogs, hourlyWage = 10000) {
+    const used = { overtime: 0, holiday: 0, night: 0 };
+    const over = { overtime: 0, holiday: 0, night: 0 };
+    const lineMap = {}; // 구분·가산율별 초과시간/금액 (상세보기 요약용)
+    let overtimePay = 0;
+
+    const logs = Array.isArray(detailLogs) ? [...detailLogs] : [];
+    logs.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    logs.forEach(log => {
+        splitWorkLog(log).forEach(({ bucket, rate, hours }) => {
+            if (hours <= 0) return;
+            const remain = Math.max(0, FIX_OT_LIMITS[bucket] - used[bucket]);
+            const overHours = Math.max(0, hours - remain);
+            used[bucket] += hours;
+            over[bucket] += overHours;
+            overtimePay += overHours * hourlyWage * rate;
+            if (overHours > 0) {
+                const key = `${bucket}_${rate}`;
+                if (!lineMap[key]) lineMap[key] = { bucket, rate, hours: 0, pay: 0 };
+                lineMap[key].hours += overHours;
+                lineMap[key].pay += overHours * hourlyWage * rate;
+            }
+        });
+    });
+    const order = { overtime: 0, holiday: 1, night: 2 };
+    const lines = Object.values(lineMap).sort((a, b) => order[a.bucket] - order[b.bucket] || a.rate - b.rate);
+
+    overtimePay = Math.ceil(Math.round(overtimePay) / 100) * 100; // 백원 단위 올림
+    // 야간 초과는 연장/휴일 초과와 같은 시간이므로 초과시간 합계에는 넣지 않음
+    const overtimeHours = Math.round((over.overtime + over.holiday) * 100) / 100;
+
+    if (overtimePay <= 0) {
+        return { overtimeHours: 0, overtimePay: 0, used, lines: [], text: "초과 없음 (고정OT 범위 내)" };
     }
-
-    const overtimeHours = Math.max(0, hours - BASE_HOURS);
-    const overtimePay = Math.floor(overtimeHours * hourlyWage * 1.5);
-
+    const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
+    const detail = Object.keys(over)
+        .filter(k => over[k] > 0)
+        .map(k => `${labels[k]} ${Math.round(over[k] * 100) / 100}h`)
+        .join(', ');
     return {
         overtimeHours: overtimeHours,
         overtimePay: overtimePay,
-        text: `${overtimeHours}시간 초과 (${overtimePay.toLocaleString()}원)`
+        used,
+        lines,
+        text: `${detail} 초과 (${overtimePay.toLocaleString()}원)`
     };
 }

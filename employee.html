@@ -64,8 +64,10 @@
                 </button>        
             </div>
             <!-- 총 시간 및 상태 뱃지 영역 -->
-            <div class="summary-box" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+            <div class="summary-box" style="margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
                 <span id="total-hours" style="font-weight: bold; font-size: 16px; color: #222;">0.0 시간</span>
+                <!-- 고정OT 구분별 사용/한도 (연장·휴일·야간) -->
+                <span id="ot-breakdown" style="font-size: 12px; font-weight: normal; color: #888;"></span>
                 <span id="ot-status" class="status-badge under-ot" style="font-size: 14px;">고정OT 범위 내</span>
             </div>
         </div>
@@ -237,6 +239,7 @@
         </div>
     </div>
 
+    <script src="js/ot-rules.js"></script>
     <script src="js/employee.js"></script>
 </body>
 </html>

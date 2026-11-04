@@ -9,6 +9,17 @@
 </head>
 <body>
 
+    <!-- 🔐 [관리자 로그인 화면] 로그인 전에는 이 화면만 보임 -->
+    <div id="admin-login" style="display: none; max-width: 450px; margin: 40px auto; padding: 0 15px; box-sizing: border-box;">
+        <div class="card">
+            <h3>관리자 결재 시스템</h3>
+            <input type="text" id="admin-name" placeholder="관리자 이름" autocomplete="username">
+            <input type="password" id="admin-pw" placeholder="비밀번호" autocomplete="current-password"
+                   onkeydown="if (event.key === 'Enter') handleAdminLogin()">
+            <button onclick="handleAdminLogin()">관리자 접속</button>
+        </div>
+    </div>
+
     <div id="admin-system" class="container" style="display:none;">
         <!-- 1. 상단 네비게이션 영역 -->
         <div class="top-nav">
@@ -87,6 +98,7 @@
                     <th>이름</th>
                     <th>번호</th>
                     <th>총시간</th>
+                    <th>초과수당</th>
                     <th>상태</th>
                     <th>관리</th>
                 </tr>
@@ -138,6 +150,8 @@
     <div id="detail-modal" class="modal">
         <div class="modal-content" style="max-width: 800px;">
             <h3>상세 내역</h3>
+            <!-- 💰 고정OT 사용/한도 및 초과수당 계산 요약 -->
+            <div id="modal-summary" style="text-align: left; background: var(--gray-color); border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 14px;"></div>
             <table>
                 <thead>
                     <tr>
@@ -157,6 +171,7 @@
         </div>
     </div>
 
+    <script src="js/ot-rules.js"></script>
     <script src="js/admin.js"></script>
 </body>
 </html>
