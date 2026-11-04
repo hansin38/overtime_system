@@ -492,6 +492,7 @@ function openLeaveHistoryModal(mode) {
                 <button type="button" class="btn-batch-delete" onclick="printCheckedLeaveRequest()">인쇄</button>
                 <button type="button" class="btn-batch-delete" onclick="withdrawCheckedLeaveRequest()">회수</button>
                 <button type="button" class="btn-batch-delete" onclick="rewriteCheckedLeaveRequest()">재작성</button>
+                <button type="button" class="btn-batch-delete" onclick="deleteCheckedLeaveRequest()" style="color:#dc3545; border-color:#dc3545;">삭제</button>
             `;
         }
     }
@@ -609,6 +610,30 @@ function rewriteCheckedLeaveRequest() {
         originDocIdForRewrite = docId;
         currentTempDocId = null;
         document.getElementById('leave-history-modal').style.display = 'none';
+    });
+}
+
+// 삭제: 더 진행할 수 없는 신청(승인취소·반려·회수)만 기록 자체를 지움
+function deleteCheckedLeaveRequest() {
+    const checked = document.querySelector('#leave-history-tbody .leave-row-check:checked');
+    if (!checked) { alert("삭제할 내역을 선택해주세요."); return; }
+    const docId = checked.dataset.docId;
+    db.collection("leave_requests").doc(docId).get().then(doc => {
+        if (!doc.exists) return;
+        const status = doc.data().status;
+        if (status !== "승인취소" && status !== "반려" && status !== "작성") {
+            alert("승인취소·반려·회수(작성)된 신청만 삭제할 수 있습니다. (현재 상태: " + status + ")");
+            return;
+        }
+        if (!confirm("이 신청 기록을 완전히 삭제하시겠습니까?\n서명 기록까지 모두 사라지며 되돌릴 수 없습니다.")) return;
+        db.collection("leave_requests").doc(docId).delete()
+            .then(() => {
+                alert("삭제되었습니다.");
+                document.getElementById('leave-detail-view').style.display = 'none';
+                openLeaveHistoryModal("submitted");
+                loadMyLeaveBalance();
+            })
+            .catch(err => { console.error("삭제 실패:", err); alert("삭제 중 오류가 발생했습니다."); });
     });
 }
 
