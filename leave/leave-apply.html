@@ -31,11 +31,8 @@
             <h2 style="margin: 0;">연차 신청</h2>
         </div>
 
-        <!-- 연차 현황 박스 -->
-        <div id="leave-balance-box" class="leave-balance-box">연차 정보를 불러오는 중...</div>
-
         <!-- 상단 버튼 -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin: 50px 0 15px 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 15px 0;">
             <div style="display: flex; gap: 6px;">
                 <button type="button" class="btn-submit" onclick="submitLeaveForm(event)">제출하기</button>
                 <button type="button" class="btn-batch-delete" onclick="saveLeaveTemporary(event)">임시저장</button>
@@ -95,8 +92,10 @@
 
         <!-- 월별 사용 현황 (년차·월차 누적) -->
         <h4 id="leave-monthly-title" style="margin: 0 0 8px 0;">📅 연차 사용 현황 (년차·월차)</h4>
+        <!-- 연차 현황 박스 (발생·사용·잔여) -->
+        <div id="leave-balance-box" class="leave-balance-box" style="margin-bottom: 12px;">연차 정보를 불러오는 중...</div>
         <div id="leave-monthly-box"></div>
-        <small style="color: #888;">괄호 안 숫자는 올해 누적 사용일수입니다. 회색은 결재 대기 중인 신청입니다.</small>
+        <small style="color: #888;">괄호 안 숫자는 신청일수입니다. 회색은 결재 대기 중인 신청입니다.</small>
     </div>
 
     <!-- ✅ 제출 완료 창 (결재 요청 링크 복사) -->

@@ -144,10 +144,19 @@ function renderBalanceBox() {
         return;
     }
     const { entitlement, used, remaining } = getLeaveBalance(FISCAL_YEAR);
+    // 진행 막대: 발생 대비 사용 비율 (초과 사용 시 100%로 채우고 빨간색)
+    const usedPct = entitlement > 0 ? Math.min(used / entitlement * 100, 100) : 0;
+    const over = remaining < 0 ? ' over' : '';
     box.innerHTML = `
-        <span>${FISCAL_YEAR}년도 발생 연차: <b>${entitlement}일</b></span>
-        <span style="margin-left:14px;">사용(대기+승인): <b>${formatDays(used)}일</b></span>
-        <span style="margin-left:14px; color:#007bff;">잔여 연차: <b>${formatDays(remaining)}일</b></span>
+        <div class="balance-top">
+            <span>${FISCAL_YEAR}년도 연차 <b>${entitlement}일</b> 중 <b>${formatDays(used)}일</b> 사용</span>
+            <span class="balance-remain${over}">잔여 ${formatDays(remaining)}일</span>
+        </div>
+        <div class="balance-bar"><div class="balance-bar-used${over}" style="width:${usedPct}%;"></div></div>
+        <div class="balance-legend">
+            <span><span class="balance-dot"></span>사용(대기+승인) ${formatDays(used)}일</span>
+            <span><span class="balance-dot remain"></span>잔여 ${formatDays(remaining)}일</span>
+        </div>
     `;
 }
 
@@ -158,7 +167,7 @@ function renderMonthlyUsage() {
     const box = document.getElementById('leave-monthly-box');
     const title = document.getElementById('leave-monthly-title');
     if (title) title.innerText = `📅 ${FISCAL_YEAR}년 연차 사용 현황 (년차·월차)`;
-    if (box) box.innerHTML = renderMonthlyTableHtml(FISCAL_YEAR, myLeaveRequests, 'leave-monthly-table');
+    if (box) box.innerHTML = renderMonthlyTableHtml(FISCAL_YEAR, myLeaveRequests, 'leave-monthly-table', true);
 }
 
 // -----------------------------------------------------------------

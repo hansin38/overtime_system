@@ -10,6 +10,15 @@
     padding: 12px 16px;
     font-size: 14px;
 }
+.balance-top { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.balance-remain { color: #007bff; font-weight: bold; font-size: 16px; }
+.balance-remain.over { color: #dc3545; }
+.balance-bar { height: 10px; margin: 10px 0; background: #e7f1ff; border-radius: 5px; overflow: hidden; }
+.balance-bar-used { height: 100%; background: #007bff; }
+.balance-bar-used.over { background: #dc3545; }
+.balance-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12.5px; color: #6c757d; }
+.balance-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: #007bff; }
+.balance-dot.remain { background: #e7f1ff; border: 1px solid #007bff; box-sizing: border-box; }
 
 /* 신청 입력 폼: 항목별 카드 (왼쪽 색 띠 + 이모지 제목) */
 .leave-form { display: flex; flex-direction: column; gap: 36px; margin: 36px 0; }

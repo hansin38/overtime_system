@@ -101,7 +101,7 @@ function computeMonthlyUsage(year, requests) {
     });
     items.sort((a, b) => a.date.localeCompare(b.date));
 
-    // 신청서 단위로 묶고, 괄호에 누적 사용일수 표시
+    // 신청서 단위로 묶고, 해당 월 신청일수(days)와 누적 사용일수(cumulative)를 함께 기록
     const months = Array.from({ length: 12 }, () => []);
     let cumulative = 0;
     items.forEach(item => {
@@ -111,20 +111,23 @@ function computeMonthlyUsage(year, requests) {
         const last = months[m][months[m].length - 1];
         if (last && last.reqId === item.reqId) {
             last.lastDay = day;
+            last.days += item.days;
             last.cumulative = cumulative;
         } else {
-            months[m].push({ reqId: item.reqId, firstDay: day, lastDay: day, half: item.type !== 'full', cumulative, pending: item.pending });
+            months[m].push({ reqId: item.reqId, firstDay: day, lastDay: day, half: item.type !== 'full', days: item.days, cumulative, pending: item.pending });
         }
     });
     return months;
 }
 
-function renderMonthlyTableHtml(year, requests, tableClass) {
+// showDays: true → 괄호에 신청일수 (신청 화면), false → 누적 사용일수 (휴가신청서 인쇄)
+function renderMonthlyTableHtml(year, requests, tableClass, showDays = false) {
     const months = computeMonthlyUsage(year, requests);
     const head = months.map((_, i) => `<th>${i + 1}월</th>`).join('');
     const cells = months.map(entries => `<td>${entries.map(e => {
         const dayText = e.firstDay === e.lastDay ? `${e.firstDay}일${e.half ? '(반)' : ''}` : `${e.firstDay}~${e.lastDay}일`;
-        return `<div class="${e.pending ? 'leave-pending' : ''}">${dayText}<br>(${formatDays(e.cumulative)})</div>`;
+        const countText = showDays ? `${formatDays(e.days)}일` : formatDays(e.cumulative);
+        return `<div class="${e.pending ? 'leave-pending' : ''}">${dayText}<br>(${countText})</div>`;
     }).join('')}</td>`).join('');
     return `<table class="${tableClass}"><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table>`;
 }
