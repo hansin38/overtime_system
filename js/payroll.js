@@ -79,7 +79,8 @@ function num(v) {
 function won(n) { return Math.round(Number(n) || 0).toLocaleString(); }
 function won2(n) { return (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } // 통상시급 표시용
 function round10(n) { return Math.round(n / 10) * 10; }
-function floor10(n) { return Math.floor(Math.round(n * 100) / 100 / 10) * 10; }   // 4대보험·지방소득세 10원 미만 절사
+// 4대보험·지방소득세 10원 미만 절사 (소수 6자리에서 정리: 28,199.997처럼 1원 미만이 남는 값을 28,200으로 올려버리지 않게)
+function floor10(n) { return Math.floor(Math.round(n * 1e6) / 1e6 / 10) * 10; }
 function ceilHalf(n) { return Math.ceil(Math.round(n * 1000) / 1000 / 0.5) * 0.5; } // 엑셀 CEILING(x, 0.5)
 function fmtH(h) { return (Math.round((h || 0) * 10) / 10).toFixed(1) + 'h'; }
 function ymdOfDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
