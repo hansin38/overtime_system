@@ -308,6 +308,9 @@ function processRequest(docId, status) {
     }
     
     db.collection("overtime_requests").doc(docId).update(updateData).then(() => {
+        // 승인되면 그 사원·그 달 경비(초과근무수당) 명세서를 자동으로 만들거나 다시 계산 (js/payroll.js)
+        if (status === '승인') return onOvertimeApproved(docId);
+    }).then(() => {
         alert("처리되었습니다.");
         applyFilters(); // 필터 유지를 반영한 새로고침
     });

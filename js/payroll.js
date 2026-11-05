@@ -63,8 +63,14 @@ const P = {
     dirty: false,
     editingEmpId: null,
     showOthers: false,
-    importRows: []
+    importRows: [],
+    otAll: [],            // 연장근로 신청 전체 (결재 대기 예상 금액용)
+    expenses: {},         // 선택 월 경비(초과근무수당) { 사원ID: payroll_expenses 문서 }
+    yearExpenses: []
 };
+
+// 급여조건 항목 (연봉 인상 등으로 바뀌면 '적용 시작 월'과 함께 payHistory에 쌓임)
+const PAY_COND_FIELDS = ['payType', 'annualSalary', 'fixedPay', 'positionAllowance', 'mealAllowance', 'vehicleAllowance', 'siteAllowance', 'holidayBonus'];
 
 // ------------------------------------------
 // 공통 도우미 (pad2는 leave-common.js 공용)
@@ -94,6 +100,14 @@ function shiftMonth(ym, diff) {
 function recordId(ym, empId) { return `${ym}_${empId}`; }
 function emp(id) { return P.employees.find(e => e.id === id); }
 function prof(id) { return P.profiles[id] || {}; }
+// 그 달에 적용되는 급여조건 (payHistory에서 '적용 시작 월'이 그 달 이하인 마지막 조건)
+function condFor(profile, ym) {
+    const hist = (profile.payHistory || []).filter(h => h.from <= ym).sort((a, b) => a.from.localeCompare(b.from));
+    if (!hist.length) return profile;
+    const { from, ...cond } = hist[hist.length - 1];
+    return { ...profile, ...cond };
+}
+function profFor(id, ym) { return condFor(prof(id), ym); }
 function payTypeOf(profile) { return profile.payType === 'fixed' ? 'fixed' : 'annual'; }
 function isTarget(empId) { return prof(empId).payslipTarget === true; }
 function maskAccount(text) {
@@ -189,7 +203,7 @@ function countWorkDays(range) {
 // 일할(입사·퇴사 달)은 회사 급여대장 방식: 월급 × 재직일 ÷ 그달 일수를 전부 기본급으로, 식대는 전액
 //   (연봉형은 연봉÷12 전체를, 고정형은 식대를 뺀 금액을 일할)
 function defaultPay(empId, ym) {
-    const employee = emp(empId), profile = prof(empId);
+    const employee = emp(empId), profile = profFor(empId, ym);
     const structure = calcPayStructure(profile, employee);
     const range = employmentRange(employee, ym);
     let pay = emptyPay();
@@ -239,21 +253,81 @@ function requestMonth(req) {
     return dates.length ? dates[dates.length - 1].slice(0, 7) : '';
 }
 
-// 이번 달 실근로시간·초과수당(경비) - 승인된 연장근로 신청 기준
-function calcMonthOvertime(empId, ym) {
-    const employee = emp(empId);
-    const structure = calcPayStructure(prof(empId), employee);
-    const wage = structure ? structure.expenseWage : expenseHourlyWage(prof(empId));
+// 그 달 실근로시간·초과수당(경비) 계산 (requests = 그 사원의 연장근로 신청들, 귀속 월로 거름)
+// cond = 그 달 급여조건 (연봉 인상 이력 반영)
+function calcOvertimeFor(employee, cond, requests, ym) {
+    const structure = calcPayStructure(cond, employee);
+    const wage = structure ? structure.expenseWage : expenseHourlyWage(cond);
     const limits = getFixOtLimits(employee);
-    const logs = P.otRequests
-        .filter(r => r.employeeName === employee.name && r.employeePhone === employee.phoneLast4 && requestMonth(r) === ym)
-        .flatMap(r => r.detailLogs || []);
-    const result = calculateOvertimePay(logs, wage, limits);
+    const mine = requests.filter(r => r.employeeName === employee.name && r.employeePhone === employee.phoneLast4 && requestMonth(r) === ym);
+    const result = calculateOvertimePay(mine.flatMap(r => r.detailLogs || []), wage, limits);
     return {
-        wage, limits,
+        wage, limits, count: mine.length,
         basis: structure ? (structure.type === 'annual' ? { annual: structure.annual } : { monthly: structure.monthly }) : {},
         actual: result.used, over: result.over, lines: result.lines, pay: result.overtimePay
     };
+}
+
+// 이번 달 실근로시간·초과수당 - 승인된 연장근로 신청 기준
+function calcMonthOvertime(empId, ym) {
+    return calcOvertimeFor(emp(empId), profFor(empId, ym), P.otRequests, ym);
+}
+
+// 경비(초과근무수당) 명세서 문서 - 연장근로 결재 '승인' 시점에 만들어짐 (payroll_expenses, 문서ID "YYYY-MM_사원ID")
+function buildExpenseDoc(employee, cond, approved, ym, payDate, prev) {
+    const ot = calcOvertimeFor(employee, cond, approved, ym);
+    return {
+        ...(prev || {}),
+        month: ym, year: Number(ym.slice(0, 4)), employeeId: employee.id,
+        name: employee.name, empNo: employee.empNo || '', department: employee.department || '', position: employee.position || '',
+        payDate: (prev && prev.payDate) || payDate,
+        requestCount: ot.count,
+        hours: { fixed: ot.limits, actual: ot.actual, over: ot.over },
+        expense: { wage: ot.wage, lines: ot.lines, pay: ot.pay, ...ot.basis },
+        updatedAt: Date.now()
+    };
+}
+function expenseDocChanged(a, b) {
+    return !a || JSON.stringify([a.requestCount, a.hours, a.expense]) !== JSON.stringify([b.requestCount, b.hours, b.expense]);
+}
+
+// 급여 관리 화면을 열 때: 승인된 신청은 있는데 경비명세서가 없거나 내용이 바뀐 사원을 정리
+function syncMonthExpenses() {
+    const jobs = monthEmployees().map(e => {
+        const prev = P.expenses[e.id];
+        const doc = buildExpenseDoc(e, profFor(e.id, P.month), P.otRequests, P.month, defaultPayDate(P.month), prev);
+        if (!doc.requestCount && !prev) return null;
+        if (!expenseDocChanged(prev, doc)) return null;
+        return db.collection("payroll_expenses").doc(recordId(P.month, e.id)).set(doc).then(() => { P.expenses[e.id] = doc; });
+    }).filter(Boolean);
+    return Promise.all(jobs).catch(err => console.error("경비명세서 정리 실패:", err));
+}
+
+// 연장근로 결재 탭에서 [승인]을 누른 직후 호출 (js/admin.js) - 그 사원·그 달 경비명세서를 만들거나 다시 계산
+function onOvertimeApproved(requestId) {
+    return db.collection("overtime_requests").doc(requestId).get().then(reqDoc => {
+        const req = reqDoc.data();
+        const ym = requestMonth(req);
+        if (!ym) return;
+        return db.collection("employees").where("name", "==", req.employeeName).where("phoneLast4", "==", req.employeePhone).get().then(empSnap => {
+            if (empSnap.empty) return;
+            const employee = { id: empSnap.docs[0].id, ...empSnap.docs[0].data() };
+            return Promise.all([
+                db.collection("payroll_profiles").doc(employee.id).get(),
+                db.collection("overtime_requests").where("employeeName", "==", req.employeeName).where("status", "==", "승인").get(),
+                db.collection("payroll_expenses").doc(recordId(ym, employee.id)).get(),
+                db.collection("payroll_settings").doc("company").get()
+            ]).then(([profDoc, reqSnap, expDoc, setDoc]) => {
+                const profile = profDoc.exists ? profDoc.data() : {};
+                if (profile.payslipTarget !== true) return; // 급여명세서 대상자만
+                const settings = { ...DEFAULT_COMPANY, ...(setDoc.exists ? setDoc.data() : {}) };
+                const next = shiftMonth(ym, 1);
+                const payDate = `${next}-${pad2(Math.min(Number(settings.payDay) || 10, monthDays(next)))}`;
+                const doc = buildExpenseDoc(employee, condFor(profile, ym), reqSnap.docs.map(d => d.data()), ym, payDate, expDoc.exists ? expDoc.data() : null);
+                return db.collection("payroll_expenses").doc(recordId(ym, employee.id)).set(doc);
+            });
+        });
+    }).catch(err => console.error("경비명세서 생성 실패:", err));
 }
 
 // 합계: 차인지급액(지급−공제)은 원 단위, 계좌 송금하는 실지급액은 10원 단위 반올림
@@ -312,10 +386,11 @@ function loadPayrollData() {
         db.collection("employees").get(),
         db.collection("payroll_profiles").get(),
         db.collection("payroll_records").where("year", "==", year).get(),
-        db.collection("overtime_requests").where("status", "==", "승인").get(),
+        db.collection("overtime_requests").get(),
         db.collection("leave_requests").get(),
-        db.collection("payroll_settings").doc("company").get()
-    ]).then(([empSnap, profSnap, recSnap, otSnap, leaveSnap, setDoc]) => {
+        db.collection("payroll_settings").doc("company").get(),
+        db.collection("payroll_expenses").where("year", "==", year).get()
+    ]).then(([empSnap, profSnap, recSnap, otSnap, leaveSnap, setDoc, expSnap]) => {
         P.employees = empSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
         P.profiles = {};
@@ -324,16 +399,23 @@ function loadPayrollData() {
         P.yearRecords = recSnap.docs.map(d => { const r = d.data(); r.pay = { ...emptyPay(), ...r.pay }; r.totals = computeTotals(r); return r; });
         P.records = {};
         P.yearRecords.filter(r => r.month === ym).forEach(r => { P.records[r.employeeId] = r; });
-        P.otRequests = otSnap.docs.map(d => d.data());
+        P.otAll = otSnap.docs.map(d => d.data());
+        P.otRequests = P.otAll.filter(r => r.status === "승인");
+        P.yearExpenses = expSnap.docs.map(d => d.data());
+        P.expenses = {};
+        P.yearExpenses.filter(x => x.month === ym).forEach(x => { P.expenses[x.employeeId] = x; });
         P.leaveRequests = leaveSnap.docs.map(d => d.data());
         P.settings = { ...DEFAULT_COMPANY, ...(setDoc.exists ? setDoc.data() : {}) };
 
         const list = monthEmployees();
         if (!P.employees.find(e => e.id === P.selectedId)) P.selectedId = list.length ? list[0].id : null;
         P.dirty = false;
-        renderPayMonthBar();
-        renderPayEmpList();
-        renderPayMain();
+        return syncMonthExpenses().then(() => {
+            P.yearExpenses = P.yearExpenses.filter(x => x.month !== ym).concat(Object.values(P.expenses));
+            renderPayMonthBar();
+            renderPayEmpList();
+            renderPayMain();
+        });
     }).catch(err => {
         console.error("급여 데이터 로드 실패:", err);
         document.getElementById('pay-main').innerHTML = `<div class="pay-empty">급여 데이터를 불러오지 못했습니다.<br><small>관리자 로그인 상태와 Firestore 보안 규칙을 확인해 주세요.</small></div>`;
@@ -362,6 +444,9 @@ function renderPayMonthBar() {
     document.getElementById('pay-stat-saved').innerText = `${saved}/${list.length}`;
     document.getElementById('pay-stat-sent').innerText = `${sent}/${list.length}`;
     document.getElementById('pay-stat-paydate').innerText = defaultPayDate(P.month).slice(5);
+    const expDone = list.filter(e => P.expenses[e.id] && P.expenses[e.id].requestCount > 0).length;
+    const expWait = list.filter(e => !(P.expenses[e.id] && P.expenses[e.id].requestCount > 0) && pendingRequests(e.id).length).length;
+    document.getElementById('pay-stat-expense').innerHTML = `${expDone}/${list.length}${expWait ? ` <small>(결재 대기 ${expWait})</small>` : ''}`;
     const bulk = document.getElementById('pay-bulk-btn');
     bulk.innerText = `일괄 발송 (${pending}명)`;
     bulk.disabled = pending === 0;
@@ -416,7 +501,7 @@ function renderPayMain() {
         box.innerHTML = `<div class="pay-empty">왼쪽에서 사원을 선택하거나 [＋ 사원등록]으로 사원을 추가해 주세요.</div>`;
         return;
     }
-    const profile = prof(e.id);
+    const profile = profFor(e.id, P.month);
     const st = recordStatus(P.records[e.id]);
     const fixed = getFixOtLimits(e);
     const active = isTarget(e.id) && isEmployedIn(e, P.month);
@@ -477,7 +562,7 @@ function renderPayMonthPane() {
     const deduct = rec ? rec.deduct : defaultDeduct(id, P.month, pay);
     const deductClass = rec ? ({ accounting: 'acc', auto: 'auto' }[rec.deductSource] || '') : 'auto';
     const etc = rec ? (rec.etc || []) : [];
-    const type = payTypeOf(prof(id));
+    const type = payTypeOf(profFor(id, P.month));
     const prorateNote = def.range && def.range.partial
         ? `<div class="pay-note blue">📅 일할계산 · ${def.range.start.slice(5)} ~ ${def.range.end.slice(5)} 재직 ${def.range.days}일 ÷ ${def.range.monthDays}일 → 전액 기본급, 식대는 전액 (회사 급여대장 방식)</div>` : '';
     const deductTag = rec && rec.deductSource === 'accounting'
@@ -620,20 +705,46 @@ function refreshPaySummary() {
     document.getElementById('pay-sum-deduct2').innerText = `공제 ${won(t.deduct)}`;
     document.getElementById('pay-sum-round').innerText = t.rounding ? `차인지급액 ${won(t.net)} → 10원 단위 반올림` : '';
 
-    const ot = calcMonthOvertime(P.selectedId, P.month);
-    const line = ot.lines.map(l => `${OT_LABELS[l.bucket]} 초과 ${fmtH(l.hours)} × ${won(ot.wage)}원 × ${Math.round(l.rate * 100)}%`).join('<br>');
     const rec = P.records[P.selectedId];
-    document.getElementById('pay-sum-exp').innerHTML = `
-        <div class="h"><span>경비 · 초과근무수당</span><span class="pay-pill p-keep">${rec && rec.expenseSentAt ? '발송함' : '보관'}</span></div>
-        <b>${won(ot.pay)}원</b>
-        <div class="s">${line || '고정OT 범위 내 (지급 없음)'}</div>`;
+    document.getElementById('pay-sum-exp').innerHTML = expenseCardHtml(P.selectedId);
 
     const st = recordStatus(rec);
     document.getElementById('pay-doc-wage-st').innerText = rec
         ? (st === 'save' ? '저장됨 · 미발송' : st === 'revised' ? '수정됨 · 재발송 필요' : `${msToDateTime(rec.wageSentAt)} 발송완료`)
         : '저장 전';
-    document.getElementById('pay-doc-exp-st').innerText = rec && rec.expenseSentAt
-        ? `${msToDateTime(rec.expenseSentAt)} 발송함` : '보관 · 미발송';
+    const x = P.expenses[P.selectedId];
+    document.getElementById('pay-doc-exp-st').innerText = !(x && x.requestCount)
+        ? (pendingRequests(P.selectedId).length ? '결재 대기 중' : '연장근로 신청 없음')
+        : (x.expenseSentAt ? `${msToDateTime(x.expenseSentAt)} 발송함` : '승인 확정 · 보관');
+}
+
+// 결재 대기(대기·재전송) 중인 이번 달 연장근로 신청
+function pendingRequests(empId) {
+    const e = emp(empId);
+    return P.otAll.filter(r => r.employeeName === e.name && r.employeePhone === e.phoneLast4
+        && ['대기', '재전송'].includes(r.status) && requestMonth(r) === P.month);
+}
+
+// 오른쪽 경비 카드: 승인 확정 / 결재 대기(예상) / 신청 없음
+function expenseCardHtml(empId) {
+    const x = P.expenses[empId];
+    const pending = pendingRequests(empId);
+    const mo = `${Number(P.month.slice(5))}월분`;
+    if (x && x.requestCount) {
+        const line = x.expense.lines.map(l => `${OT_LABELS[l.bucket]} 초과 ${fmtH(l.hours)} × ${won(x.expense.wage)}원 × ${Math.round(l.rate * 100)}%`).join('<br>');
+        return `<div class="h"><span>경비 · 초과근무수당</span><span class="pay-pill p-sent">승인 확정</span></div>
+            <b>${won(x.expense.pay)}원</b>
+            <div class="s">${line || '고정OT 범위 내 (지급 없음)'}</div>
+            <div class="s">${mo} 승인 ${x.requestCount}건 · ${msToDateTime(x.updatedAt)} 계산${pending.length ? ` · 결재 대기 ${pending.length}건 더 있음` : ''}</div>`;
+    }
+    if (pending.length) {
+        const est = calcOvertimeFor(emp(empId), profFor(empId, P.month), pending, P.month);
+        return `<div class="h"><span>경비 · 초과근무수당</span><span class="pay-pill p-wait">결재 대기</span></div>
+            <b class="est">예상 ${won(est.pay)}원</b>
+            <div class="s">${mo} 신청 ${pending.length}건이 결재 대기 중 · 승인하면 경비명세서가 만들어져요</div>`;
+    }
+    return `<div class="h"><span>경비 · 초과근무수당</span><span class="pay-pill p-wait">신청 없음</span></div>
+        <div class="s" style="margin-top: 6px;">${mo} 연장근로 신청이 아직 없어요</div>`;
 }
 
 // 현재 입력 화면(또는 저장된 기록)을 명세서용 기록으로 만들기
@@ -654,7 +765,7 @@ function buildRecord(empId, fromForm, override = null) {
         department: e.department || '',
         position: e.position || '',
         bankAccount: profile.bankAccount || '',
-        payType: payTypeOf(profile),
+        payType: payTypeOf(profFor(empId, P.month)),
         payDate: (saved && saved.payDate) || defaultPayDate(P.month),
         pay: { ...emptyPay(), ...form.pay },
         deduct: form.deduct,
@@ -703,6 +814,11 @@ function savePayRecord() {
 }
 
 // ---------- 연간 현황 ----------
+function expOf(empId, ym) {
+    const x = P.yearExpenses.find(v => v.employeeId === empId && v.month === ym);
+    return x ? x.expense.pay || 0 : 0;
+}
+
 function renderPayYearPane() {
     const id = P.selectedId;
     const year = Number(P.month.slice(0, 4));
@@ -719,7 +835,7 @@ function renderPayYearPane() {
         const st = recordStatus(r);
         return `<tr class="${ym === P.month ? 'cur' : ''}" onclick="jumpPayMonth('${ym}')">
             <td>${m}월${tag}</td><td>${won(r.totals.pay)}</td><td>${won(r.totals.deduct)}</td><td>${won(r.totals.payout)}</td>
-            <td class="e">${r.expense && r.expense.pay ? won(r.expense.pay) : '-'}</td>
+            <td class="e">${expOf(id, ym) ? won(expOf(id, ym)) : '-'}</td>
             <td><span class="pay-pill p-${st}">${STATUS_TEXT[st].split(' ')[0]}</span></td></tr>`;
     }).join('');
     document.getElementById('pay-pane').innerHTML = `
@@ -727,7 +843,7 @@ function renderPayYearPane() {
             <div class="pay-kpi"><small>${year}년 지급 누계</small><b>${won(sum(r => r.totals.pay))}</b></div>
             <div class="pay-kpi"><small>공제 누계</small><b>${won(sum(r => r.totals.deduct))}</b></div>
             <div class="pay-kpi"><small>실지급 누계</small><b>${won(sum(r => r.totals.payout))}</b></div>
-            <div class="pay-kpi e"><small>경비 누계</small><b>${won(sum(r => (r.expense && r.expense.pay) || 0))}</b></div>
+            <div class="pay-kpi e"><small>경비 누계</small><b>${won(P.yearExpenses.filter(x => x.employeeId === id).reduce((t, x) => t + (x.expense.pay || 0), 0))}</b></div>
         </div>
         <table class="pay-year">
             <tr><th>월</th><th>지급</th><th>공제</th><th>실지급</th><th>경비</th><th>임금명세서</th></tr>
@@ -747,7 +863,7 @@ function jumpPayMonth(ym) {
 
 // ---------- 사원 정보 ----------
 function renderPayInfoPane() {
-    const e = emp(P.selectedId), p = prof(P.selectedId);
+    const e = emp(P.selectedId), p = profFor(P.selectedId, P.month);
     const s = calcPayStructure(p, e);
     const fixed = getFixOtLimits(e);
     const type = payTypeOf(p);
@@ -777,6 +893,8 @@ function renderPayInfoPane() {
                     ['식대', m(p.mealAllowance)], ['차량유지비', m(p.vehicleAllowance)], ['직책수당', m(p.positionAllowance)],
                     ['현장수당', m(p.siteAllowance)], ['명절상여', p.holidayBonus ? `설·추석 각 ${won(p.holidayBonus)}` : ''],
                     ['월 지급 합계', s ? won(s.monthly) : ''],
+                    (p.payHistory || []).length > 1 ? ['변경 이력', p.payHistory.slice().reverse().map(h =>
+                        `${h.from === '0000-00' ? '처음' : h.from + '분부터'} · ${h.payType === 'fixed' ? '고정 ' + won(sumValues(h.fixedPay) + num(h.mealAllowance) + num(h.vehicleAllowance) + num(h.positionAllowance) + num(h.siteAllowance)) : '연봉 ' + won(h.annualSalary)}`).join('<br>')] : null,
                     s && s.type === 'annual' ? ['통상시급', `${won2(s.ordinaryWage)}원 <small class="sub">자동</small>`] : null,
                     ['경비 시급', s ? `${won(s.expenseWage)}원 <small class="sub">월급÷209</small>` : (p.legacyHourlyWage ? `${won(p.legacyHourlyWage)}원 <small class="sub">예전 통상시급</small>` : '')]
                 ])}</div>
@@ -803,9 +921,11 @@ const EMP_MONEY_FIELDS = ['annual', 'fBase', 'fOt', 'fHn', 'posAllow', 'meal', '
 function openPayEmpModal(empId = null) {
     P.editingEmpId = empId;
     const e = empId ? emp(empId) : {};
-    const p = empId ? prof(empId) : {};
+    const p = empId ? profFor(empId, P.month) : {};
     const fixed = getFixOtLimits(e);
     const fp = p.fixedPay || {};
+    document.getElementById('pe-from').value = P.month;
+    document.getElementById('pe-from-wrap').style.display = empId ? '' : 'none';
     const m = (v) => (v === undefined || v === null || v === '') ? '' : won(v);
     const v = {
         name: e.name, phone: e.phoneLast4, empNo: e.empNo, birth: p.birthDate, email: p.email, bank: p.bankAccount,
@@ -862,8 +982,25 @@ function readEmpForm() {
         siteAllowance: num(g('site')), holidayBonus: num(g('bonus')),
         pensionBase: optMoney('pensionBase'), healthBase: optMoney('healthBase'),
         employmentInsured: document.getElementById('pe-empIns').checked,
-        payslipTarget: document.getElementById('pe-target').checked
+        payslipTarget: document.getElementById('pe-target').checked,
+        from: g('from')
     };
+}
+
+function pickCond(o) {
+    return Object.fromEntries(PAY_COND_FIELDS.map(k => [k, k === 'fixedPay' ? { base: num((o.fixedPay || {}).base), overtime: num((o.fixedPay || {}).overtime), holidayNight: num((o.fixedPay || {}).holidayNight) } : (k === 'payType' ? payTypeOf(o) : num(o[k]))]));
+}
+
+// 급여조건이 바뀌었으면 '적용 시작 월'부터 새 조건이 적용되도록 이력에 추가
+// (이전 달 급여는 예전 조건으로 계산, 맨 위 값은 이번 달 기준 조건으로 맞춤)
+function nextPayHistory(profile, form) {
+    const from = /^\d{4}-\d{2}$/.test(form.from || '') ? form.from : P.month;
+    const newCond = pickCond(form);
+    if (JSON.stringify(pickCond(condFor(profile, from))) === JSON.stringify(newCond)) return null; // 바뀐 게 없음
+    let hist = (profile.payHistory || []).slice();
+    if (!hist.length) hist.push({ from: '0000-00', ...pickCond(profile) });
+    hist = hist.filter(h => h.from !== from).concat([{ from, ...newCond }]).sort((a, b) => a.from.localeCompare(b.from));
+    return hist;
 }
 
 function updateEmpCalcPreview() {
@@ -898,12 +1035,20 @@ function savePayEmployee() {
     };
     const secret = {
         birthDate: f.birthDate, email: f.email, bankAccount: f.bankAccount,
-        payType: f.payType, annualSalary: f.annualSalary, fixedPay: f.fixedPay,
-        positionAllowance: f.positionAllowance, mealAllowance: f.mealAllowance, vehicleAllowance: f.vehicleAllowance,
-        siteAllowance: f.siteAllowance, holidayBonus: f.holidayBonus,
+        ...pickCond(f),
         pensionBase: f.pensionBase, healthBase: f.healthBase, employmentInsured: f.employmentInsured,
         payslipTarget: f.payslipTarget
     };
+    if (P.editingEmpId) {
+        const hist = nextPayHistory(prof(P.editingEmpId), f);
+        if (hist) {
+            secret.payHistory = hist;
+            Object.assign(secret, pickCond(condFor({ payHistory: hist }, ymdOfDate(new Date()).slice(0, 7))));
+        } else {
+            // 급여조건은 그대로 → 맨 위 값도 건드리지 않음
+            PAY_COND_FIELDS.forEach(k => delete secret[k]);
+        }
+    }
     const saveProfile = (id) => db.collection("payroll_profiles").doc(id).set(secret, { merge: true }).then(() => id);
 
     let job;
@@ -1047,6 +1192,16 @@ function onPayImportFile(input) {
             const ws = wb.Sheets[wb.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
             const { accMonth, people } = parseAccountingSheet(rows);
+            // 파일의 귀속월로 자동 이동 (달을 따로 고를 필요 없음)
+            const sel = document.getElementById('pay-month');
+            if (accMonth && accMonth !== P.month && [...sel.options].some(o => o.value === accMonth)) {
+                sel.value = accMonth;
+                P.month = accMonth;
+                P.subTab = 1;
+                document.getElementById('pay-import-title').innerText = `📥 회계사무소 급여대장 불러오기 · ${monthLabel(P.month)}`;
+                loadPayrollData().then(() => buildImportRows(accMonth, people));
+                return;
+            }
             buildImportRows(accMonth, people);
         } catch (err) {
             console.error("급여대장 읽기 실패:", err);
@@ -1104,11 +1259,11 @@ function accPayToOurs(empId, accPay, ourPay) {
     ACC_PAY_KEYS.forEach(k => { pay[k] = num(accPay[k]); });
     const hn = pay.holidayNight;
     pay.holidayNight = 0;
-    if (payTypeOf(prof(empId)) === 'annual') {
+    if (payTypeOf(profFor(empId, P.month)) === 'annual') {
         if (num(ourPay.holiday) + num(ourPay.night) === hn) {
             pay.holiday = num(ourPay.holiday); pay.night = num(ourPay.night);
         } else {
-            const s = calcPayStructure(prof(empId), emp(empId));
+            const s = calcPayStructure(profFor(empId, P.month), emp(empId));
             const share = s ? s.weighted.holiday / (s.weighted.holiday + s.weighted.night) : 0.5;
             pay.holiday = Math.round(hn * share); pay.night = hn - pay.holiday;
         }
@@ -1154,9 +1309,19 @@ function applyPayImport() {
             .then(() => { P.profiles[id] = { ...prof(id), ...learn }; });
     });
     Promise.all(jobs)
-        .then(() => { alert(`${rows.length}명의 공제를 회계사무소 값으로 반영했습니다.`); closePayImport(); })
-        .catch(err => { console.error("급여대장 반영 실패:", err); alert("반영 중 오류가 발생했습니다. 일부만 저장됐을 수 있으니 다시 불러와 주세요."); })
-        .finally(() => { setPayBusy(false); P.dirty = false; renderPayMonthBar(); renderPayEmpList(); renderPayMain(); });
+        .then(() => {
+            setPayBusy(false); P.dirty = false; renderPayMonthBar(); renderPayEmpList(); renderPayMain();
+            closePayImport();
+            // 반영 끝나면 바로 일괄 발송으로 (발송할 명단 확인창이 한 번 더 떠요)
+            if (confirm(`${rows.length}명의 임금명세서가 회계사무소 값으로 준비됐어요.
+
+지금 일괄 발송할까요? (취소하면 화면에서 하나씩 확인 후 발송)`)) bulkSendWage();
+        })
+        .catch(err => {
+            console.error("급여대장 반영 실패:", err);
+            alert("반영 중 오류가 발생했습니다. 일부만 저장됐을 수 있으니 다시 불러와 주세요.");
+            setPayBusy(false); P.dirty = false; renderPayMonthBar(); renderPayEmpList(); renderPayMain();
+        });
 }
 
 // ------------------------------------------
@@ -1172,12 +1337,15 @@ function leaveSummaryFor(e, year) {
 }
 
 // 올해 누계 (이 달까지, 이 달은 지금 기록으로)
+function expenseYtd(x) {
+    return P.yearExpenses.filter(v => v.employeeId === x.employeeId && v.month <= x.month).reduce((t, v) => t + (v.expense.pay || 0), 0);
+}
+
 function ytdFor(rec) {
     const recs = P.yearRecords.filter(r => r.employeeId === rec.employeeId && r.month < rec.month).concat([rec]);
     return recs.reduce((s, r) => ({
         pay: s.pay + r.totals.pay, deduct: s.deduct + r.totals.deduct, payout: s.payout + r.totals.payout,
-        expense: s.expense + ((r.expense && r.expense.pay) || 0)
-    }), { pay: 0, deduct: 0, payout: 0, expense: 0 });
+    }), { pay: 0, deduct: 0, payout: 0 });
 }
 
 function slipHeadHtml(rec, title, sub, stamp) {
@@ -1286,10 +1454,10 @@ function renderWageSlipHtml(rec, opts = {}) {
     </div>`;
 }
 
+// rec = 경비명세서 문서 (payroll_expenses)
 function renderExpenseSlipHtml(rec) {
     const h = rec.hours || { fixed: FIX_OT_LIMITS, actual: {}, over: {} };
     const x = rec.expense || { lines: [], pay: 0, wage: 0 };
-    const ytd = ytdFor(rec);
     const rateText = { overtime: '150%', holiday: '150% / 200%', night: '50%' };
     const calcRows = x.lines.map(l => `
         <div class="row"><span class="k">${OT_LABELS[l.bucket]} 초과</span>
@@ -1327,7 +1495,7 @@ function renderExpenseSlipHtml(rec) {
         </div>
 
         <div class="ps-big org"><small>초과근무수당 지급액</small><b>${won(x.pay)}<span>원</span></b></div>
-        <div class="ps-acct">${rec.year}년 누계 (1~${Number(rec.month.slice(5))}월): <b>${won(ytd.expense)}원</b></div>
+        <div class="ps-acct">${rec.year}년 누계 (1~${Number(rec.month.slice(5))}월): <b>${won(expenseYtd(rec))}원</b></div>
 
         ${slipFootHtml(s.contactName ? `<b>작성</b> ${esc(s.contactName)}` : '')}
     </div>`;
@@ -1344,9 +1512,21 @@ function slipHtmlFor(rec, kind) {
     return kind === 'wage' ? renderWageSlipHtml(rec, { stamp: wageStampFor(rec) }) : renderExpenseSlipHtml(rec);
 }
 
-// 보기: 저장 전이면 지금 입력값으로 미리보기
+// 보기: 임금명세서는 저장 전이면 지금 입력값으로 미리보기 / 경비명세서는 승인된 연장근로 기준
 let payDocCurrent = null;
 function viewPayDoc(kind) {
+    if (kind === 'expense') {
+        const x = P.expenses[P.selectedId];
+        const mo = `${monthLabel(P.month)}`;
+        payDocCurrent = x && x.requestCount ? { rec: x, kind } : null;
+        document.getElementById('pay-doc-title').innerText = '경비명세서 (관리자 보관용)';
+        document.getElementById('pay-doc-body').innerHTML = payDocCurrent
+            ? slipHtmlFor(x, kind)
+            : `<div class="pay-empty" style="background: #fff;">${mo} 승인된 연장근로 신청이 없어 경비명세서가 아직 없어요.<br>
+                <small>${pendingRequests(P.selectedId).length ? '결재 대기 중인 신청이 있어요. 연장근로 결재 탭에서 승인하면 자동으로 만들어져요.' : '직원이 연장근로 신청을 제출하고 승인되면 자동으로 만들어져요.'}</small></div>`;
+        document.getElementById('pay-doc-modal').style.display = 'flex';
+        return;
+    }
     const unsaved = P.dirty || !P.records[P.selectedId];
     const rec = buildRecord(P.selectedId, unsaved);
     payDocCurrent = { rec, kind };
@@ -1389,7 +1569,7 @@ function logPaySend(rec, kind, ok, error, revised) {
 
 // 1명 · 1종 발송
 function sendPayDocCore(empId, kind) {
-    const rec = buildRecord(empId, false);
+    const rec = kind === 'wage' ? buildRecord(empId, false) : P.expenses[empId];
     const p = prof(empId);
     const to = (p.email || '').trim();
     const pw = birth6(p.birthDate);
@@ -1417,8 +1597,9 @@ function sendPayDocCore(empId, kind) {
             const update = kind === 'wage'
                 ? { wageSentAt: now, ...(revised ? { wageRevisedAt: rec.updatedAt } : {}) }
                 : { expenseSentAt: now };
-            return db.collection("payroll_records").doc(recordId(rec.month, empId)).update(update).then(() => {
-                Object.assign(P.records[empId], update);
+            const col = kind === 'wage' ? "payroll_records" : "payroll_expenses";
+            return db.collection(col).doc(recordId(rec.month, empId)).update(update).then(() => {
+                Object.assign(kind === 'wage' ? P.records[empId] : P.expenses[empId], update);
                 logPaySend(rec, kind, true, '', revised);
             });
         })
@@ -1432,8 +1613,7 @@ function sendPayDoc(empId, kind) {
     const go = () => {
         const p = prof(empId), e = emp(empId);
         const label = kind === 'wage' ? '임금명세서' : '경비명세서(초과근무수당)';
-        const rec = P.records[empId];
-        const resend = kind === 'wage' ? rec.wageSentAt : rec.expenseSentAt;
+        const resend = kind === 'wage' ? P.records[empId].wageSentAt : P.expenses[empId].expenseSentAt;
         const msg = `${e.name}님에게 ${label}를 메일로 보낼까요?\n\n받는 사람: ${p.email || '(이메일 미등록)'}\n첨부: 생년월일 6자리로 잠긴 PDF`
             + (kind === 'expense' ? '\n\n※ 경비명세서는 기본적으로 보관용입니다.' : '')
             + (resend ? `\n※ 이미 ${msToDateTime(resend)}에 보낸 적이 있습니다.` : '');
@@ -1444,6 +1624,11 @@ function sendPayDoc(empId, kind) {
             .catch(err => { console.error("발송 실패:", err); alert(`발송하지 못했습니다.\n사유: ${err.message}`); })
             .finally(() => { setPayBusy(false); renderPayMonthBar(); renderPayEmpList(); renderPayMain(); });
     };
+    if (kind === 'expense') {
+        if (!(P.expenses[empId] && P.expenses[empId].requestCount)) { alert("승인된 연장근로 신청이 없어 보낼 경비명세서가 없습니다."); return; }
+        go();
+        return;
+    }
     if (P.dirty || !P.records[empId]) {
         if (!confirm("저장되지 않은 내용이 있습니다. 저장한 뒤 발송할까요?")) return;
         savePayRecord().then(go);
@@ -1503,9 +1688,10 @@ function closePaySendLog() { document.getElementById('pay-log-modal').style.disp
 // ------------------------------------------
 function downloadLedger(kind) {
     const scope = document.getElementById('pay-ledger-scope').value;
-    const recs = (scope === 'year' ? P.yearRecords : P.yearRecords.filter(r => r.month === P.month))
+    const source = kind === 'wage' ? P.yearRecords : P.yearExpenses.filter(x => x.requestCount > 0);
+    const recs = (scope === 'year' ? source : source.filter(r => r.month === P.month))
         .slice().sort((a, b) => a.month.localeCompare(b.month) || (a.name || '').localeCompare(b.name || '', 'ko'));
-    if (recs.length === 0) { alert("저장된 급여가 없습니다."); return; }
+    if (recs.length === 0) { alert(kind === 'wage' ? "저장된 급여가 없습니다." : "승인된 경비(초과근무수당)가 없습니다."); return; }
 
     let rows;
     if (kind === 'wage') {

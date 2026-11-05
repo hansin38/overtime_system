@@ -171,6 +171,7 @@
                 <select id="pay-month" onchange="changePayMonth()"></select>
                 <span class="pay-stat">입력 <b id="pay-stat-saved">-</b></span>
                 <span class="pay-stat">발송 <b id="pay-stat-sent">-</b></span>
+                <span class="pay-stat">경비 승인 <b id="pay-stat-expense">-</b></span>
                 <span class="pay-stat">지급일 <b id="pay-stat-paydate" class="small">-</b></span>
                 <div class="right">
                     <button class="pay-btn acc" onclick="openPayImport()">📥 회계사무소 급여대장</button>
@@ -263,6 +264,11 @@
                     <div><label>명절상여 (설·추석 각)</label><input id="pe-bonus" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
                 </div>
                 <div id="pe-preview" class="pay-preview"></div>
+                <div id="pe-from-wrap" class="pay-from">
+                    <label>적용 시작 월 <small class="sub">· 연봉 인상 등 급여조건을 바꿀 때만 의미 있어요</small></label>
+                    <input type="month" id="pe-from">
+                    <div class="sub">이 달 급여부터 새 조건으로 계산하고, 그 전 달은 예전 조건 그대로예요. 미리 입력해 둬도 돼요.</div>
+                </div>
             </div>
             <div class="pay-grp">
                 <div class="gh">4대보험 기준 <small class="sub" style="font-weight: normal;">· 회계사무소 급여대장을 불러오면 자동으로 채워져요</small></div>
