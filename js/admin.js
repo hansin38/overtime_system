@@ -166,10 +166,18 @@ function logoutAdmin() {
     auth.signOut().then(() => location.reload()); // 새로고침하면 관리자 로그인 화면으로 돌아감
 }
 
-// 초과수당 시급 = 연봉 ÷ 12 ÷ 209 (도의적 지급 기준) / 연봉 미등록 시 예전 통상시급 → 10,000원
+// 초과수당 시급 = 월급 ÷ 209 (도의적 지급 기준: 연봉형은 연봉 ÷ 12 ÷ 209, 고정 금액형은 월 고정급여 합계 ÷ 209)
+// 급여조건 미등록 시 예전 통상시급 → 10,000원
 function expenseHourlyWage(profile) {
-    const annual = Number(profile && profile.annualSalary);
-    if (annual > 0) return annual / 12 / 209;
+    profile = profile || {};
+    if (profile.payType === 'fixed') {
+        const fp = profile.fixedPay || {};
+        const monthly = [fp.base, fp.overtime, fp.holidayNight, profile.mealAllowance, profile.vehicleAllowance, profile.positionAllowance, profile.siteAllowance]
+            .reduce((s, v) => s + (Number(v) || 0), 0);
+        if (monthly > 0) return monthly / 209;
+    }
+    const annual = Number(profile.annualSalary);
+    if (profile.payType !== 'fixed' && annual > 0) return annual / 12 / 209;
     const legacy = Number(profile && profile.legacyHourlyWage);
     return legacy > 0 ? legacy : 10000;
 }
@@ -365,7 +373,7 @@ function renderPaySummary(name, wage, payInfo, limits = FIX_OT_LIMITS) {
         <div style="margin-bottom: 10px;">${badge}</div>
         ${lines ? `<div style="border-top: 1px solid #dee2e6; padding-top: 8px;">${lines}</div>` : ''}
         <div style="display: flex; justify-content: space-between; border-top: 1px solid #dee2e6; margin-top: 8px; padding-top: 8px; font-weight: bold;">
-            <span>총 지급액 <small style="color: #888; font-weight: normal;">(백원 단위 올림)</small></span>
+            <span>총 지급액 <small style="color: #888; font-weight: normal;">(10원 단위 반올림)</small></span>
             <span style="color: ${payInfo.overtimePay > 0 ? 'var(--danger-color)' : '#888'};">${payInfo.overtimePay.toLocaleString()}원</span>
         </div>`;
 }
@@ -401,7 +409,7 @@ function calculateOvertimePay(detailLogs, hourlyWage = 10000, limits = FIX_OT_LI
     const order = { overtime: 0, holiday: 1, night: 2 };
     const lines = Object.values(lineMap).sort((a, b) => order[a.bucket] - order[b.bucket] || a.rate - b.rate);
 
-    overtimePay = Math.ceil(Math.round(overtimePay) / 100) * 100; // 백원 단위 올림
+    overtimePay = Math.round(overtimePay / 10) * 10; // 10원 단위 반올림 (계좌 송금 단위)
     // 야간 초과는 연장/휴일 초과와 같은 시간이므로 초과시간 합계에는 넣지 않음
     const overtimeHours = Math.round((over.overtime + over.holiday) * 100) / 100;
 

@@ -17,6 +17,8 @@
 .pay-btn.org { border-color: var(--pay-org); color: var(--pay-org); font-weight: bold; }
 .pay-btn.ghost { border-color: transparent; color: #555; }
 .pay-btn.sm { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.pay-btn.acc { border-color: #8fd19e; color: #1e6b33; font-weight: bold; background: #f4fbf6; }
+.pay-btn.acc-solid { background: var(--pay-green); color: #fff; border-color: var(--pay-green); font-weight: bold; }
 
 /* 상단: 이번 달 현황 */
 .pay-month-bar { display: flex; align-items: center; gap: 22px; padding: 16px 20px; border: 1px solid var(--pay-line); border-radius: 10px; margin-bottom: 26px; flex-wrap: wrap; }
@@ -39,6 +41,7 @@
 .pay-emp-list > div small { margin-left: auto; color: var(--pay-sub); font-size: 11.5px; }
 .pay-emp-list > div.sel { background: var(--pay-blue-bg); font-weight: bold; box-shadow: inset 3px 0 0 var(--pay-blue); }
 .pay-emp-list .pay-others-title, .pay-emp-list .pay-emp-none { cursor: default; color: var(--pay-sub); font-size: 12px; padding: 9px 14px; }
+.pay-emp-list > div.pay-others-title { cursor: pointer; background: #f1f3f5; }
 .pay-add { width: 100%; height: 38px; margin-top: 12px; }
 .pay-legend { margin-top: 12px; font-size: 11.5px; color: var(--pay-sub); display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .pay-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
@@ -64,6 +67,7 @@
 .pay-card.lock { background: #fff8f8; border-color: #f5c2c7; }
 .pay-card h4 { margin: 0 0 4px; font-size: 14.5px; display: flex; align-items: center; gap: 8px; text-align: left; }
 .pay-card h4 .tag { font-size: 11px; font-weight: normal; color: var(--pay-blue); background: var(--pay-blue-bg); padding: 2px 7px; border-radius: 4px; }
+.pay-card h4 .tag.acc { color: var(--pay-green); background: #e6f4ea; }
 .pay-card h4 .link { font-size: 12px; color: var(--pay-blue); cursor: pointer; margin-left: auto; font-weight: normal; }
 .pay-card .hint { font-size: 12px; color: var(--pay-sub); margin-bottom: 12px; }
 .pay-lines { display: grid; grid-template-columns: 1fr 150px; font-size: 13.5px; align-items: center; }
@@ -73,6 +77,9 @@
 .pay-lines input { width: 100%; height: 30px; margin: 4px 0; border: 1px solid #d0d5da; border-radius: 5px; padding: 0 8px; text-align: right; font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .pay-lines input[readonly] { border-color: transparent; background: transparent; }
 .pay-lines input:focus { outline: 2px solid var(--pay-blue-line); border-color: var(--pay-blue); }
+.pay-lines input.auto { background: #f4f8ff; border-color: #cfe0ff; color: var(--pay-blue); }
+.pay-lines input.acc { background: #eefaf1; border-color: #b2dfbd; color: #1e6b33; }
+.pay-lines input.edited { background: #fff8e6; border-color: #f5c46b; color: #333; }
 .pay-etc-row { display: grid; grid-template-columns: 1fr 150px 34px; gap: 6px; margin-top: 4px; }
 .pay-etc-row input { height: 30px; margin: 0; border: 1px solid #d0d5da; border-radius: 5px; padding: 0 8px; font-size: 13px; }
 .pay-etc-row .etc-amount { text-align: right; }
@@ -87,6 +94,8 @@
 .sum-net small { opacity: .9; font-size: 13px; }
 .sum-net b { display: block; font-size: 28px; margin-top: 4px; letter-spacing: .5px; }
 .sum-net .row { display: flex; justify-content: space-between; font-size: 12.5px; opacity: .92; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.3); }
+.sum-net .round { font-size: 11.5px; opacity: .85; margin-top: 6px; }
+.sum-net .round:empty { display: none; }
 .sum-exp { background: var(--pay-org-bg); border: 1px solid #f5c89a; border-radius: 10px; padding: 14px 18px; margin-top: 12px; }
 .sum-exp .h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #9c4a12; font-weight: bold; }
 .sum-exp b { font-size: 20px; color: var(--pay-org); }
@@ -140,6 +149,27 @@ table.pay-year tr.fut td { color: #ccc; }
 .pay-fg input { width: 100%; height: 34px; padding: 0 10px; margin: 3px 0 0; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
 .pay-fg input:disabled { background: #f1f3f5; color: #888; }
 .pay-preview { margin-top: 12px; font-size: 12.5px; color: #335; background: #f4f8ff; border-radius: 6px; padding: 10px 12px; line-height: 1.7; }
+.pay-type-radio { display: flex; gap: 8px; margin: 8px 0 2px; }
+.pay-type-opt { flex: 1; border: 1.5px solid #ccc; border-radius: 8px; padding: 10px 12px; font-size: 13px; cursor: pointer; background: #fff; }
+.pay-type-opt.on { border-color: var(--pay-blue); background: var(--pay-blue-bg); font-weight: bold; }
+.pay-type-opt small { display: block; font-weight: normal; color: #666; margin-top: 2px; font-size: 11.5px; }
+.pay-chk { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 13px; cursor: pointer; }
+.pay-chk input { width: 16px; height: 16px; margin: 0; }
+.pay-chk.strong { font-weight: bold; margin: 0 0 12px; }
+.pay-chk.strong small { font-weight: normal; }
+.pay-drop { display: block; border: 2px dashed #b2dfbd; background: #f4fbf6; border-radius: 10px; padding: 18px; text-align: center; font-size: 14px; color: #1e6b33; margin-bottom: 14px; cursor: pointer; }
+.pay-drop small { display: block; color: var(--pay-sub); font-size: 12px; margin-top: 4px; }
+.pay-drop input { width: auto; margin: 10px auto 0; padding: 6px; border: 0; display: block; }
+table.pay-import-tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0; table-layout: auto; }
+table.pay-import-tbl th, table.pay-import-tbl td { padding: 9px 8px; border: 0; border-bottom: 1px solid #f1f3f5; text-align: right; font-variant-numeric: tabular-nums; }
+table.pay-import-tbl th { background: #f8f9fa; color: #555; }
+table.pay-import-tbl th:first-child, table.pay-import-tbl td:first-child { text-align: left; }
+table.pay-import-tbl tr.bad td { background: #fff5f7; }
+table.pay-import-tbl tr.bad-detail td { background: #fff5f7; text-align: left; font-size: 12.5px; color: #a61e4d; padding-top: 0; }
+table.pay-import-tbl .ok { color: var(--pay-green); font-weight: bold; }
+table.pay-import-tbl .bad { color: var(--pay-red); font-weight: bold; }
+.pay-import-chk { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; color: #333; font-weight: bold; cursor: pointer; }
+.pay-import-chk input { width: 15px; height: 15px; margin: 0; }
 .pay-doc-body { background: #e9ecef; padding: 24px; border-radius: 8px; }
 .pay-doc-body .ps-paper { margin: 0 auto; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
 table.pay-hist { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0; table-layout: auto; }
@@ -192,6 +222,10 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-tip { color: #8a6a50; font-size: 11px; line-height: 1.6; margin-top: 8px; }
 
 .ps-big { border-radius: 8px; padding: 16px 20px; color: #fff; display: flex; justify-content: space-between; align-items: baseline; }
+.ps-netlines { border: 1.5px solid var(--pay-blue-line); border-bottom: 0; border-radius: 8px 8px 0 0; padding: 6px 16px; font-size: 12.5px; }
+.ps-netlines > div { display: flex; justify-content: space-between; padding: 4px 0; font-variant-numeric: tabular-nums; }
+.ps-netlines small { color: #888; }
+.ps-netlines + .ps-big { border-radius: 0 0 8px 8px; }
 .ps-big small { font-size: 13px; }
 .ps-big b { font-size: 23px; letter-spacing: .5px; }
 .ps-big b span { font-size: 12px; font-weight: normal; margin-left: 2px; }

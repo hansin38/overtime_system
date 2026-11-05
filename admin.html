@@ -173,6 +173,7 @@
                 <span class="pay-stat">발송 <b id="pay-stat-sent">-</b></span>
                 <span class="pay-stat">지급일 <b id="pay-stat-paydate" class="small">-</b></span>
                 <div class="right">
+                    <button class="pay-btn acc" onclick="openPayImport()">📥 회계사무소 급여대장</button>
                     <button class="pay-btn ghost" onclick="openPayCompanyModal()">회사 정보</button>
                     <button class="pay-btn ghost" onclick="openPaySendLog()">발송 이력</button>
                     <select id="pay-ledger-scope" class="pay-ledger-scope" title="대장 기간">
@@ -245,18 +246,54 @@
             </div>
             <div class="pay-grp lock">
                 <div class="gh">🔒 급여조건</div>
-                <div class="pay-fg">
-                    <div><label>연봉 (원)</label><input id="pe-annual" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                <input type="hidden" id="pe-type" value="annual">
+                <div class="pay-type-radio">
+                    <div class="pay-type-opt" data-type="annual" onclick="setEmpPayType('annual')">연봉 자동 (포괄)<small>연봉 → 기본급·연장·휴일·야간 자동 분배</small></div>
+                    <div class="pay-type-opt" data-type="fixed" onclick="setEmpPayType('fixed')">고정 금액<small>매달 같은 금액을 항목별로 입력</small></div>
+                </div>
+                <div class="pay-fg c3">
+                    <div id="pe-annual-wrap"><label>연봉 (원)</label><input id="pe-annual" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div class="pe-fixed-only"><label>기본급 (월)</label><input id="pe-fBase" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div class="pe-fixed-only"><label>연장근로수당 (고정)</label><input id="pe-fOt" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div class="pe-fixed-only"><label>휴일·야근수당 (고정)</label><input id="pe-fHn" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>식대 (월) <small>비과세</small></label><input id="pe-meal" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>차량유지비 (월) <small>비과세</small></label><input id="pe-vehicle" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
                     <div><label>직책수당 (월)</label><input id="pe-posAllow" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
-                    <div><label>식대 (월)</label><input id="pe-meal" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>현장수당 (월)</label><input id="pe-site" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
                     <div><label>명절상여 (설·추석 각)</label><input id="pe-bonus" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
                 </div>
                 <div id="pe-preview" class="pay-preview"></div>
             </div>
+            <div class="pay-grp">
+                <div class="gh">4대보험 기준 <small class="sub" style="font-weight: normal;">· 회계사무소 급여대장을 불러오면 자동으로 채워져요</small></div>
+                <div class="pay-fg">
+                    <div><label>국민연금 기준소득월액 <small>빈칸 = 이번 달 과세급여, 0 = 미가입</small></label><input id="pe-pensionBase" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>건강보험 보수월액 <small>빈칸 = 이번 달 과세급여</small></label><input id="pe-healthBase" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                </div>
+                <label class="pay-chk"><input type="checkbox" id="pe-empIns"> 고용보험 가입 <small class="sub">· 대표·임원 등 미가입이면 해제</small></label>
+            </div>
+            <label class="pay-chk strong"><input type="checkbox" id="pe-target"> 급여명세서 발급 대상 <small class="sub">· 해제하면 급여 관리 목록에서 빠져요 (연장근로·연차는 그대로)</small></label>
             <div class="pay-note">🔒 칸은 관리자 로그인 시에만 보이는 별도 저장소에 저장됩니다. 이름·전화번호는 등록 후 바꿀 수 없습니다.</div>
             <div class="pay-modal-foot">
                 <button class="pay-btn" onclick="closePayEmpModal()">취소</button>
                 <button class="pay-btn blue" onclick="savePayEmployee()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📥 [회계사무소 급여대장 불러오기] 공제를 회계사무소 계산값 그대로 반영 -->
+    <div id="pay-import-modal" class="pay-modal-bg" onclick="if (event.target === this) closePayImport()">
+        <div class="pay-modal wide">
+            <div class="mh"><b id="pay-import-title">📥 회계사무소 급여대장 불러오기</b><button class="pay-btn ghost" onclick="closePayImport()">✕</button></div>
+            <label class="pay-drop">
+                회계사무소에서 받은 급여대장 엑셀(.xls / .xlsx)을 선택하세요
+                <small>예: 한신 26-10 급여대장.xls · 공제 6항목은 그대로 반영, 지급이 다르면 표시해 드려요</small>
+                <input type="file" id="pay-import-file" accept=".xls,.xlsx" onchange="onPayImportFile(this)">
+            </label>
+            <div id="pay-import-result"></div>
+            <div class="pay-modal-foot">
+                <button class="pay-btn" onclick="closePayImport()">취소</button>
+                <button id="pay-import-apply" class="pay-btn acc-solid" onclick="applyPayImport()" disabled>공제 반영하고 저장</button>
             </div>
         </div>
     </div>
