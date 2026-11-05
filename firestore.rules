@@ -1,0 +1,33 @@
+rules_version = '2';
+// ==========================================
+// Firestore 보안 규칙 - Firebase 콘솔 > Firestore Database > 규칙 탭에 그대로 붙여넣고 [게시]
+// 관리자 이메일을 바꾸거나 추가할 때는 아래 isAdmin()의 목록과 Vercel 환경변수 ADMIN_EMAILS를 함께 수정
+// ==========================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 관리자 = Firebase Authentication으로 로그인했고, 이메일이 이 목록에 있는 계정
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['lulubebeya@gmail.com'];
+    }
+
+    // 기본정보: 직원 로그인 화면이 로그인 없이 읽으므로 읽기는 공개, 등록·수정·삭제는 관리자만
+    match /employees/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 연장근로·연차 신청: 직원 화면과 결재자 서명 링크가 로그인 없이 쓰므로 지금처럼 공개
+    match /overtime_requests/{id} { allow read, write: if true; }
+    match /temp_requests/{id} { allow read, write: if true; }
+    match /leave_requests/{id} { allow read, write: if true; }
+    match /leave_temp_requests/{id} { allow read, write: if true; }
+
+    // 🔒 급여: 관리자만
+    match /payroll_profiles/{id} { allow read, write: if isAdmin(); }
+    match /payroll_records/{id} { allow read, write: if isAdmin(); }
+    match /payroll_send_logs/{id} { allow read, write: if isAdmin(); }
+    match /payroll_settings/{id} { allow read, write: if isAdmin(); }
+  }
+}

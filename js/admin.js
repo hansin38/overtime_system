@@ -8,30 +8,21 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
 
 let currentTabStatus = "대기";
-let wageMapCache = {}; // 상세보기에서 쓰는 사원별 통상시급 (결재 내역 로드 시 갱신)
-// 🔐 관리자 계정 (비밀번호는 이 한 곳에서만 관리 - 바꿀 때는 pw 값만 수정)
-const ADMIN_ACCOUNT = { name: "김은지", pw: "1234" };
-
-// 👤 사원 관리 모달 열기
-function openEmpModal() {
-    document.getElementById('emp-manage-modal').style.display = 'flex';
-    loadEmployeeList(); 
-}
-
-// 👤 사원 관리 모달 닫기
-function closeEmpModal() {
-    document.getElementById('emp-manage-modal').style.display = 'none';
-    cancelEditEmployee(); // 수정 중이던 내용 초기화
-}
+let wageMapCache = {};   // 상세보기에서 쓰는 사원별 초과수당 시급 (결재 내역 로드 시 갱신)
+let limitMapCache = {};  // 사원별 고정OT 시간
 
 // 1. 페이지 로드 시 처리
-// 로그인 전에는 관리자 로그인 화면을, 로그인 후에는 결재 화면을 보여줌
-window.addEventListener('DOMContentLoaded', () => {
-    if (sessionStorage.getItem('boss_authenticated') === 'true') {
-        startAdminSystem();
+// 🔐 관리자 로그인은 Firebase 이메일 로그인 (계정은 Firebase 콘솔 > Authentication에서 관리)
+// 급여 정보는 이 로그인을 한 경우에만 읽고 쓸 수 있음 (firestore.rules 참고)
+let adminStarted = false;
+auth.onAuthStateChanged(user => {
+    if (user) {
+        if (!adminStarted) { adminStarted = true; startAdminSystem(); }
     } else {
+        document.getElementById('admin-system').style.display = 'none';
         document.getElementById('admin-login').style.display = 'block';
     }
 });
@@ -43,22 +34,39 @@ function startAdminSystem() {
     // 날짜 기본 필터 설정 (기본은 전체 조회로 날짜 비워둠)
     setDateRange('all');
 
-    loadAdminData();
+    const userInfo = document.getElementById('admin-user-email');
+    if (userInfo && auth.currentUser) userInfo.innerText = auth.currentUser.email;
+
+    migrateLegacyWages().finally(() => loadAdminData());
     loadSearchEmployeeList();
     bindSearchAndActionEvents();
 }
 
-// 🔐 관리자 로그인
+// 🔐 관리자 로그인 (브라우저 탭을 닫으면 로그아웃되도록 SESSION 유지)
 function handleAdminLogin() {
-    const name = document.getElementById('admin-name').value.trim();
-    const pw = document.getElementById('admin-pw').value.trim();
+    const email = document.getElementById('admin-email').value.trim();
+    const pw = document.getElementById('admin-pw').value;
+    if (!email || !pw) { alert("이메일과 비밀번호를 입력해 주세요."); return; }
 
-    if (name === ADMIN_ACCOUNT.name && pw === ADMIN_ACCOUNT.pw) {
-        sessionStorage.setItem('boss_authenticated', 'true');
-        startAdminSystem();
-    } else {
-        alert("관리자 정보가 일치하지 않습니다.");
-    }
+    auth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
+        .then(() => auth.signInWithEmailAndPassword(email, pw))
+        .catch(err => {
+            console.error("관리자 로그인 실패:", err);
+            alert("관리자 정보가 일치하지 않습니다.");
+        });
+}
+
+// 🔁 예전 사원정보(employees)에 들어 있던 통상시급을 관리자 전용 급여정보로 옮기고 원래 칸은 삭제
+// (사원 로그인 화면이 employees를 누구나 읽을 수 있어서, 금액 정보는 그곳에 두지 않음)
+function migrateLegacyWages() {
+    return db.collection("employees").get().then(snapshot => {
+        const jobs = snapshot.docs
+            .filter(doc => doc.data().hourlyWage !== undefined)
+            .map(doc => db.collection("payroll_profiles").doc(doc.id)
+                .set({ legacyHourlyWage: Number(doc.data().hourlyWage) || null }, { merge: true })
+                .then(() => doc.ref.update({ hourlyWage: firebase.firestore.FieldValue.delete() })));
+        return Promise.all(jobs);
+    }).catch(err => console.error("통상시급 이전 실패:", err));
 }
 
 // 드롭다운 변경 시 필터 즉시 적용 바인딩
@@ -97,107 +105,6 @@ function loadSearchEmployeeList() {
         .catch((error) => {
             console.error("검색용 사원 목록 로드 중 오류:", error);
         });
-}
-
-// 3. 사원 등록 / 수정 (수정 중이면 editingEmployeeId에 문서 ID가 들어 있음)
-let editingEmployeeId = null;
-
-function registerEmployee() {
-    const name = document.getElementById('new-emp-name').value.trim();
-    const phone = document.getElementById('new-emp-phone').value.trim();
-    const wageInput = document.getElementById('new-emp-wage');
-    const wageVal = wageInput ? wageInput.value.trim() : "";
-    const hireDate = document.getElementById('new-emp-hiredate').value;
-    const department = document.getElementById('new-emp-dept').value.trim();
-    const position = document.getElementById('new-emp-position').value.trim();
-
-    if (!name || phone.length !== 4) {
-        alert("이름과 휴대폰 뒷자리 4자리를 정확히 입력해주세요.");
-        return;
-    }
-
-    // 통상임금 미입력 시 기본값 10,000원 적용
-    const hourlyWage = wageVal ? parseInt(wageVal, 10) : 10000;
-    if (isNaN(hourlyWage) || hourlyWage <= 0) {
-        alert("올바른 통상시급을 입력해 주세요.");
-        return;
-    }
-    const empInfo = { hourlyWage, hireDate, department, position };
-
-    if (editingEmployeeId) {
-        db.collection("employees").doc(editingEmployeeId).update(empInfo)
-            .then(() => {
-                alert("수정 완료!");
-                cancelEditEmployee();
-                loadEmployeeList();
-                applyFilters(); // 시급 변경 시 결재 내역 금액 갱신
-            })
-            .catch(err => { console.error("사원 수정 실패:", err); alert("수정 중 오류가 발생했습니다."); });
-        return;
-    }
-
-    db.collection("employees").where("name", "==", name).where("phoneLast4", "==", phone).get()
-        .then((snapshot) => {
-            if (!snapshot.empty) {
-                alert("이미 등록된 사원입니다.");
-            } else {
-                db.collection("employees").add({
-                    name,
-                    phoneLast4: phone,
-                    ...empInfo,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                })
-                .then(() => {
-                    alert("등록 완료!");
-                    cancelEditEmployee(); // 입력창 모두 비우기
-                    loadEmployeeList();
-                    loadSearchEmployeeList();
-                });
-            }
-        });
-}
-
-// 사원 정보 수정: 목록의 값을 입력창으로 불러옴 (이름·번호는 신청 내역과 연결되어 있어 잠금)
-function editEmployee(docId) {
-    db.collection("employees").doc(docId).get().then(doc => {
-        if (!doc.exists) return alert("사원 정보를 찾을 수 없습니다.");
-        const data = doc.data();
-        editingEmployeeId = docId;
-        const nameEl = document.getElementById('new-emp-name');
-        const phoneEl = document.getElementById('new-emp-phone');
-        nameEl.value = data.name || '';
-        phoneEl.value = data.phoneLast4 || '';
-        nameEl.disabled = true;
-        phoneEl.disabled = true;
-        document.getElementById('new-emp-wage').value = data.hourlyWage || '';
-        document.getElementById('new-emp-hiredate').value = data.hireDate || '';
-        document.getElementById('new-emp-dept').value = data.department || '';
-        document.getElementById('new-emp-position').value = data.position || '';
-        document.getElementById('emp-form-title').innerText = `사원 정보 수정 (${data.name})`;
-        document.getElementById('emp-save-btn').innerText = '저장';
-        document.getElementById('emp-cancel-btn').style.display = 'inline-block';
-    });
-}
-
-function cancelEditEmployee() {
-    editingEmployeeId = null;
-    ['new-emp-name', 'new-emp-phone', 'new-emp-wage', 'new-emp-hiredate', 'new-emp-dept', 'new-emp-position'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { el.value = ''; el.disabled = false; }
-    });
-    document.getElementById('emp-form-title').innerText = '신규 사원 추가';
-    document.getElementById('emp-save-btn').innerText = '등록';
-    document.getElementById('emp-cancel-btn').style.display = 'none';
-}
-
-// 사원 삭제
-function deleteEmployee(docId) {
-    if(confirm("정말 삭제하시겠습니까?")) {
-        db.collection("employees").doc(docId).delete().then(() => {
-            loadEmployeeList(); 
-            loadSearchEmployeeList(); 
-        });
-    }
 }
 
 // 4. 📅 기간 퀵 버튼 설정 헬퍼 함수
@@ -255,57 +162,35 @@ function applyFilters() {
     loadAdminData(searchName, searchStatus, startDateVal, endDateVal);
 }
 
-// 5. 등록된 사원 목록 로드 (통상시급 열 <td> 위치 정상화 수정)
-function loadEmployeeList() {
-    db.collection("employees").get().then(snapshot => {
-        const tbody = document.getElementById('employee-list-tbody');
-        if (!tbody) return;
-        tbody.innerHTML = snapshot.docs.map(doc => {
-            const data = doc.data();
-            const wage = data.hourlyWage ? Number(data.hourlyWage).toLocaleString() : "10,000";
-
-            return `<tr>
-                <td style="vertical-align: middle;">${data.name}</td>
-                <td style="vertical-align: middle;">${data.phoneLast4}</td>
-                <td style="vertical-align: middle;">${data.department || '-'} / ${data.position || '-'}</td>
-                <!-- 입사일 미등록 시 연차 계산이 안 되므로 빨간색 안내 -->
-                <td style="vertical-align: middle;">${data.hireDate || '<span style="color: var(--danger-color);">미등록</span>'}</td>
-                <!-- 💰 통상시급 칸 -->
-                <td style="vertical-align: middle; text-align: center;">${wage}원</td>
-                <!-- ✏️ 관리(수정·삭제) 칸 -->
-                <td style="vertical-align: middle; text-align: center; white-space: nowrap;">
-                    <button onclick="editEmployee('${doc.id}')" class="btn-batch-delete" style="margin: 0 2px; padding: 0 10px; font-size: 13px; height: 32px; line-height: 30px; font-weight: bold; display: inline-block; white-space: nowrap; width: auto;">
-                        수정
-                    </button>
-                    <button onclick="deleteEmployee('${doc.id}')" class="btn-batch-delete" style="margin: 0 2px; padding: 0 10px; font-size: 13px; height: 32px; line-height: 30px; font-weight: bold; display: inline-block; white-space: nowrap; width: auto;">
-                        삭제
-                    </button>
-                </td>
-            </tr>`;
-        }).join('');
-    });
-}
-
 function logoutAdmin() {
-    sessionStorage.removeItem('boss_authenticated');
-    location.reload(); // 새로고침하면 관리자 로그인 화면으로 돌아감
+    auth.signOut().then(() => location.reload()); // 새로고침하면 관리자 로그인 화면으로 돌아감
 }
 
-// 6. 결재 내역 로드 (사원별 등록된 통상시급 정확한 매핑 반영)
+// 초과수당 시급 = 연봉 ÷ 12 ÷ 209 (도의적 지급 기준) / 연봉 미등록 시 예전 통상시급 → 10,000원
+function expenseHourlyWage(profile) {
+    const annual = Number(profile && profile.annualSalary);
+    if (annual > 0) return annual / 12 / 209;
+    const legacy = Number(profile && profile.legacyHourlyWage);
+    return legacy > 0 ? legacy : 10000;
+}
+
+// 6. 결재 내역 로드 (사원별 연봉 기준 시급·고정OT 반영)
 function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = "", endDateVal = "") {
-    // 1) 전체 사원의 통상시급 매핑 맵 생성 (비동기 동기화)
-    db.collection("employees").get().then(empSnapshot => {
-        const wageMap = {};
+    // 1) 전체 사원의 시급·고정OT 매핑 맵 생성
+    Promise.all([db.collection("employees").get(), db.collection("payroll_profiles").get()]).then(([empSnapshot, profSnapshot]) => {
+        const profiles = {};
+        profSnapshot.forEach(doc => { profiles[doc.id] = doc.data(); });
+        const wageMap = {}, limitMap = {};
         empSnapshot.forEach(doc => {
             const emp = doc.data();
             if (emp.name) {
-                // 이름 공백 제거 및 숫자로 확실하게 변환
                 const cleanName = emp.name.trim();
-                const wageNum = parseInt(emp.hourlyWage, 10);
-                wageMap[cleanName] = !isNaN(wageNum) && wageNum > 0 ? wageNum : 10000;
+                wageMap[cleanName] = expenseHourlyWage(profiles[doc.id]);
+                limitMap[cleanName] = getFixOtLimits(emp);
             }
         });
         wageMapCache = wageMap;
+        limitMapCache = limitMap;
 
         // 2) 신청 내역 가져오기
         let query = db.collection("overtime_requests");
@@ -369,10 +254,8 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
                 
                 // 💰 신청서의 직원명과 사원 DB 이름 매칭
                 const empNameKey = data.employeeName ? data.employeeName.trim() : "";
-                // 신청 내역 자체에 hourlyWage가 포함되어 있다면 그걸 우선 사용하고, 없으면 DB 시급 적용
-                const empWage = data.hourlyWage || wageMap[empNameKey] || 10000; 
-                
-                const payInfo = calculateOvertimePay(data.detailLogs, empWage);
+                const empWage = wageMap[empNameKey] || 10000;
+                const payInfo = calculateOvertimePay(data.detailLogs, empWage, limitMap[empNameKey]);
 
                 let statusColor = "var(--success-color)";
                 if (data.status === '반송') statusColor = "var(--danger-color)";
@@ -432,8 +315,9 @@ function viewDetails(docId) {
 
         const logs = Array.isArray(data.detailLogs) ? data.detailLogs : [];
         const empNameKey = data.employeeName ? data.employeeName.trim() : "";
-        const empWage = data.hourlyWage || wageMapCache[empNameKey] || 10000;
-        renderPaySummary(data.employeeName || "-", empWage, calculateOvertimePay(logs, empWage));
+        const empWage = wageMapCache[empNameKey] || 10000;
+        const limits = limitMapCache[empNameKey] || FIX_OT_LIMITS;
+        renderPaySummary(data.employeeName || "-", empWage, calculateOvertimePay(logs, empWage, limits), limits);
 
         modalTbody.innerHTML = logs.map(log =>
             `<tr>
@@ -453,15 +337,15 @@ function closeModal() {
 }
 
 // 💰 상세보기 상단 요약: 구분별 사용/한도(사원 화면과 동일 형식) + 가산율별 초과수당 + 총 지급액
-function renderPaySummary(name, wage, payInfo) {
+function renderPaySummary(name, wage, payInfo, limits = FIX_OT_LIMITS) {
     const box = document.getElementById('modal-summary');
     if (!box) return;
     const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
-    const overKeys = Object.keys(FIX_OT_LIMITS).filter(k => payInfo.used[k] > FIX_OT_LIMITS[k]);
+    const overKeys = Object.keys(limits).filter(k => payInfo.used[k] > limits[k]);
 
-    const usage = Object.keys(FIX_OT_LIMITS).map(k => {
+    const usage = Object.keys(limits).map(k => {
         const color = overKeys.includes(k) ? 'var(--danger-color)' : '#888';
-        return `<span style="color: ${color};">${labels[k]} ${payInfo.used[k].toFixed(1)}/${Math.floor(FIX_OT_LIMITS[k] * 2) / 2}</span>`;
+        return `<span style="color: ${color};">${labels[k]} ${payInfo.used[k].toFixed(1)}/${Math.floor(limits[k] * 2) / 2}</span>`;
     }).join(' · ');
 
     const badge = overKeys.length > 0
@@ -476,7 +360,7 @@ function renderPaySummary(name, wage, payInfo) {
     ).join('');
 
     box.innerHTML = `
-        <div style="font-weight: bold; margin-bottom: 6px;">${name} · 통상시급 ${Number(wage).toLocaleString()}원</div>
+        <div style="font-weight: bold; margin-bottom: 6px;">${name} · 초과수당 시급 ${Math.round(wage).toLocaleString()}원 <small style="color: #888; font-weight: normal;">(연봉÷12÷209)</small></div>
         <div style="margin-bottom: 8px;">${usage}</div>
         <div style="margin-bottom: 10px;">${badge}</div>
         ${lines ? `<div style="border-top: 1px solid #dee2e6; padding-top: 8px;">${lines}</div>` : ''}
@@ -489,7 +373,7 @@ function renderPaySummary(name, wage, payInfo) {
 
 
 // 💰 초과근무 수당 계산 함수 (날짜순으로 고정시간을 채우고, 넘긴 시간은 해당 가산율로 지급)
-function calculateOvertimePay(detailLogs, hourlyWage = 10000) {
+function calculateOvertimePay(detailLogs, hourlyWage = 10000, limits = FIX_OT_LIMITS) {
     const used = { overtime: 0, holiday: 0, night: 0 };
     const over = { overtime: 0, holiday: 0, night: 0 };
     const lineMap = {}; // 구분·가산율별 초과시간/금액 (상세보기 요약용)
@@ -501,7 +385,7 @@ function calculateOvertimePay(detailLogs, hourlyWage = 10000) {
     logs.forEach(log => {
         splitWorkLog(log).forEach(({ bucket, rate, hours }) => {
             if (hours <= 0) return;
-            const remain = Math.max(0, FIX_OT_LIMITS[bucket] - used[bucket]);
+            const remain = Math.max(0, limits[bucket] - used[bucket]);
             const overHours = Math.max(0, hours - remain);
             used[bucket] += hours;
             over[bucket] += overHours;
@@ -522,7 +406,7 @@ function calculateOvertimePay(detailLogs, hourlyWage = 10000) {
     const overtimeHours = Math.round((over.overtime + over.holiday) * 100) / 100;
 
     if (overtimePay <= 0) {
-        return { overtimeHours: 0, overtimePay: 0, used, lines: [], text: "초과 없음 (고정OT 범위 내)" };
+        return { overtimeHours: 0, overtimePay: 0, used, over, lines: [], text: "초과 없음 (고정OT 범위 내)" };
     }
     const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
     const detail = Object.keys(over)
@@ -533,6 +417,7 @@ function calculateOvertimePay(detailLogs, hourlyWage = 10000) {
         overtimeHours: overtimeHours,
         overtimePay: overtimePay,
         used,
+        over,
         lines,
         text: `${detail} 초과 (${overtimePay.toLocaleString()}원)`
     };
@@ -548,10 +433,13 @@ let leaveAdminLoaded = false;
 
 function switchAdminTab(tab) {
     const isLeave = tab === 'leave';
-    document.getElementById('ot-admin-section').style.display = isLeave ? 'none' : 'block';
+    document.getElementById('ot-admin-section').style.display = tab === 'ot' ? 'block' : 'none';
     document.getElementById('leave-admin-section').style.display = isLeave ? 'block' : 'none';
-    document.getElementById('tab-ot-admin').classList.toggle('active', !isLeave);
+    document.getElementById('pay-admin-section').style.display = tab === 'pay' ? 'block' : 'none';
+    document.getElementById('tab-ot-admin').classList.toggle('active', tab === 'ot');
     document.getElementById('tab-leave-admin').classList.toggle('active', isLeave);
+    document.getElementById('tab-pay-admin').classList.toggle('active', tab === 'pay');
+    if (tab === 'pay') openPayrollTab(); // js/payroll.js
     if (isLeave && !leaveAdminLoaded) {
         initLeaveYearSelect();
         loadLeaveAdmin();

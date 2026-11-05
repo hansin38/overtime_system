@@ -1,0 +1,12 @@
+{
+  "name": "overtime-system",
+  "private": true,
+  "description": "연장근로·연차·급여 관리 (정적 페이지 + Vercel 서버 함수 api/send-payslip)",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.15.2"
+  }
+}

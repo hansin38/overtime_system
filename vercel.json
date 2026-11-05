@@ -2,5 +2,11 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/s/:code", "destination": "/leave/leave-sign" }
-  ]
+  ],
+  "functions": {
+    "api/send-payslip.js": {
+      "maxDuration": 30,
+      "includeFiles": "node_modules/pdfkit/js/data/**"
+    }
+  }
 }

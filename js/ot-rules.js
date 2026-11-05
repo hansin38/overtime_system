@@ -16,6 +16,16 @@ const holidays = [
 // - 야간 시간은 연장(또는 휴일)과 야간 양쪽에서 함께 차감됨
 const FIX_OT_LIMITS = { overtime: 43.5, holiday: 9, night: 11 };
 
+// 사원별 고정OT (사원등록의 fixedOt 값, 없으면 기본값) - 근로계약서마다 시간이 다를 수 있음
+function getFixOtLimits(emp) {
+    const fixed = (emp && emp.fixedOt) || {};
+    const pick = (k) => {
+        const n = parseFloat(fixed[k]);
+        return isNaN(n) || n < 0 ? FIX_OT_LIMITS[k] : n;
+    };
+    return { overtime: pick('overtime'), holiday: pick('holiday'), night: pick('night') };
+}
+
 // 근무 1건을 { 고정OT 구분, 가산율, 시간 } 조각으로 분리 (야간 50%는 별도 조각)
 // - 평일·토요일(무급휴무일): 연장 150% + 야간(22:00~06:00) 50%
 // - 일요일/공휴일: 출근 후 실근무 8시간까지 휴일 150%, 8시간 초과분 휴일 200% + 야간(22:00~06:00) 50%

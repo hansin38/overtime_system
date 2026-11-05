@@ -14,6 +14,20 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 // 고정OT(FIX_OT_LIMITS)·공휴일(holidays)·splitWorkLog는 js/ot-rules.js에서 공통 관리
+let myFixOtLimits = { ...FIX_OT_LIMITS }; // 내 근로계약서 고정OT (로그인 후 사원정보에서 불러옴)
+
+function loadMyFixOtLimits() {
+    db.collection("employees")
+        .where("name", "==", currentUser.name)
+        .where("phoneLast4", "==", currentUser.phone)
+        .get()
+        .then(snapshot => {
+            if (snapshot.empty) return;
+            myFixOtLimits = getFixOtLimits(snapshot.docs[0].data());
+            calculateTotalHours();
+        })
+        .catch(err => console.error("고정OT 정보 로드 실패:", err));
+}
 
 // 중복 선언을 방지하기 위한 안전한 window 객체 바인딩 패턴 적용
 if (typeof window.currentUser === 'undefined') {
@@ -290,6 +304,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 resetFormRows();
             }
             restoreDraft();
+            loadMyFixOtLimits();
         } else {
             alert("로그인 권한이 없습니다. 로그인 페이지로 이동합니다.");
             location.href = 'index.html';
@@ -911,7 +926,7 @@ function calculateTotalHours() {
         }).forEach(({ bucket, hours }) => { if (hours > 0) used[bucket] += hours; });
     });
     const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
-    const overKeys = Object.keys(FIX_OT_LIMITS).filter(k => used[k] > FIX_OT_LIMITS[k]);
+    const overKeys = Object.keys(myFixOtLimits).filter(k => used[k] > myFixOtLimits[k]);
 
     const totalDisplay = document.getElementById('total-hours');
     const badge = document.getElementById('ot-status');
@@ -921,9 +936,9 @@ function calculateTotalHours() {
 
     // 구분별 사용/한도 표시 (초과한 항목은 빨간색)
     if(breakdown) {
-        breakdown.innerHTML = Object.keys(FIX_OT_LIMITS).map(k => {
+        breakdown.innerHTML = Object.keys(myFixOtLimits).map(k => {
             const color = overKeys.includes(k) ? 'var(--danger-color)' : '#888';
-            return `<span style="color: ${color};">${labels[k]} ${used[k].toFixed(1)}/${Math.floor(FIX_OT_LIMITS[k] * 2) / 2}</span>`; // 근무는 0.5시간 단위라 한도도 0.5 단위로 내림 표시
+            return `<span style="color: ${color};">${labels[k]} ${used[k].toFixed(1)}/${Math.floor(myFixOtLimits[k] * 2) / 2}</span>`; // 근무는 0.5시간 단위라 한도도 0.5 단위로 내림 표시
         }).join(' · ');
     }
 

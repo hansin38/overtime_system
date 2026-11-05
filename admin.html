@@ -5,8 +5,13 @@
     <title>관리자 결재 시스템</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/leave-style.css">
+    <link rel="stylesheet" href="css/payroll.css">
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <!-- 급여 관리: 명세서 PDF용 화면 캡처 · 임금대장 엑셀 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -14,7 +19,7 @@
     <div id="admin-login" style="display: none; max-width: 450px; margin: 40px auto; padding: 0 15px; box-sizing: border-box;">
         <div class="card">
             <h3>관리자 결재 시스템</h3>
-            <input type="text" id="admin-name" placeholder="관리자 이름" autocomplete="username">
+            <input type="email" id="admin-email" placeholder="관리자 이메일" autocomplete="username">
             <input type="password" id="admin-pw" placeholder="비밀번호" autocomplete="current-password"
                    onkeydown="if (event.key === 'Enter') handleAdminLogin()">
             <button onclick="handleAdminLogin()">관리자 접속</button>
@@ -26,8 +31,7 @@
         <div class="top-nav">
             <span class="nav-link" onclick="logoutAdmin()">← 로그아웃</span>
             <div style="display: flex; align-items: center; gap: 15px;">
-                <span class="user-info-text">👑 관리자 모드</span>
-                <button onclick="openEmpModal()" class="btn-submit">사원등록</button>
+                <span class="user-info-text">👑 관리자 모드 <small id="admin-user-email" style="color: #888; font-weight: normal;"></small></span>
             </div>
         </div>
 
@@ -35,6 +39,7 @@
         <div class="tabs" style="margin-bottom: 25px;">
             <button id="tab-ot-admin" class="tab-btn active" onclick="switchAdminTab('ot')">📝 연장근로 결재</button>
             <button id="tab-leave-admin" class="tab-btn" onclick="switchAdminTab('leave')">🏖️ 연차 관리</button>
+            <button id="tab-pay-admin" class="tab-btn" onclick="switchAdminTab('pay')">💵 급여 관리</button>
         </div>
 
         <div id="ot-admin-section">
@@ -159,6 +164,43 @@
                 <tbody id="leave-admin-tbody"></tbody>
             </table>
         </div>
+
+        <!-- 💵 급여 관리 (사원등록·월 급여·명세서 발송 / 화면 그리기는 js/payroll.js) -->
+        <div id="pay-admin-section" style="display: none;">
+            <div class="pay-month-bar">
+                <select id="pay-month" onchange="changePayMonth()"></select>
+                <span class="pay-stat">입력 <b id="pay-stat-saved">-</b></span>
+                <span class="pay-stat">발송 <b id="pay-stat-sent">-</b></span>
+                <span class="pay-stat">지급일 <b id="pay-stat-paydate" class="small">-</b></span>
+                <div class="right">
+                    <button class="pay-btn ghost" onclick="openPayCompanyModal()">회사 정보</button>
+                    <button class="pay-btn ghost" onclick="openPaySendLog()">발송 이력</button>
+                    <select id="pay-ledger-scope" class="pay-ledger-scope" title="대장 기간">
+                        <option value="month">이번 달</option>
+                        <option value="year">올해 전체</option>
+                    </select>
+                    <button class="pay-btn" onclick="downloadLedger('wage')">⬇ 임금대장</button>
+                    <button class="pay-btn org" onclick="downloadLedger('expense')">⬇ 경비대장</button>
+                    <button id="pay-bulk-btn" class="pay-btn blue" onclick="bulkSendWage()">일괄 발송</button>
+                </div>
+            </div>
+
+            <div class="pay-layout">
+                <div class="pay-side">
+                    <input id="pay-search" class="pay-search" placeholder="🔍 이름 검색" oninput="renderPayEmpList()">
+                    <div id="pay-emp-list" class="pay-emp-list"></div>
+                    <div id="pay-emp-others" class="pay-emp-list others"></div>
+                    <button class="pay-btn blue pay-add" onclick="openPayEmpModal()">＋ 사원등록</button>
+                    <div class="pay-legend">
+                        <span><span class="pay-dot d-sent"></span>발송완료</span>
+                        <span><span class="pay-dot d-save"></span>저장됨</span>
+                        <span><span class="pay-dot d-revised"></span>수정됨</span>
+                        <span><span class="pay-dot d-wait"></span>미입력</span>
+                    </div>
+                </div>
+                <div id="pay-main"></div>
+            </div>
+        </div>
     </div>
 
     <!-- 🏖️ [휴가신청서 상세 모달] -->
@@ -172,54 +214,98 @@
         </div>
     </div>
 
-    <!-- 👤 [사원 관리 모달창] -->
-    <div id="emp-manage-modal" class="modal">
-        <div class="modal-content" style="max-width: 850px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 15px; margin-bottom: 20px;">
-                <h3 style="margin: 0; text-align: left;">👤 사원 등록 및 관리</h3>
-                <span onclick="closeEmpModal()" style="cursor:pointer; font-size: 24px; color: #aaa; font-weight: bold;">&times;</span>
-            </div>
-
-            <!-- 신규 사원 추가 / 수정 (수정 시 이름·번호는 잠금) -->
-            <div style="background: var(--gray-color); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">
-                <h4 id="emp-form-title" style="margin-top: 0; margin-bottom: 10px; font-size: 14px; text-align: left;">신규 사원 추가</h4>
-                <div style="display: flex; gap: 10px; margin-bottom: 8px;">
-                    <input type="text" id="new-emp-name" placeholder="사원 이름" style="margin: 0; flex: 1;">
-                    <input type="text" id="new-emp-phone" placeholder="휴대폰 뒤 4자리" style="margin: 0; flex: 1;">
-                    <!-- ✨ 💰 통상임금(시급) 입력칸 추가 -->
-                    <input type="number" id="new-emp-wage" placeholder="통상시급 (원)" style="margin: 0; flex: 1;">
-                </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <!-- 🏖️ 연차 계산·휴가신청서용 정보 -->
-                    <label style="font-size: 13px; white-space: nowrap; color: #555;">입사일</label>
-                    <input type="date" id="new-emp-hiredate" style="margin: 0; flex: 1;">
-                    <input type="text" id="new-emp-dept" placeholder="소속 (예: 설계팀)" style="margin: 0; flex: 1;">
-                    <input type="text" id="new-emp-position" placeholder="직위 (예: 주임)" style="margin: 0; flex: 1;">
-                    <button id="emp-save-btn" onclick="registerEmployee()" class="btn-batch-delete" style="margin: 0; height: 42px; line-height: 40px; padding: 0 16px; font-weight: bold; background: #fff; flex-shrink: 0; white-space: nowrap;">등록</button>
-                    <button id="emp-cancel-btn" onclick="cancelEditEmployee()" class="btn-batch-delete" style="display: none; margin: 0; height: 42px; line-height: 40px; padding: 0 16px; flex-shrink: 0; white-space: nowrap;">취소</button>
+    <!-- 👤 [사원 등록/수정] 기본정보는 연장근로·연차와 공유, 🔒 칸은 관리자 전용 급여정보로 따로 저장 -->
+    <div id="pay-emp-modal" class="pay-modal-bg" onclick="if (event.target === this) closePayEmpModal()">
+        <div class="pay-modal">
+            <div class="mh"><b id="pay-emp-title">사원 등록</b><button class="pay-btn ghost" onclick="closePayEmpModal()">✕</button></div>
+            <div class="pay-grp">
+                <div class="gh">인적사항</div>
+                <div class="pay-fg">
+                    <div><label>이름</label><input id="pe-name"></div>
+                    <div><label>사원번호</label><input id="pe-empNo"></div>
+                    <div><label>전화번호 뒷4자리 (직원 로그인용)</label><input id="pe-phone" maxlength="4" inputmode="numeric"></div>
+                    <div><label>생년월일 🔒 <small>PDF 비밀번호</small></label><input id="pe-birth" type="date"></div>
+                    <div><label>이메일 🔒 <small>명세서 받을 주소</small></label><input id="pe-email" type="email"></div>
+                    <div><label>입금 계좌 🔒</label><input id="pe-bank" placeholder="예: 국민 123456-78-901234"></div>
                 </div>
             </div>
-
-            <!-- 등록된 사원 목록 (통상시급 헤더 열 추가) -->
-            <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; text-align: left;">📋 등록된 사원 목록</h4>
-            <div style="max-height: 250px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
-                <table style="margin: 0; table-layout: auto; width: 100%;">
-                    <thead style="position: sticky; top: 0; z-index: 1; background: #f8f9fa;">
-                        <tr>
-                            <th>이름</th>
-                            <th>번호(뒤4자리)</th>
-                            <th>소속 / 직위</th>
-                            <th>입사일</th>
-                            <!-- ✨ 💰 통상시급 열 추가 -->
-                            <th>통상시급</th>
-                            <th style="width: 130px;">관리</th>
-                        </tr>
-                    </thead>
-                    <tbody id="employee-list-tbody"></tbody>
-                </table>
+            <div class="pay-grp">
+                <div class="gh">근무조건</div>
+                <div class="pay-fg">
+                    <div><label>부서</label><input id="pe-dept"></div>
+                    <div><label>직급</label><input id="pe-position"></div>
+                    <div><label>입사일 (첫 근무일)</label><input id="pe-hire" type="date"></div>
+                    <div><label>퇴사일 (마지막 근무일)</label><input id="pe-resign" type="date"></div>
+                </div>
+                <div class="pay-fg c3">
+                    <div><label>고정OT 연장 (월 시간)</label><input id="pe-fixOt" type="number" step="0.5" oninput="updateEmpCalcPreview()"></div>
+                    <div><label>휴일</label><input id="pe-fixHol" type="number" step="0.5" oninput="updateEmpCalcPreview()"></div>
+                    <div><label>야간</label><input id="pe-fixNight" type="number" step="0.5" oninput="updateEmpCalcPreview()"></div>
+                </div>
+            </div>
+            <div class="pay-grp lock">
+                <div class="gh">🔒 급여조건</div>
+                <div class="pay-fg">
+                    <div><label>연봉 (원)</label><input id="pe-annual" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>직책수당 (월)</label><input id="pe-posAllow" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>식대 (월)</label><input id="pe-meal" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div><label>명절상여 (설·추석 각)</label><input id="pe-bonus" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                </div>
+                <div id="pe-preview" class="pay-preview"></div>
+            </div>
+            <div class="pay-note">🔒 칸은 관리자 로그인 시에만 보이는 별도 저장소에 저장됩니다. 이름·전화번호는 등록 후 바꿀 수 없습니다.</div>
+            <div class="pay-modal-foot">
+                <button class="pay-btn" onclick="closePayEmpModal()">취소</button>
+                <button class="pay-btn blue" onclick="savePayEmployee()">저장</button>
             </div>
         </div>
     </div>
+
+    <!-- 🏢 [회사 정보] 명세서 하단 문의처·회사명, 기본 지급일 -->
+    <div id="pay-company-modal" class="pay-modal-bg" onclick="if (event.target === this) closePayCompanyModal()">
+        <div class="pay-modal">
+            <div class="mh"><b>회사 정보</b><button class="pay-btn ghost" onclick="closePayCompanyModal()">✕</button></div>
+            <div class="pay-grp">
+                <div class="pay-fg">
+                    <div><label>회사명</label><input id="pc-companyName"></div>
+                    <div><label>대표이사</label><input id="pc-ceoName"></div>
+                    <div><label>문의 담당자 (부서·이름)</label><input id="pc-contactName" placeholder="예: 경영지원팀 김은지"></div>
+                    <div><label>담당자 전화</label><input id="pc-contactPhone"></div>
+                    <div><label>담당자 이메일</label><input id="pc-contactEmail"></div>
+                    <div><label>급여 지급일 (다음 달 며칠)</label><input id="pc-payDay" type="number" min="1" max="31"></div>
+                </div>
+            </div>
+            <div class="pay-modal-foot">
+                <button class="pay-btn" onclick="closePayCompanyModal()">취소</button>
+                <button class="pay-btn blue" onclick="savePayCompany()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📄 [명세서 보기] -->
+    <div id="pay-doc-modal" class="pay-modal-bg" onclick="if (event.target === this) closePayDoc()">
+        <div class="pay-modal wide">
+            <div class="mh"><b id="pay-doc-title">명세서</b>
+                <span style="display: flex; gap: 6px;"><button class="pay-btn" onclick="printPayDoc()">🖨️ 인쇄</button><button class="pay-btn" onclick="closePayDoc()">닫기</button></span>
+            </div>
+            <div id="pay-doc-body" class="pay-doc-body"></div>
+        </div>
+    </div>
+
+    <!-- 📮 [발송 이력] -->
+    <div id="pay-log-modal" class="pay-modal-bg" onclick="if (event.target === this) closePaySendLog()">
+        <div class="pay-modal">
+            <div class="mh"><b>발송 이력</b><button class="pay-btn ghost" onclick="closePaySendLog()">✕</button></div>
+            <table class="pay-hist">
+                <thead><tr><th>일시</th><th>대상</th><th>귀속월</th><th>서류</th><th>결과</th></tr></thead>
+                <tbody id="pay-log-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 발송 중 표시 · PDF 캡처용 숨김 영역 -->
+    <div id="pay-busy" class="pay-busy"><span></span></div>
+    <div id="pay-capture" class="pay-capture"></div>
 
     <!-- 📜 [상세 내역 모달창] -->
     <div id="detail-modal" class="modal">
@@ -246,8 +332,16 @@
         </div>
     </div>
 
+    <!-- 🖨️ 명세서 인쇄 영역 (화면에는 안 보이고 인쇄할 때만 style.css의 #print-modal 규칙으로 출력) -->
+    <div id="print-modal" style="display: none;">
+        <div class="print-paper">
+            <div id="pay-print-body"></div>
+        </div>
+    </div>
+
     <script src="js/ot-rules.js"></script>
     <script src="js/leavejs/leave-common.js"></script>
     <script src="js/admin.js"></script>
+    <script src="js/payroll.js"></script>
 </body>
 </html>
