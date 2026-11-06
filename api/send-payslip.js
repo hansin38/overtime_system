@@ -55,7 +55,7 @@ function buildLockedPdf(imageBuffer, password) {
         doc.image(imageBuffer, margin, margin, {
             fit: [doc.page.width - margin * 2, doc.page.height - margin * 2],
             align: 'center',
-            valign: 'top'
+            valign: 'center'   // 위아래 여백 같게
         });
         doc.end();
     });

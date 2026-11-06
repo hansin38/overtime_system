@@ -200,9 +200,42 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-paper.exp .ps-title { letter-spacing: 3px; font-size: 22px; }
 .ps-sub { text-align: center; color: #555; margin-bottom: 22px; }
 .ps-paper .ps-info { margin: 0 0 22px; }
-.ps-stamp { position: absolute; top: 34px; right: 40px; border: 2.5px solid var(--pay-red); color: var(--pay-red); font-weight: bold; padding: 4px 10px; border-radius: 4px; transform: rotate(-8deg); font-size: 13px; text-align: center; line-height: 1.3; }
+/* 명세서 3종(관리자 확인용·직원 발송본·경비) 공통: A4 한 장(700×990) 고정, 세 칸으로 나눔
+   [위 고정 76px] 로고·제목·날짜  ─ 간격 30px ─
+   [가운데] 남는 높이 전부, 내용이 넘치면 fitSlipBodies()가 가운데만 축소  ─ 간격 24px ─
+   [아래 고정 210px, 아래쪽 정렬] 인사말 ~ 마지막 줄 (경비명세서는 인사말뿐이라 90px) */
+.ps-paper.a4 { height: 990px; padding: 46px 78px 28px; display: flex; flex-direction: column; }
+.ps-paper.a4 .ps-top { flex: none; height: 76px; margin-bottom: 30px; }
+.ps-paper.a4 .ps-body { flex: 1; min-height: 0; overflow: hidden; }
+.ps-paper.a4 .ps-body-in { transform-origin: top center; }
+.ps-paper.a4 .ps-body-in > :last-child { margin-bottom: 0; }
+.ps-paper.a4 .ps-bottom { flex: none; min-height: 150px; margin-top: 24px; display: flex; flex-direction: column; justify-content: flex-end; }
+.ps-paper.a4 .ps-bottom .ps-foot { margin-top: 0; }
+.ps-paper.exp.a4 .ps-bottom { min-height: 90px; }   /* 경비명세서: 인사말만 있는 아래 칸 */
+/* 위·아래 여백 같게: 종이 맨 위 첫 요소도 아래 여백(28px)과 같은 28px 위치에서 시작
+   직원 발송본은 로고가 첫 요소, 관리자용은 '관리자 보관용' 표시, 경비명세서는 주황 선 → 그 아래로 제목을 내림 */
+.ps-paper.adm, .ps-paper.exp.a4 { padding-top: 66px; }
+.ps-paper.a4.adm .ps-logo, .ps-paper.exp.a4 .ps-logo { top: 58px; }
+.ps-paper.adm .ps-admin-mark { top: 28px; }
+.ps-paper.exp.a4 { border-top: none; }
+.ps-paper.exp.a4::before { content: ''; position: absolute; top: 28px; left: 0; right: 0; height: 6px; background: var(--pay-org); }
+.ps-paper.adm .ps-tbl th, .ps-paper.adm .ps-tbl td { padding: 4px 9px; }   /* 관리자용: 표 칸 높이만 낮춤 */
+/* 관리자용만: 메일로 안 나가므로 A4 비율에 묶이지 않게 종이를 더 길게 → 인쇄 시 위아래 공백 축소, 가운데 칸 확대 */
+.ps-paper.a4.adm { height: 1060px; }
+/* 관리자용만: 지급액 계·공제액 계·실지급액 칸 높이 축소 */
+.ps-paper.adm .ps-netlines { padding: 3px 16px; }
+.ps-paper.adm .ps-netlines > div { padding: 1px 0; }
+.ps-paper.adm .ps-big { padding: 8px 20px; }
+.ps-paper.adm .ps-big b { font-size: 19px; }
+.ps-paper.a4 .ps-logo { height: 44px; top: 28px; left: 60px; }
+.ps-paper.a4 .ps-title { margin-bottom: 14px; }
+.ps-paper.a4 .ps-sub { margin-bottom: 0; }
+.ps-paper.a4 .ps-info { margin-bottom: 38px; }
+.ps-paper.a4 .ps-info th, .ps-paper.a4 .ps-info td { padding: 4px 9px; }
 .ps-admin-mark { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); border: 1.5px solid #adb5bd; color: #868e96; background: #f8f9fa; font-size: 11px; font-weight: bold; padding: 2px 10px; border-radius: 4px; letter-spacing: 1px; white-space: nowrap; }
-.ps-stamp small { display: block; font-size: 10px; font-weight: normal; }
+/* 수정본 표시: 제목 옆 작은 파란 표시 + 날짜 줄 끝 '(MM-DD 수정)' */
+.ps-rev { display: inline-block; vertical-align: middle; margin-left: 10px; font-size: 11.5px; letter-spacing: 0; font-weight: bold; color: var(--pay-blue); background: var(--pay-blue-bg); border: 1px solid var(--pay-blue-line); border-radius: 20px; padding: 2px 10px; position: relative; top: -3px; }
+.ps-rev-date { color: var(--pay-blue); font-weight: bold; }
 
 .ps-box { border: 1.5px solid; border-radius: 8px; margin: 0 0 20px; }
 .ps-box .bt { font-weight: bold; font-size: 13.5px; padding: 12px 16px 0; }
@@ -273,6 +306,5 @@ table.pay-hist th { background: #f8f9fa; }
     #admin-system, #admin-login, .pay-modal-bg, .modal, .pay-busy, .pay-capture { display: none !important; }
     .ps-paper { width: 100%; padding: 8mm 6mm 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .ps-logo { top: 8mm; left: 6mm; }
-    .ps-stamp { top: 8mm; right: 6mm; }
-    .ps-admin-mark { top: 1mm; }
+    /* 명세서 3종(.a4)은 printPayDoc()이 따로 만든 인쇄 창(iframe)에서 A4 한 장 정중앙으로 인쇄 */
 }

@@ -1350,12 +1350,18 @@ function ytdFor(rec) {
     }), { pay: 0, deduct: 0, payout: 0 });
 }
 
-function slipHeadHtml(rec, title, sub, stamp) {
-    return `
+// 명세서 3종(관리자 확인용·직원 발송본·경비) 공통 A4 한 장 틀
+//  [위 고정] 로고·제목·날짜  /  [가운데] 내용 (넘치면 fitSlipBodies()가 축소)  /  [아래 고정] 인사말~마지막 줄
+// 맨 위 고정 영역: 로고·제목·날짜 줄
+function slipTopHtml(title, sub, stamp) {
+    return `<div class="ps-top">
         <img class="ps-logo" src="${PAY_LOGO}" alt="">
-        ${stamp ? `<div class="ps-stamp">수정본<small>${stamp} 수정</small></div>` : ''}
-        <h1 class="ps-title">${title}</h1>
-        <div class="ps-sub">${sub}</div>
+        <h1 class="ps-title">${title}${stamp ? `<span class="ps-rev">수정본</span>` : ''}</h1>
+        <div class="ps-sub">${sub}${stamp ? ` <span class="ps-rev-date">(${stamp.slice(5)} 수정)</span>` : ''}</div>
+    </div>`;
+}
+function slipInfoHtml(rec) {
+    return `
         <table class="ps-info">
             <tr><th>성명</th><td>${esc(rec.name)}</td><th>사원번호</th><td>${esc(rec.empNo || '-')}</td></tr>
             <tr><th>부서</th><td>${esc(rec.department || '-')}</td><th>직급</th><td>${esc(rec.position || '-')}</td></tr>
@@ -1384,9 +1390,11 @@ function renderWageSlipHtml(rec, opts = {}) {
     const contact = [s.contactName && `${esc(s.contactName)}`, s.contactPhone && `☎ ${esc(s.contactPhone)}`, s.contactEmail && `✉ ${esc(s.contactEmail)}`].filter(Boolean);
     const nonTaxNames = ['meal', 'vehicle'].filter(k => num(rec.pay[k])).map(k => k === 'meal' ? '식대' : '차량유지비').join('·');
 
-    return `<div class="ps-paper">
+    return `<div class="ps-paper a4 adm">
         <div class="ps-admin-mark">관리자 보관용 · 직원 발송 안 됨</div>
-        ${slipHeadHtml(rec, '임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
+        ${slipTopHtml('임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
+        <div class="ps-body"><div class="ps-body-in">
+        ${slipInfoHtml(rec)}
 
         <div class="ps-box pay">
             <div class="bt">① 급여 산출 내역</div>
@@ -1428,17 +1436,21 @@ function renderWageSlipHtml(rec, opts = {}) {
                 <div class="ps-small">${ymdOfDate(new Date())} 기준</div>` : `<div class="ps-small">입사일 미등록</div>`}
             </div>
         </div>
+        </div></div>
 
-        ${slipFootHtml(contact.length ? `<b>문의</b> ${contact.join(' · ')}` : '')}
-
-        ${wageLegalHtml(rec, '본 명세서는 근로기준법 제48조 제2항에 따라 교부합니다.')}
+        <div class="ps-bottom">
+            ${slipFootHtml(contact.length ? `<b>문의</b> ${contact.join(' · ')}` : '')}
+            ${wageLegalHtml(rec, '본 명세서는 근로기준법 제48조 제2항에 따라 교부합니다.')}
+        </div>
     </div>`;
 }
 
 // 직원 발송본 (메일 PDF) - 법정 기재사항만: 근로자 정보·지급일·항목별 금액·총액·공제내역·고정OT 시간과 계산방법
 function renderWageSlipEmployeeHtml(rec, opts = {}) {
-    return `<div class="ps-paper">
-        ${slipHeadHtml(rec, '임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
+    return `<div class="ps-paper a4">
+        ${slipTopHtml('임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
+        <div class="ps-body"><div class="ps-body-in">
+        ${slipInfoHtml(rec)}
 
         <div class="ps-box pay">
             <div class="bt">① 급여 산출 내역</div>
@@ -1447,10 +1459,12 @@ function renderWageSlipEmployeeHtml(rec, opts = {}) {
                 ${wageProrateHtml(rec)}
             </div>
         </div>
+        </div></div>
 
-        ${slipFootHtml('')}
-
-        ${wageLegalHtml(rec, '')}
+        <div class="ps-bottom">
+            ${slipFootHtml('')}
+            ${wageLegalHtml(rec, '')}
+        </div>
     </div>`;
 }
 
@@ -1476,19 +1490,11 @@ function wageProrateHtml(rec) {
     return rec.prorate ? `<div class="ps-prorate">📅 <b>일할계산</b> · ${rec.prorate.start.slice(5)} ~ ${rec.prorate.end.slice(5)} 재직 ${rec.prorate.days}일 ÷ ${rec.prorate.monthDays}일 (입사·퇴사일 포함)</div>` : '';
 }
 
-// 법정 기재사항: 고정OT 시간 수·통상시급·계산식 (근로기준법 시행령 제27조의2 제5호)
+// 법정 기재사항: 모든 사원 2줄 (제목 + 안내 한 줄) - 고정OT 표·계산식은 넣지 않음 (사용자 결정 2026-11-06)
 function wageLegalHtml(rec, tail) {
-    const h = rec.hours || { fixed: FIX_OT_LIMITS, actual: {} };
-    const c = rec.calc;
-    const body = c && !rec.prorate
-        ? `<table>
-                <tr><th>소정근로</th><th>고정 연장</th><th>고정 휴일</th><th>고정 야간</th><th>통상시급</th></tr>
-                <tr><td>${STD_MONTH_HOURS}h</td><td>${h.fixed.overtime}h</td><td>${h.fixed.holiday}h</td><td>${h.fixed.night}h</td><td>${won2(c.ordinaryWage)}원</td></tr>
-            </table>
-            연장 = 통상시급 × ${h.fixed.overtime}h × 1.5 · 휴일 = 통상시급 × ${h.fixed.holiday}h × 1.5 · 야간 = 통상시급 × ${h.fixed.night}h × 0.5 (원 단위 반올림)<br>`
-        : (rec.prorate ? `입사·퇴사한 달로 월급을 재직일수로 일할 계산했습니다.<br>` : `각 수당은 근로계약서에 정한 금액입니다.<br>`);
+    const body = rec.prorate ? `입사·퇴사한 달로 월급을 재직일수로 일할 계산했습니다.<br>` : `각 수당은 근로계약서에 정한 금액입니다.<br>`;
     return `<div class="ps-legal">
-            <div class="lh">법정 기재사항 (근로기준법 제48조${c ? ' · 고정OT 산정 기준' : ''})</div>
+            <div class="lh">법정 기재사항 (근로기준법 제48조)</div>
             ${body}
             ${tail}
         </div>`;
@@ -1504,8 +1510,10 @@ function renderExpenseSlipHtml(rec) {
             <span class="f">${fmtH(l.hours)} × ${won(x.wage)}원 × ${Math.round(l.rate * 100)}%</span><span class="v">${won(l.pay)}원</span></div>`).join('');
     const basis = x.annual ? `연봉 ${won(x.annual)} ÷ 12개월 ÷ ${STD_MONTH_HOURS}h` : (x.monthly ? `월급 ${won(x.monthly)} ÷ ${STD_MONTH_HOURS}h` : '등록된 시급');
     const s = P.settings;
-    return `<div class="ps-paper exp">
-        ${slipHeadHtml(rec, '초과근무수당 지급명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 경비 지급`)}
+    return `<div class="ps-paper exp a4">
+        ${slipTopHtml('초과근무수당 지급명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 경비 지급`)}
+        <div class="ps-body"><div class="ps-body-in">
+        ${slipInfoHtml(rec)}
 
         <div class="ps-box exp">
             <div class="bt">① 근로시간 (고정OT 대비)</div>
@@ -1536,8 +1544,11 @@ function renderExpenseSlipHtml(rec) {
 
         <div class="ps-big org"><small>초과근무수당 지급액</small><b>${won(x.pay)}<span>원</span></b></div>
         <div class="ps-acct">${rec.year}년 누계 (1~${Number(rec.month.slice(5))}월): <b>${won(expenseYtd(rec))}원</b></div>
+        </div></div>
 
-        ${slipFootHtml(s.contactName ? `<b>작성</b> ${esc(s.contactName)}` : '')}
+        <div class="ps-bottom">
+            ${slipFootHtml(s.contactName ? `<b>작성</b> ${esc(s.contactName)}` : '')}
+        </div>
     </div>`;
 }
 
@@ -1567,6 +1578,7 @@ function viewPayDoc(kind, admin = false) {
             : `<div class="pay-empty" style="background: #fff;">${mo} 승인된 연장근로 신청이 없어 경비명세서가 아직 없어요.<br>
                 <small>${pendingRequests(P.selectedId).length ? '결재 대기 중인 신청이 있어요. 연장근로 결재 탭에서 승인하면 자동으로 만들어져요.' : '직원이 연장근로 신청을 제출하고 승인되면 자동으로 만들어져요.'}</small></div>`;
         document.getElementById('pay-doc-modal').style.display = 'flex';
+        fitSlipBodies(document.getElementById('pay-doc-body'));
         return;
     }
     const unsaved = P.dirty || !P.records[P.selectedId];
@@ -1577,17 +1589,55 @@ function viewPayDoc(kind, admin = false) {
         + (admin ? '' : `<div class="pay-note blue" style="margin-bottom: 12px;">📧 직원에게는 이 모양 그대로 암호 PDF로 발송돼요.</div>`);
     document.getElementById('pay-doc-body').innerHTML = notes + slipHtmlFor(rec, kind, admin);
     document.getElementById('pay-doc-modal').style.display = 'flex';
+    fitSlipBodies(document.getElementById('pay-doc-body'));
 }
 function closePayDoc() { document.getElementById('pay-doc-modal').style.display = 'none'; }
 
+// 임금명세서는 A4 한 장 고정: 위(제목·날짜)·아래(인사말~법정 기재사항)는 그대로,
+// 가운데 내용(.ps-body-in)이 남는 칸보다 길면 그 비율만큼만 줄여서 한 장에 맞춤 (화면에 보이는 상태에서 호출)
+function fitSlipBodies(root) {
+    root.querySelectorAll('.ps-paper.a4').forEach(paper => {
+        const body = paper.querySelector('.ps-body'), inner = paper.querySelector('.ps-body-in');
+        if (!body || !inner) return;
+        inner.style.transform = '';
+        const s = body.clientHeight / inner.offsetHeight;
+        if (s < 1) inner.style.transform = `scale(${s.toFixed(4)})`;   // 모양 그대로 비율만 축소 (가운데 정렬)
+    });
+}
+
+// 명세서 인쇄: 관리자 화면의 인쇄 설정(연장근로·연차용 @page 등)과 섞이지 않게 숨은 iframe에서 따로 인쇄
+// A4 한 장(210×296mm) 칸 정중앙에 명세서(700×990px ≈ 185×262mm)를 놓아 위아래 여백이 같고 항상 1장
 function printPayDoc() {
     if (!payDocCurrent) return;
-    const body = document.getElementById('pay-print-body');
-    body.innerHTML = slipHtmlFor(payDocCurrent.rec, payDocCurrent.kind, payDocCurrent.admin);
-    const images = Array.from(body.querySelectorAll('img'));
-    Promise.all(images.map(img => img.complete ? Promise.resolve()
-        : new Promise(resolve => { img.onload = img.onerror = resolve; })))
-        .then(() => window.print());
+    const old = document.getElementById('pay-print-frame');
+    if (old) old.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'pay-print-frame';
+    frame.style.cssText = 'position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0;';
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>명세서</title>
+        <link rel="stylesheet" href="${new URL('css/payroll.css', location.href).href}">
+        <style>
+            @page { size: A4; margin: 0; }
+            html, body { margin: 0; padding: 0; background: #fff; }
+            .sheet { width: 210mm; height: 296mm; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+            .sheet .ps-paper { width: 700px !important; margin: 0 !important; flex: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        </style></head>
+        <body><div class="sheet">${slipHtmlFor(payDocCurrent.rec, payDocCurrent.kind, payDocCurrent.admin)}</div></body></html>`);
+    doc.close();
+    // 보기 창에서 맞춘 가운데 축소 비율을 그대로 사용
+    const shown = document.querySelector('#pay-doc-body .ps-body-in'), target = doc.querySelector('.ps-body-in');
+    if (shown && target) target.style.transform = shown.style.transform;
+    const link = doc.querySelector('link');
+    const waits = [new Promise(resolve => { if (link.sheet) resolve(); else link.onload = link.onerror = resolve; })]
+        .concat(Array.from(doc.images).map(img => img.complete ? Promise.resolve()
+            : new Promise(resolve => { img.onload = img.onerror = resolve; })));
+    Promise.all(waits).then(() => {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    });
 }
 
 // ------------------------------------------
@@ -1596,6 +1646,7 @@ function printPayDoc() {
 function captureSlipImage(html) {
     const box = document.getElementById('pay-capture');
     box.innerHTML = html;
+    fitSlipBodies(box);
     const images = Array.from(box.querySelectorAll('img'));
     return Promise.all(images.map(img => img.complete ? Promise.resolve()
         : new Promise(resolve => { img.onload = img.onerror = resolve; })))
