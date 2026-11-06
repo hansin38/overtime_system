@@ -29,5 +29,6 @@ service cloud.firestore {
     match /payroll_records/{id} { allow read, write: if isAdmin(); }
     match /payroll_send_logs/{id} { allow read, write: if isAdmin(); }
     match /payroll_settings/{id} { allow read, write: if isAdmin(); }
+    match /payroll_expenses/{id} { allow read, write: if isAdmin(); }
   }
 }
