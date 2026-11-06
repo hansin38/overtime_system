@@ -603,12 +603,14 @@ function renderPayMonthPane() {
             </div>
 
             <div class="pay-summary">
+                <button class="pay-btn pay-admin-view" onclick="viewPayDoc('wage', true)">📋 관리자 확인용 명세서 보기 <small>발송 안 됨</small></button>
                 <div class="sum-net"><small>실지급액 (계좌 송금)</small><b id="pay-sum-net"></b>
                     <div class="row"><span id="pay-sum-pay2"></span><span id="pay-sum-deduct2"></span></div>
                     <div class="round" id="pay-sum-round"></div></div>
                 <div class="sum-exp" id="pay-sum-exp"></div>
                 <div class="pay-save-row"><button class="pay-btn dark" onclick="savePayRecord()">저장</button></div>
                 <div class="pay-docs">
+                    <div class="pay-docs-h">📧 직원에게 보내는 명세서</div>
                     <div class="pay-doc">
                         <div class="t">📄 임금명세서<small id="pay-doc-wage-st"></small></div>
                         <div class="a"><button class="pay-btn sm" onclick="viewPayDoc('wage')">보기</button><button class="pay-btn sm blue" onclick="sendPayDoc('${id}', 'wage')">발송</button></div>
@@ -1368,47 +1370,30 @@ function slipFootHtml(left) {
     </div>`;
 }
 
+// opts.admin = true → 관리자 보관용(실근로·실지급액·누계·연차·계좌·문의처 포함, '관리자 보관용' 도장)
+// 그 외(기본값) → 직원 발송본: 법정 기재사항(근로기준법 시행령 제27조의2)만
 function renderWageSlipHtml(rec, opts = {}) {
+    if (!opts.admin) return renderWageSlipEmployeeHtml(rec, opts);
     const e = emp(rec.employeeId) || {};
     const year = rec.year;
     const t = rec.totals;
-    const payRows = PAY_ITEMS.filter(it => it.key === 'base' || num(rec.pay[it.key]))
-        .map(it => [it.label + (it.note ? ` (${it.note})` : ''), rec.pay[it.key]]);
-    const dedRows = DEDUCT_ITEMS.map(it => [it.label, rec.deduct[it.key] || 0])
-        .concat((rec.etc || []).map(x => [x.name || '기타', x.amount]));
-    const n = Math.max(payRows.length, dedRows.length);
-    const rows = Array.from({ length: n }, (_, i) => {
-        const p = payRows[i], d = dedRows[i];
-        return `<tr><td>${p ? esc(p[0]) : ''}</td><td class="num">${p ? won(p[1]) : ''}</td><td>${d ? esc(d[0]) : ''}</td><td class="num">${d ? won(d[1]) : ''}</td></tr>`;
-    }).join('');
     const h = rec.hours || { fixed: FIX_OT_LIMITS, actual: {} };
     const ytd = ytdFor(rec);
     const leave = leaveSummaryFor(e, year);
-    const c = rec.calc;
     const s = P.settings;
     const contact = [s.contactName && `${esc(s.contactName)}`, s.contactPhone && `☎ ${esc(s.contactPhone)}`, s.contactEmail && `✉ ${esc(s.contactEmail)}`].filter(Boolean);
     const nonTaxNames = ['meal', 'vehicle'].filter(k => num(rec.pay[k])).map(k => k === 'meal' ? '식대' : '차량유지비').join('·');
-    const legal = c && !rec.prorate
-        ? `<table>
-                <tr><th>소정근로</th><th>고정 연장</th><th>고정 휴일</th><th>고정 야간</th><th>통상시급</th></tr>
-                <tr><td>${STD_MONTH_HOURS}h</td><td>${h.fixed.overtime}h</td><td>${h.fixed.holiday}h</td><td>${h.fixed.night}h</td><td>${won2(c.ordinaryWage)}원</td></tr>
-            </table>
-            연장 = 통상시급 × ${h.fixed.overtime}h × 1.5 · 휴일 = 통상시급 × ${h.fixed.holiday}h × 1.5 · 야간 = 통상시급 × ${h.fixed.night}h × 0.5 (원 단위 반올림)<br>`
-        : (rec.prorate ? `입사·퇴사한 달로 월급을 재직일수로 일할 계산했습니다.<br>` : `각 수당은 근로계약서에 정한 금액입니다.<br>`);
 
     return `<div class="ps-paper">
+        <div class="ps-admin-mark">관리자 보관용 · 직원 발송 안 됨</div>
         ${slipHeadHtml(rec, '임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
 
         <div class="ps-box pay">
             <div class="bt">① 급여 산출 내역</div>
             <div class="in">
-                <table class="ps-tbl">
-                    <tr><th colspan="2">지급</th><th colspan="2">공제</th></tr>
-                    ${rows}
-                    <tr class="tot"><th>지급액 계</th><th class="num">${won(t.pay)}</th><th>공제액 계</th><th class="num">${won(t.deduct)}</th></tr>
-                </table>
+                ${wagePayTableHtml(rec)}
                 <div class="ps-taxline"><span>과세 ${won(t.taxable)}</span><span>비과세 ${won(t.nonTaxable)}${nonTaxNames ? ` (${nonTaxNames})` : ''}</span></div>
-                ${rec.prorate ? `<div class="ps-prorate">📅 <b>일할계산</b> · ${rec.prorate.start.slice(5)} ~ ${rec.prorate.end.slice(5)} 재직 ${rec.prorate.days}일 ÷ ${rec.prorate.monthDays}일 (입사·퇴사일 포함)</div>` : ''}
+                ${wageProrateHtml(rec)}
             </div>
         </div>
 
@@ -1446,12 +1431,67 @@ function renderWageSlipHtml(rec, opts = {}) {
 
         ${slipFootHtml(contact.length ? `<b>문의</b> ${contact.join(' · ')}` : '')}
 
-        <div class="ps-legal">
-            <div class="lh">법정 기재사항 (근로기준법 제48조${c ? ' · 고정OT 산정 기준' : ''})</div>
-            ${legal}
-            본 명세서는 근로기준법 제48조 제2항에 따라 교부합니다.
-        </div>
+        ${wageLegalHtml(rec, '본 명세서는 근로기준법 제48조 제2항에 따라 교부합니다.')}
     </div>`;
+}
+
+// 직원 발송본 (메일 PDF) - 법정 기재사항만: 근로자 정보·지급일·항목별 금액·총액·공제내역·고정OT 시간과 계산방법
+function renderWageSlipEmployeeHtml(rec, opts = {}) {
+    return `<div class="ps-paper">
+        ${slipHeadHtml(rec, '임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
+
+        <div class="ps-box pay">
+            <div class="bt">① 급여 산출 내역</div>
+            <div class="in">
+                ${wagePayTableHtml(rec)}
+                ${wageProrateHtml(rec)}
+            </div>
+        </div>
+
+        ${slipFootHtml('')}
+
+        ${wageLegalHtml(rec, '')}
+    </div>`;
+}
+
+function wagePayTableHtml(rec) {
+    const t = rec.totals;
+    const payRows = PAY_ITEMS.filter(it => it.key === 'base' || num(rec.pay[it.key]))
+        .map(it => [it.label + (it.note ? ` (${it.note})` : ''), rec.pay[it.key]]);
+    const dedRows = DEDUCT_ITEMS.map(it => [it.label, rec.deduct[it.key] || 0])
+        .concat((rec.etc || []).map(x => [x.name || '기타', x.amount]));
+    const n = Math.max(payRows.length, dedRows.length);
+    const rows = Array.from({ length: n }, (_, i) => {
+        const p = payRows[i], d = dedRows[i];
+        return `<tr><td>${p ? esc(p[0]) : ''}</td><td class="num">${p ? won(p[1]) : ''}</td><td>${d ? esc(d[0]) : ''}</td><td class="num">${d ? won(d[1]) : ''}</td></tr>`;
+    }).join('');
+    return `<table class="ps-tbl">
+                    <tr><th colspan="2">지급</th><th colspan="2">공제</th></tr>
+                    ${rows}
+                    <tr class="tot"><th>지급액 계</th><th class="num">${won(t.pay)}</th><th>공제액 계</th><th class="num">${won(t.deduct)}</th></tr>
+                </table>`;
+}
+
+function wageProrateHtml(rec) {
+    return rec.prorate ? `<div class="ps-prorate">📅 <b>일할계산</b> · ${rec.prorate.start.slice(5)} ~ ${rec.prorate.end.slice(5)} 재직 ${rec.prorate.days}일 ÷ ${rec.prorate.monthDays}일 (입사·퇴사일 포함)</div>` : '';
+}
+
+// 법정 기재사항: 고정OT 시간 수·통상시급·계산식 (근로기준법 시행령 제27조의2 제5호)
+function wageLegalHtml(rec, tail) {
+    const h = rec.hours || { fixed: FIX_OT_LIMITS, actual: {} };
+    const c = rec.calc;
+    const body = c && !rec.prorate
+        ? `<table>
+                <tr><th>소정근로</th><th>고정 연장</th><th>고정 휴일</th><th>고정 야간</th><th>통상시급</th></tr>
+                <tr><td>${STD_MONTH_HOURS}h</td><td>${h.fixed.overtime}h</td><td>${h.fixed.holiday}h</td><td>${h.fixed.night}h</td><td>${won2(c.ordinaryWage)}원</td></tr>
+            </table>
+            연장 = 통상시급 × ${h.fixed.overtime}h × 1.5 · 휴일 = 통상시급 × ${h.fixed.holiday}h × 1.5 · 야간 = 통상시급 × ${h.fixed.night}h × 0.5 (원 단위 반올림)<br>`
+        : (rec.prorate ? `입사·퇴사한 달로 월급을 재직일수로 일할 계산했습니다.<br>` : `각 수당은 근로계약서에 정한 금액입니다.<br>`);
+    return `<div class="ps-legal">
+            <div class="lh">법정 기재사항 (근로기준법 제48조${c ? ' · 고정OT 산정 기준' : ''})</div>
+            ${body}
+            ${tail}
+        </div>`;
 }
 
 // rec = 경비명세서 문서 (payroll_expenses)
@@ -1508,13 +1548,15 @@ function wageStampFor(rec) {
     return '';
 }
 
-function slipHtmlFor(rec, kind) {
-    return kind === 'wage' ? renderWageSlipHtml(rec, { stamp: wageStampFor(rec) }) : renderExpenseSlipHtml(rec);
+// admin=true일 때만 관리자 보관용. 메일 발송은 admin을 넘기지 않으므로 항상 직원 발송본
+function slipHtmlFor(rec, kind, admin = false) {
+    return kind === 'wage' ? renderWageSlipHtml(rec, { stamp: wageStampFor(rec), admin }) : renderExpenseSlipHtml(rec);
 }
 
 // 보기: 임금명세서는 저장 전이면 지금 입력값으로 미리보기 / 경비명세서는 승인된 연장근로 기준
+// admin=true → 오른쪽 맨 위 [관리자 확인용 명세서 보기], 그 외 → 직원 발송본 (메일로 나가는 모양)
 let payDocCurrent = null;
-function viewPayDoc(kind) {
+function viewPayDoc(kind, admin = false) {
     if (kind === 'expense') {
         const x = P.expenses[P.selectedId];
         const mo = `${monthLabel(P.month)}`;
@@ -1529,10 +1571,11 @@ function viewPayDoc(kind) {
     }
     const unsaved = P.dirty || !P.records[P.selectedId];
     const rec = buildRecord(P.selectedId, unsaved);
-    payDocCurrent = { rec, kind };
-    document.getElementById('pay-doc-title').innerText = kind === 'wage' ? '임금명세서' : '경비명세서 (관리자 보관용)';
-    document.getElementById('pay-doc-body').innerHTML = (unsaved
-        ? `<div class="pay-note warn" style="margin-bottom: 12px;">저장 전 미리보기입니다. 발송하려면 먼저 저장해 주세요.</div>` : '') + slipHtmlFor(rec, kind);
+    payDocCurrent = { rec, kind, admin };
+    document.getElementById('pay-doc-title').innerText = admin ? '임금명세서 (관리자 확인용)' : '임금명세서 (직원 발송본)';
+    const notes = (unsaved ? `<div class="pay-note warn" style="margin-bottom: 12px;">저장 전 미리보기입니다. 발송하려면 먼저 저장해 주세요.</div>` : '')
+        + (admin ? '' : `<div class="pay-note blue" style="margin-bottom: 12px;">📧 직원에게는 이 모양 그대로 암호 PDF로 발송돼요.</div>`);
+    document.getElementById('pay-doc-body').innerHTML = notes + slipHtmlFor(rec, kind, admin);
     document.getElementById('pay-doc-modal').style.display = 'flex';
 }
 function closePayDoc() { document.getElementById('pay-doc-modal').style.display = 'none'; }
@@ -1540,7 +1583,7 @@ function closePayDoc() { document.getElementById('pay-doc-modal').style.display 
 function printPayDoc() {
     if (!payDocCurrent) return;
     const body = document.getElementById('pay-print-body');
-    body.innerHTML = slipHtmlFor(payDocCurrent.rec, payDocCurrent.kind);
+    body.innerHTML = slipHtmlFor(payDocCurrent.rec, payDocCurrent.kind, payDocCurrent.admin);
     const images = Array.from(body.querySelectorAll('img'));
     Promise.all(images.map(img => img.complete ? Promise.resolve()
         : new Promise(resolve => { img.onload = img.onerror = resolve; })))
