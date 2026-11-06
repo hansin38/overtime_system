@@ -1599,8 +1599,14 @@ function captureSlipImage(html) {
     const images = Array.from(box.querySelectorAll('img'));
     return Promise.all(images.map(img => img.complete ? Promise.resolve()
         : new Promise(resolve => { img.onload = img.onerror = resolve; })))
-        .then(() => html2canvas(box.firstElementChild, { scale: 2, backgroundColor: '#ffffff', useCORS: true }))
-        .then(canvas => { box.innerHTML = ''; return canvas.toDataURL('image/jpeg', 0.92); });
+        // 4배 캡처(A4 약 500dpi) + PNG(무손실) - JPEG는 글자·표 선 주변이 뭉개져 흐릿해 보임
+        .then(() => html2canvas(box.firstElementChild, { scale: 4, backgroundColor: '#ffffff', useCORS: true }))
+        .then(canvas => {
+            box.innerHTML = '';
+            const png = canvas.toDataURL('image/png');
+            // Vercel 서버 요청 한도(4.5MB) 안전장치: 너무 크면 고화질 JPEG로
+            return png.length < 4000000 ? png : canvas.toDataURL('image/jpeg', 0.97);
+        });
 }
 
 function logPaySend(rec, kind, ok, error, revised) {
@@ -1624,7 +1630,7 @@ function sendPayDocCore(empId, kind) {
     const [y, m] = rec.month.split('-');
     const docName = kind === 'wage' ? '임금명세서' : '초과근무수당지급명세서';
     const subject = `[${P.settings.companyName}] ${y}년 ${Number(m)}월분 ${kind === 'wage' ? '임금명세서' : '초과근무수당 지급명세서'}${revised ? ' (수정본)' : ''}`;
-    const text = `${rec.name}님, ${y}년 ${Number(m)}월분 ${kind === 'wage' ? '임금명세서' : '초과근무수당 지급명세서'}${revised ? '(수정본)' : ''}를 보내드립니다.\n\n첨부된 PDF는 생년월일 6자리(예: 900101)로 열 수 있습니다.\n\n${P.settings.companyName}`;
+    const text = `${rec.name}님,\n\n${y}년 ${Number(m)}월분 ${kind === 'wage' ? '임금명세서' : '초과근무수당 지급명세서'}${revised ? '(수정본)' : ''}를 보내드립니다.\n\n첨부된 PDF는 생년월일 6자리(예: 900101)로 열 수 있습니다.\n\n귀하의 노고에 감사드립니다.\n${P.settings.companyName} 경영지원팀`;
 
     return captureSlipImage(html)
         .then(image => auth.currentUser.getIdToken().then(token => fetch('/api/send-payslip', {
