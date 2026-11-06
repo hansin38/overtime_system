@@ -1630,7 +1630,7 @@ function sendPayDocCore(empId, kind) {
     const [y, m] = rec.month.split('-');
     const docName = kind === 'wage' ? '임금명세서' : '초과근무수당지급명세서';
     const subject = `[${P.settings.companyName}] ${y}년 ${Number(m)}월분 ${kind === 'wage' ? '임금명세서' : '초과근무수당 지급명세서'}${revised ? ' (수정본)' : ''}`;
-    const text = `${rec.name}님,\n\n${y}년 ${Number(m)}월분 ${kind === 'wage' ? '임금명세서' : '초과근무수당 지급명세서'}${revised ? '(수정본)' : ''}를 보내드립니다.\n\n첨부된 PDF는 생년월일 6자리(예: 900101)로 열 수 있습니다.\n\n귀하의 노고에 감사드립니다.\n${P.settings.companyName} 경영지원팀`;
+    const text = `${rec.name}님,\n\n${y}년 ${Number(m)}월분 ${kind === 'wage' ? '임금명세서' : '초과근무수당 지급명세서'}${revised ? '(수정본)' : ''}를 보내드립니다.\n\n첨부된 PDF는 생년월일 6자리(예: 900101)로 열 수 있습니다.\n\n귀하의 노고에 감사드립니다.\n${P.settings.companyName} 관리부`;
 
     return captureSlipImage(html)
         .then(image => auth.currentUser.getIdToken().then(token => fetch('/api/send-payslip', {

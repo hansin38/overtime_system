@@ -11,7 +11,7 @@
 //   GMAIL_USER          (NAVER_USER가 없을 때) 보내는 Gmail 주소
 //   GMAIL_APP_PASSWORD  Gmail 앱 비밀번호 16자리 (Google 계정 > 보안 > 2단계 인증 > 앱 비밀번호)
 //   ADMIN_EMAILS        관리자 로그인 이메일 (여러 개면 쉼표로 구분)
-//   MAIL_FROM_NAME      (선택) 보내는 사람 이름, 예: 한신콘설탄트 경영지원팀
+//   MAIL_FROM_NAME      (선택) 보내는 사람 이름, 예: 한신콘설탄트 관리부
 //   MAIL_REPLY_TO       (선택) 직원이 [답장]을 누르면 받을 주소. 없으면 보내는 주소로 감
 // ==========================================
 const crypto = require('crypto');
