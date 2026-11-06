@@ -273,7 +273,20 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-big b span { font-size: 12px; font-weight: normal; margin-left: 2px; }
 .ps-big.blue { background: var(--pay-blue); }
 .ps-big.org { background: var(--pay-org); }
-.ps-acct { text-align: right; font-size: 11.5px; color: #555; margin: 8px 0 20px; min-height: 14px; }
+/* 직원 발송본: ① 상자 아래 작은 파란 실지급액 칸 */
+.ps-netbox { margin-top: 14px; background: var(--pay-blue); color: #fff; border-radius: 8px; padding: 9px 18px; display: flex; justify-content: space-between; align-items: baseline; }
+.ps-netbox small { font-size: 12.5px; }
+.ps-netbox b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.ps-netbox b span { font-size: 12px; font-weight: normal; margin-left: 2px; }
+/* 직원 발송본만 흑백 (로고 제외) */
+.ps-paper.emp .ps-box.pay { border-color: #adb5bd; }
+.ps-paper.emp .ps-box.pay th { background: #f1f3f5; }
+.ps-paper.emp .ps-box.pay tr.tot th { background: #e2e5e9; }
+.ps-paper.emp .ps-prorate { background: #f1f3f5; color: #444; }
+.ps-paper.emp .ps-netbox { background: #343a40; }
+.ps-paper.emp .ps-rev { color: #495057; background: #f1f3f5; border-color: #adb5bd; }
+.ps-paper.emp .ps-rev-date { color: #495057; }
+.ps-acct {text-align: right; font-size: 11.5px; color: #555; margin: 8px 0 20px; min-height: 14px; }
 
 .ps-info2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
 .ps-mini { border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; }

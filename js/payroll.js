@@ -1447,7 +1447,7 @@ function renderWageSlipHtml(rec, opts = {}) {
 
 // 직원 발송본 (메일 PDF) - 법정 기재사항만: 근로자 정보·지급일·항목별 금액·총액·공제내역·고정OT 시간과 계산방법
 function renderWageSlipEmployeeHtml(rec, opts = {}) {
-    return `<div class="ps-paper a4">
+    return `<div class="ps-paper a4 emp">
         ${slipTopHtml('임금명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 발급일 ${opts.issueDate || ymdOfDate(new Date())}`, opts.stamp)}
         <div class="ps-body"><div class="ps-body-in">
         ${slipInfoHtml(rec)}
@@ -1459,6 +1459,7 @@ function renderWageSlipEmployeeHtml(rec, opts = {}) {
                 ${wageProrateHtml(rec)}
             </div>
         </div>
+        <div class="ps-netbox"><small>이번 달 실지급액</small><b>${won(rec.totals.payout)}<span>원</span></b></div>
         </div></div>
 
         <div class="ps-bottom">
