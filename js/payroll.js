@@ -1593,6 +1593,12 @@ function viewPayDoc(kind, admin = false) {
     fitSlipBodies(document.getElementById('pay-doc-body'));
 }
 function closePayDoc() { document.getElementById('pay-doc-modal').style.display = 'none'; }
+// 명세서 보기 창: ESC로 닫기
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('pay-doc-modal');
+    if (modal && modal.style.display === 'flex') closePayDoc();
+});
 
 // 임금명세서는 A4 한 장 고정: 위(제목·날짜)·아래(인사말~법정 기재사항)는 그대로,
 // 가운데 내용(.ps-body-in)이 남는 칸보다 길면 그 비율만큼만 줄여서 한 장에 맞춤 (화면에 보이는 상태에서 호출)
