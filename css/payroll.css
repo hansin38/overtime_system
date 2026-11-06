@@ -303,6 +303,34 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-netbox small { font-size: 12.5px; }
 .ps-netbox b { font-size: 18px; font-variant-numeric: tabular-nums; }
 .ps-netbox b span { font-size: 12px; font-weight: normal; margin-left: 2px; }
+/* 경비명세서 (2026-11-06 확정 디자인: 보라 포인트 · 연장근무 달력) */
+/* 틀은 임금명세서와 통일: 흰 바탕 · 위 28 / 아래 28 / 양옆 78px · 로고 높이 44px */
+.ps-paper.a4.xp { background: #fff; padding: 28px 78px 28px; }
+.ps-paper.a4.xp .ps-top { height: auto; margin-bottom: 0; }
+.xp-head { display: flex; justify-content: space-between; align-items: center; }
+.xp-head img { height: 44px; }
+.xp-tag { background: #f1f3f5; color: #495057; font-size: 13px; font-weight: bold; padding: 6px 14px; border-radius: 20px; }
+.xp-name { margin-top: 40px; font-size: 14.5px; color: #666; }
+.xp-name b { color: #111; font-size: 17px; }
+.xp-hl { font-size: 20px; font-weight: bold; margin: 34px 0 20px; }
+.xp-hl em { font-style: normal; color: #7048e8; }
+.xp-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 4px 14px rgba(0,0,0,.05); }
+.xp-cal .w { text-align: center; font-size: 12px; color: #adb5bd; padding-bottom: 4px; }
+.xp-cal .dd { height: 50px; border-radius: 10px; font-size: 12px; color: #868e96; padding: 5px 7px; box-sizing: border-box; position: relative; }
+.xp-cal .dd.ot { background: #f3f0ff; color: #5f3dc4; }
+.xp-cal .dd .hr { position: absolute; right: 7px; bottom: 5px; font-size: 11px; font-weight: bold; }
+.xp-cal .dd.x { visibility: hidden; }
+.xp-sum { display: flex; gap: 12px; margin-top: 18px; }
+.xp-box { flex: 1; border-radius: 14px; padding: 16px 18px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.05); font-size: 13px; color: #868e96; }
+.xp-box b { display: block; font-size: 22px; color: #222; margin-top: 4px; }
+.xp-box.over b { color: #7048e8; }
+.xp-box.pay { background: #7048e8; color: #e5dbff; }
+.xp-box.pay b { color: #fff; font-size: 22px; }
+.xp-calc { margin-top: 24px; border-top: 1px solid #eef0f3; padding-top: 16px; font-size: 14px; color: #495057; line-height: 2; }
+.xp-calc b { color: #222; }
+.xp-sign { display: flex; justify-content: space-between; align-items: flex-end; font-size: 14px; }
+.xp-sign span { color: #444; font-size: 12px; }   /* 임금명세서 하단 인사말과 같은 크기·색 */
+.ps-paper.a4.xp .ps-bottom { min-height: 0; }
 /* 직원 발송본만 흑백 (로고 제외) */
 .ps-paper.emp .ps-box.pay { border-color: #adb5bd; }
 .ps-paper.emp .ps-box.pay th { background: #f1f3f5; }

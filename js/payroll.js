@@ -1535,55 +1535,61 @@ function wageLegalHtml(rec, tail) {
 }
 
 // rec = 경비명세서 문서 (payroll_expenses)
+// 디자인 (2026-11-06 확정): 상단 로고·월 태그·이름 / 연장근무 달력 / 고정·초과·수당 요약 / 계산식 / 인사말
+// 달력은 그 사원의 승인된 연장근로 신청(P.otRequests) 중 이 달 날짜의 시간으로 그림
 function renderExpenseSlipHtml(rec) {
     const h = rec.hours || { fixed: FIX_OT_LIMITS, actual: {}, over: {} };
     const x = rec.expense || { lines: [], pay: 0, wage: 0 };
-    const rateText = { overtime: '150%', holiday: '150% / 200%', night: '50%' };
-    const calcRows = x.lines.map(l => `
-        <div class="row"><span class="k">${OT_LABELS[l.bucket]} 초과</span>
-            <span class="f">${fmtH(l.hours)} × ${x.ordinary ? won2(x.wage) : won(x.wage)}원 × ${Math.round(l.rate * 100)}%</span><span class="v">${won(l.pay)}원</span></div>`).join('');
-    const basis = x.ordinary ? '통상시급 (고정OT 시급)'
-        : x.annual ? `연봉 ${won(x.annual)} ÷ 12개월 ÷ ${STD_MONTH_HOURS}h` : (x.monthly ? `월급 ${won(x.monthly)} ÷ ${STD_MONTH_HOURS}h` : '등록된 시급');
-    const wageText = x.ordinary ? won2(x.wage) : won(x.wage);
-    const s = P.settings;
-    return `<div class="ps-paper exp a4">
-        ${slipTopHtml('초과근무수당 지급명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 경비 지급`)}
+    const over = h.over || {};
+    const [y, mm] = rec.month.split('-');
+    const mon = Number(mm);
+    const e = emp(rec.employeeId) || {};
+    const logs = (P.otRequests || [])
+        .filter(r => r.employeeName === (e.name || rec.name) && (!e.phoneLast4 || r.employeePhone === e.phoneLast4) && requestMonth(r) === rec.month)
+        .flatMap(r => r.detailLogs || []);
+    const byDay = {};
+    logs.forEach(l => {
+        if (String(l.date || '').startsWith(rec.month)) {
+            const d = Number(l.date.slice(8));
+            byDay[d] = (byDay[d] || 0) + (parseFloat(l.hours) || 0);
+        }
+    });
+    const totalHours = logs.reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+    const hTxt = v => `${Math.round(v * 10) / 10}h`;
+
+    const first = new Date(Number(y), mon - 1, 1).getDay();
+    let cal = ['일', '월', '화', '수', '목', '금', '토'].map(w => `<div class="w">${w}</div>`).join('');
+    for (let i = 0; i < first; i++) cal += '<div class="dd x"></div>';
+    for (let d = 1; d <= monthDays(rec.month); d++) {
+        cal += byDay[d] ? `<div class="dd ot">${d}<span class="hr">${hTxt(byDay[d])}</span></div>` : `<div class="dd">${d}</div>`;
+    }
+
+    const overTotal = ['overtime', 'holiday', 'night'].reduce((s, k) => s + (over[k] || 0), 0);
+    const wageLabel = x.ordinary ? '통상시급' : '시급';
+    const multi = x.lines.length > 1;
+    const formula = x.lines.length
+        ? x.lines.map(l => `${wageLabel} × ${Math.round(l.rate * 100)}% × ${fmtH(l.hours)}${multi || l.bucket !== 'overtime' ? ` (${OT_LABELS[l.bucket]})` : ''}`).join(' + ') + ` = ${won(x.pay)}원`
+        : '고정 시간 범위 내 — 초과 없음';
+    const within = ['holiday', 'night'].filter(k => !(over[k] > 0))
+        .map(k => `${OT_LABELS[k]} ${fmtH(h.actual[k] || 0)} / ${fmtH(h.fixed[k] || 0)}`);
+
+    return `<div class="ps-paper a4 xp">
+        <div class="ps-top">
+            <div class="xp-head"><img src="${PAY_LOGO}" alt=""><span class="xp-tag">${y}년 ${mon}월 · 경비</span></div>
+            <div class="xp-name"><b>${esc(rec.name)}</b> ${esc(rec.position || '')}${rec.department ? ` · ${esc(rec.department)}` : ''}</div>
+        </div>
         <div class="ps-body"><div class="ps-body-in">
-        ${slipInfoHtml(rec)}
-
-        <div class="ps-box exp">
-            <div class="bt">① 근로시간 (고정OT 대비)</div>
-            <div class="in">
-                <table class="ps-tbl">
-                    <tr><th>구분</th><th>고정 (계약)</th><th>실근로</th><th>초과</th><th>가산율</th></tr>
-                    ${['overtime', 'holiday', 'night'].map(k => `<tr><td>${OT_LABELS[k]}</td><td>${fmtH(h.fixed[k])}</td><td>${fmtH(h.actual[k])}</td>
-                        <td class="${(h.over || {})[k] > 0 ? 'over' : ''}">${(h.over || {})[k] > 0 ? fmtH(h.over[k]) : '-'}</td><td>${rateText[k]}</td></tr>`).join('')}
-                </table>
+            <div class="xp-hl">${mon}월에 <em>${hTxt(totalHours).replace('h', '시간')}</em> 연장근무 하셨어요</div>
+            <div class="xp-cal">${cal}</div>
+            <div class="xp-sum">
+                <div class="xp-box">고정 연장<b>${fmtH(h.fixed.overtime || 0)}</b></div>
+                <div class="xp-box over">초과<b>${fmtH(overTotal)}</b></div>
+                <div class="xp-box pay">초과근무수당<b>${won(x.pay)}원</b></div>
             </div>
-        </div>
-
-        <div class="ps-box exp">
-            <div class="bt">② 산출 내역</div>
-            <div class="in">
-                <div class="ps-calc">
-                    <div class="row"><span class="k">적용 시급</span><span class="f">${basis}</span><span class="v">${wageText}원</span></div>
-                    ${calcRows || `<div class="row"><span class="k">초과 시간</span><span class="f">고정OT 범위 내</span><span class="v">0h</span></div>`}
-                    <div class="row final"><span class="k">지급액</span><span class="f">합계 (10원 단위 반올림)</span><span class="v">${won(x.pay)}원</span></div>
-                </div>
-                <div class="ps-tip">
-                    · 근로계약서의 고정 시간을 넘긴 근무에 대해 지급합니다.<br>
-                    · 시급은 ${x.ordinary ? '근로계약서의 통상시급(고정OT 산정 시급)' : '월급 기준(연봉÷12÷209)'}으로 적용하며, 금액은 10원 단위 반올림입니다.<br>
-                    · 연장근로 결재 '승인' 건 기준이며, 급여와 별도로 경비로 지급됩니다.
-                </div>
-            </div>
-        </div>
-
-        <div class="ps-big org"><small>초과근무수당 지급액</small><b>${won(x.pay)}<span>원</span></b></div>
-        <div class="ps-acct">${rec.year}년 누계 (1~${Number(rec.month.slice(5))}월): <b>${won(expenseYtd(rec))}원</b></div>
+            <div class="xp-calc">계산 &nbsp;<b>${formula}</b>${within.length ? `<br>${within.join(' · ')} — 고정 시간 범위 내` : ''}</div>
         </div></div>
-
         <div class="ps-bottom">
-            ${slipFootHtml(s.contactName ? `<b>작성</b> ${esc(s.contactName)}` : '')}
+            <div class="xp-sign"><span>이번 달도 수고 많으셨습니다.</span><b>${esc(P.settings.companyName)}</b></div>
         </div>
     </div>`;
 }
