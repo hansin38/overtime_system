@@ -11,7 +11,7 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 
 let currentTabStatus = "대기";
-let wageMapCache = {};   // 상세보기에서 쓰는 사원별 초과수당 시급 (결재 내역 로드 시 갱신)
+let empMapCache = {};    // 이름 → { employee, profile } (결재 내역 로드 시 갱신, 초과수당 시급 계산용)
 let limitMapCache = {};  // 사원별 고정OT 시간
 
 // 1. 페이지 로드 시 처리
@@ -166,38 +166,32 @@ function logoutAdmin() {
     auth.signOut().then(() => location.reload()); // 새로고침하면 관리자 로그인 화면으로 돌아감
 }
 
-// 초과수당 시급 = 월급 ÷ 209 (도의적 지급 기준: 연봉형은 연봉 ÷ 12 ÷ 209, 고정 금액형은 월 고정급여 합계 ÷ 209)
-// 급여조건 미등록 시 예전 통상시급 → 10,000원
-function expenseHourlyWage(profile) {
-    profile = profile || {};
-    if (profile.payType === 'fixed') {
-        const fp = profile.fixedPay || {};
-        const monthly = [fp.base, fp.overtime, fp.holidayNight, profile.mealAllowance, profile.vehicleAllowance, profile.positionAllowance, profile.siteAllowance]
-            .reduce((s, v) => s + (Number(v) || 0), 0);
-        if (monthly > 0) return monthly / 209;
-    }
-    const annual = Number(profile.annualSalary);
-    if (profile.payType !== 'fixed' && annual > 0) return annual / 12 / 209;
-    const legacy = Number(profile && profile.legacyHourlyWage);
-    return legacy > 0 ? legacy : 10000;
+// 초과수당 시급은 급여 관리와 같은 계산을 씀 → js/payroll.js 의 expenseWageInfo() 하나만 고치면 두 화면이 같이 바뀜
+// 신청서마다 그 신청의 귀속 월(requestMonth) 급여조건으로 계산 (연봉 인상 이력 반영)
+function wageInfoFor(nameKey, req) {
+    const who = empMapCache[nameKey];
+    if (!who) return { wage: 10000, label: '사원 미등록', ordinary: false };
+    return expenseWageInfo(who.profile, who.employee, requestMonth(req));
 }
 
-// 6. 결재 내역 로드 (사원별 연봉 기준 시급·고정OT 반영)
+// 6. 결재 내역 로드 (사원별 경비 시급·고정OT 반영)
 function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = "", endDateVal = "") {
-    // 1) 전체 사원의 시급·고정OT 매핑 맵 생성
+    // 1) 전체 사원의 급여조건·고정OT 매핑 맵 생성
     Promise.all([db.collection("employees").get(), db.collection("payroll_profiles").get()]).then(([empSnapshot, profSnapshot]) => {
         const profiles = {};
         profSnapshot.forEach(doc => { profiles[doc.id] = doc.data(); });
-        const wageMap = {}, limitMap = {};
+        // 경비 시급 기준 1회 설정 (js/payroll.js) - 결재 화면을 먼저 열어도 같은 기준으로 보이게
+        applyExpenseBasisDefaults(profiles, empSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const empMap = {}, limitMap = {};
         empSnapshot.forEach(doc => {
             const emp = doc.data();
             if (emp.name) {
                 const cleanName = emp.name.trim();
-                wageMap[cleanName] = expenseHourlyWage(profiles[doc.id]);
+                empMap[cleanName] = { employee: { id: doc.id, ...emp }, profile: profiles[doc.id] || {} };
                 limitMap[cleanName] = getFixOtLimits(emp);
             }
         });
-        wageMapCache = wageMap;
+        empMapCache = empMap;
         limitMapCache = limitMap;
 
         // 2) 신청 내역 가져오기
@@ -262,7 +256,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
                 
                 // 💰 신청서의 직원명과 사원 DB 이름 매칭
                 const empNameKey = data.employeeName ? data.employeeName.trim() : "";
-                const empWage = wageMap[empNameKey] || 10000;
+                const empWage = wageInfoFor(empNameKey, data).wage;
                 const payInfo = calculateOvertimePay(data.detailLogs, empWage, limitMap[empNameKey]);
 
                 let statusColor = "var(--success-color)";
@@ -326,9 +320,9 @@ function viewDetails(docId) {
 
         const logs = Array.isArray(data.detailLogs) ? data.detailLogs : [];
         const empNameKey = data.employeeName ? data.employeeName.trim() : "";
-        const empWage = wageMapCache[empNameKey] || 10000;
+        const wageInfo = wageInfoFor(empNameKey, data);
         const limits = limitMapCache[empNameKey] || FIX_OT_LIMITS;
-        renderPaySummary(data.employeeName || "-", empWage, calculateOvertimePay(logs, empWage, limits), limits);
+        renderPaySummary(data.employeeName || "-", wageInfo, calculateOvertimePay(logs, wageInfo.wage, limits), limits);
 
         modalTbody.innerHTML = logs.map(log =>
             `<tr>
@@ -348,7 +342,8 @@ function closeModal() {
 }
 
 // 💰 상세보기 상단 요약: 구분별 사용/한도(사원 화면과 동일 형식) + 가산율별 초과수당 + 총 지급액
-function renderPaySummary(name, wage, payInfo, limits = FIX_OT_LIMITS) {
+function renderPaySummary(name, wageInfo, payInfo, limits = FIX_OT_LIMITS) {
+    const wageText = wageInfo.wage.toLocaleString(undefined, { maximumFractionDigits: wageInfo.ordinary ? 2 : 0 });
     const box = document.getElementById('modal-summary');
     if (!box) return;
     const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
@@ -371,7 +366,7 @@ function renderPaySummary(name, wage, payInfo, limits = FIX_OT_LIMITS) {
     ).join('');
 
     box.innerHTML = `
-        <div style="font-weight: bold; margin-bottom: 6px;">${name} · 초과수당 시급 ${Math.round(wage).toLocaleString()}원 <small style="color: #888; font-weight: normal;">(연봉÷12÷209)</small></div>
+        <div style="font-weight: bold; margin-bottom: 6px;">${name} · 초과수당 시급 ${wageText}원 <small style="color: #888; font-weight: normal;">(${wageInfo.label})</small></div>
         <div style="margin-bottom: 8px;">${usage}</div>
         <div style="margin-bottom: 10px;">${badge}</div>
         ${lines ? `<div style="border-top: 1px solid #dee2e6; padding-top: 8px;">${lines}</div>` : ''}

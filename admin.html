@@ -262,6 +262,11 @@
                     <div><label>직책수당 (월)</label><input id="pe-posAllow" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
                     <div><label>현장수당 (월)</label><input id="pe-site" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
                     <div><label>명절상여 (설·추석 각)</label><input id="pe-bonus" inputmode="numeric" oninput="onEmpMoneyInput(this)"></div>
+                    <div id="pe-expBasis-wrap"><label>연장근로 경비 시급</label>
+                        <select id="pe-expBasis" onchange="updateEmpCalcPreview()">
+                            <option value="monthly">월급÷209 · 기본</option>
+                            <option value="ordinary">통상시급 (고정OT 시급)</option>
+                        </select></div>
                 </div>
                 <div id="pe-preview" class="pay-preview"></div>
                 <div id="pe-from-wrap" class="pay-from">

@@ -138,7 +138,7 @@ function emptyPay() { return Object.fromEntries(PAY_ITEMS.map(it => [it.key, 0])
 //   연장수당 = 통상시급 × 연장 가산시간 / 휴일·야간수당 = 통상시급 × (휴일+야간 가산시간) → 둘 합계로 반올림 (회사 급여대장 방식)
 //   기본급 = 월급 − 식대 − 차량유지비 − 직책수당 − 현장수당 − 고정OT 수당
 // [고정 금액] 사원등록에 입력한 항목을 매달 그대로
-// 초과수당(경비) 시급 = 월급 ÷ 209 (연봉형은 연봉 ÷ 12 ÷ 209)
+// 초과수당(경비) 시급 = 기본은 월급÷209(연봉형은 연봉÷12÷209), 사원 정보에서 '통상시급'을 고른 연봉형 사원만 통상시급(고정OT 시급)
 // ------------------------------------------
 function fixedAllowances(profile) {
     return { meal: num(profile.mealAllowance), vehicle: num(profile.vehicleAllowance), position: num(profile.positionAllowance), site: num(profile.siteAllowance) };
@@ -165,6 +165,8 @@ function calcPayStructure(profile, employee) {
     const bonusMonthly = num(profile.holidayBonus) * 2 / 12;
     const totalHours = STD_MONTH_HOURS + weighted.overtime + weighted.holiday + weighted.night;
     const ordinaryWage = (monthlyRaw + bonusMonthly) / totalHours;
+    // 경비(초과근무수당) 시급: 기본은 월급÷209, 사원 정보에서 '통상시급'을 고른 사원만 통상시급(고정OT 시급)
+    const ordinaryBasis = profile.expenseWageBasis === 'ordinary';
     const monthly = Math.round(monthlyRaw);
     const pay = { ...emptyPay(), ...allow };
     pay.overtime = Math.round(ordinaryWage * weighted.overtime);
@@ -172,7 +174,8 @@ function calcPayStructure(profile, employee) {
     pay.holiday = Math.round(ordinaryWage * weighted.holiday);
     pay.night = holidayNight - pay.holiday;
     pay.base = monthly - pay.meal - pay.vehicle - pay.position - pay.site - pay.overtime - holidayNight;
-    return { type: 'annual', annual, monthly, monthlyRaw, bonusMonthly, ordinaryWage, expenseWage: monthlyRaw / STD_MONTH_HOURS, fixed, weighted, totalHours, pay };
+    return { type: 'annual', annual, monthly, monthlyRaw, bonusMonthly, ordinaryWage, ordinaryBasis,
+        expenseWage: ordinaryBasis ? ordinaryWage : monthlyRaw / STD_MONTH_HOURS, fixed, weighted, totalHours, pay };
 }
 
 // 이번 달 재직 기간 (입사·퇴사일 당일 포함, 달력일 기준 일할)
@@ -253,17 +256,42 @@ function requestMonth(req) {
     return dates.length ? dates[dates.length - 1].slice(0, 7) : '';
 }
 
+// 1회 설정 (2026-11-06): 경비 시급은 월급÷209가 기본, 이 사원들만 통상시급(고정OT 시급)
+// 관리자 로그인 상태에서 아직 설정이 없을 때만 저장 → 이후 사원 정보에서 바꾼 값은 건드리지 않음
+const EXPENSE_ORDINARY_BASIS_NAMES = ['최성욱', '김경범', '장용덕'];
+function applyExpenseBasisDefaults(profiles, employees) {
+    const jobs = employees.filter(e => EXPENSE_ORDINARY_BASIS_NAMES.includes((e.name || '').trim()))
+        .filter(e => !(profiles[e.id] || {}).expenseWageBasis)
+        .map(e => {
+            profiles[e.id] = { ...(profiles[e.id] || {}), expenseWageBasis: 'ordinary' };
+            return db.collection("payroll_profiles").doc(e.id).set({ expenseWageBasis: 'ordinary' }, { merge: true });
+        });
+    return Promise.all(jobs).catch(err => console.error("경비 시급 기준 설정 실패:", err));
+}
+
+// ★ 경비(초과근무수당) 시급 - 하나의 계산: 급여 관리와 연장근로 결재 화면(js/admin.js)이 함께 씀
+//   profile = payroll_profiles 문서, ym 을 주면 그 달 급여조건(연봉 인상 이력) 기준
+//   연봉형: 통상시급(기본) 또는 연봉÷12÷209(사원 정보에서 월급÷209 선택) · 고정 금액형: 월급÷209
+//   급여조건 미등록: 예전 통상시급 → 10,000원
+function expenseWageInfo(profile, employee, ym) {
+    const cond = ym ? condFor(profile || {}, ym) : (profile || {});
+    const s = calcPayStructure(cond, employee || {});
+    if (s) return { wage: s.expenseWage, label: s.type === 'annual' ? (s.ordinaryBasis ? '통상시급' : '연봉÷12÷209') : '월급÷209', ordinary: s.type === 'annual' && s.ordinaryBasis };
+    const legacy = Number(cond.legacyHourlyWage);
+    return { wage: legacy > 0 ? legacy : 10000, label: legacy > 0 ? '예전 통상시급' : '급여조건 미등록', ordinary: false };
+}
+
 // 그 달 실근로시간·초과수당(경비) 계산 (requests = 그 사원의 연장근로 신청들, 귀속 월로 거름)
 // cond = 그 달 급여조건 (연봉 인상 이력 반영)
 function calcOvertimeFor(employee, cond, requests, ym) {
     const structure = calcPayStructure(cond, employee);
-    const wage = structure ? structure.expenseWage : expenseHourlyWage(cond);
+    const wage = expenseWageInfo(cond, employee).wage;
     const limits = getFixOtLimits(employee);
     const mine = requests.filter(r => r.employeeName === employee.name && r.employeePhone === employee.phoneLast4 && requestMonth(r) === ym);
     const result = calculateOvertimePay(mine.flatMap(r => r.detailLogs || []), wage, limits);
     return {
         wage, limits, count: mine.length,
-        basis: structure ? (structure.type === 'annual' ? { annual: structure.annual } : { monthly: structure.monthly }) : {},
+        basis: structure ? (structure.type === 'annual' ? { annual: structure.annual, ordinary: !!structure.ordinaryBasis } : { monthly: structure.monthly }) : {},
         actual: result.used, over: result.over, lines: result.lines, pay: result.overtimePay
     };
 }
@@ -410,7 +438,8 @@ function loadPayrollData() {
         const list = monthEmployees();
         if (!P.employees.find(e => e.id === P.selectedId)) P.selectedId = list.length ? list[0].id : null;
         P.dirty = false;
-        return syncMonthExpenses().then(() => {
+        // 경비명세서를 다시 계산하기 전에 경비 시급 기준(1회 설정)부터 맞춤
+        return applyExpenseBasisDefaults(P.profiles, P.employees).then(syncMonthExpenses).then(() => {
             P.yearExpenses = P.yearExpenses.filter(x => x.month !== ym).concat(Object.values(P.expenses));
             renderPayMonthBar();
             renderPayEmpList();
@@ -898,7 +927,7 @@ function renderPayInfoPane() {
                     (p.payHistory || []).length > 1 ? ['변경 이력', p.payHistory.slice().reverse().map(h =>
                         `${h.from === '0000-00' ? '처음' : h.from + '분부터'} · ${h.payType === 'fixed' ? '고정 ' + won(sumValues(h.fixedPay) + num(h.mealAllowance) + num(h.vehicleAllowance) + num(h.positionAllowance) + num(h.siteAllowance)) : '연봉 ' + won(h.annualSalary)}`).join('<br>')] : null,
                     s && s.type === 'annual' ? ['통상시급', `${won2(s.ordinaryWage)}원 <small class="sub">자동</small>`] : null,
-                    ['경비 시급', s ? `${won(s.expenseWage)}원 <small class="sub">월급÷209</small>` : (p.legacyHourlyWage ? `${won(p.legacyHourlyWage)}원 <small class="sub">예전 통상시급</small>` : '')]
+                    ['경비 시급', s ? (s.ordinaryBasis ? `${won2(s.expenseWage)}원 <small class="sub">통상시급 (고정OT 시급)</small>` : `${won(s.expenseWage)}원 <small class="sub">월급÷209</small>`) : (p.legacyHourlyWage ? `${won(p.legacyHourlyWage)}원 <small class="sub">예전 통상시급</small>` : '')]
                 ])}</div>
                 <div class="pay-card"><h4>4대보험 · 소득세 기준 <small class="sub" style="font-weight: normal;">회계사무소 급여대장을 불러오면 자동 갱신</small></h4>${dl([
                     ['국민연금 기준', p.pensionBase === 0 ? '미가입' : (p.pensionBase ? won(p.pensionBase) : '이번 달 과세급여')],
@@ -939,6 +968,7 @@ function openPayEmpModal(empId = null) {
         pensionBase: m(p.pensionBase), healthBase: m(p.healthBase)
     };
     [...EMP_TEXT_FIELDS, ...EMP_MONEY_FIELDS].forEach(k => { document.getElementById('pe-' + k).value = v[k] ?? ''; });
+    document.getElementById('pe-expBasis').value = p.expenseWageBasis === 'ordinary' ? 'ordinary' : 'monthly';
     document.getElementById('pe-empIns').checked = p.employmentInsured !== false;
     document.getElementById('pe-target').checked = empId ? p.payslipTarget === true : true;
     setEmpPayType(payTypeOf(p));
@@ -958,6 +988,7 @@ function setEmpPayType(type) {
     document.getElementById('pe-type').value = type;
     document.querySelectorAll('.pay-type-opt').forEach(el => el.classList.toggle('on', el.dataset.type === type));
     document.getElementById('pe-annual-wrap').style.display = type === 'annual' ? '' : 'none';
+    document.getElementById('pe-expBasis-wrap').style.display = type === 'annual' ? '' : 'none';   // 통상시급은 연봉형만 있음
     document.querySelectorAll('.pe-fixed-only').forEach(el => { el.style.display = type === 'fixed' ? '' : 'none'; });
     updateEmpCalcPreview();
 }
@@ -985,6 +1016,7 @@ function readEmpForm() {
         pensionBase: optMoney('pensionBase'), healthBase: optMoney('healthBase'),
         employmentInsured: document.getElementById('pe-empIns').checked,
         payslipTarget: document.getElementById('pe-target').checked,
+        expenseWageBasis: g('expBasis') === 'ordinary' ? 'ordinary' : 'monthly',
         from: g('from')
     };
 }
@@ -1019,7 +1051,7 @@ function updateEmpCalcPreview() {
     const minWage = MIN_WAGE[year] || MIN_WAGE[Math.max(...Object.keys(MIN_WAGE).map(Number))];
     const ok = s.ordinaryWage >= minWage;
     box.innerHTML = `월급 ${won(s.monthly)} → 기본급 ${won(s.pay.base)} · 연장 ${won(s.pay.overtime)} · 휴일·야간 ${won(s.pay.holiday + s.pay.night)}<br>
-        통상시급 ${won2(s.ordinaryWage)}원 · 경비 시급 ${won(s.expenseWage)}원
+        통상시급 ${won2(s.ordinaryWage)}원 · 경비 시급 ${s.ordinaryBasis ? `${won2(s.expenseWage)}원 (통상시급)` : `${won(s.expenseWage)}원 (월급÷209)`}
         <span style="color: ${ok ? 'var(--success-color)' : 'var(--danger-color)'};">${ok ? '✅' : '⚠️'} 최저임금 ${won(minWage)}원 ${ok ? '이상' : '미달'}</span>
         ${s.pay.base < 0 ? '<br><b style="color: var(--danger-color);">⚠️ 기본급이 마이너스입니다. 연봉·수당을 확인해 주세요.</b>' : ''}`;
 }
@@ -1039,7 +1071,8 @@ function savePayEmployee() {
         birthDate: f.birthDate, email: f.email, bankAccount: f.bankAccount,
         ...pickCond(f),
         pensionBase: f.pensionBase, healthBase: f.healthBase, employmentInsured: f.employmentInsured,
-        payslipTarget: f.payslipTarget
+        payslipTarget: f.payslipTarget,
+        expenseWageBasis: f.expenseWageBasis   // 급여조건 이력(payHistory)과 별개로 사원에 고정
     };
     if (P.editingEmpId) {
         const hist = nextPayHistory(prof(P.editingEmpId), f);
@@ -1508,8 +1541,10 @@ function renderExpenseSlipHtml(rec) {
     const rateText = { overtime: '150%', holiday: '150% / 200%', night: '50%' };
     const calcRows = x.lines.map(l => `
         <div class="row"><span class="k">${OT_LABELS[l.bucket]} 초과</span>
-            <span class="f">${fmtH(l.hours)} × ${won(x.wage)}원 × ${Math.round(l.rate * 100)}%</span><span class="v">${won(l.pay)}원</span></div>`).join('');
-    const basis = x.annual ? `연봉 ${won(x.annual)} ÷ 12개월 ÷ ${STD_MONTH_HOURS}h` : (x.monthly ? `월급 ${won(x.monthly)} ÷ ${STD_MONTH_HOURS}h` : '등록된 시급');
+            <span class="f">${fmtH(l.hours)} × ${x.ordinary ? won2(x.wage) : won(x.wage)}원 × ${Math.round(l.rate * 100)}%</span><span class="v">${won(l.pay)}원</span></div>`).join('');
+    const basis = x.ordinary ? '통상시급 (고정OT 시급)'
+        : x.annual ? `연봉 ${won(x.annual)} ÷ 12개월 ÷ ${STD_MONTH_HOURS}h` : (x.monthly ? `월급 ${won(x.monthly)} ÷ ${STD_MONTH_HOURS}h` : '등록된 시급');
+    const wageText = x.ordinary ? won2(x.wage) : won(x.wage);
     const s = P.settings;
     return `<div class="ps-paper exp a4">
         ${slipTopHtml('초과근무수당 지급명세서', `${monthLabel(rec.month)} · 지급일 ${rec.payDate} · 경비 지급`)}
@@ -1531,13 +1566,13 @@ function renderExpenseSlipHtml(rec) {
             <div class="bt">② 산출 내역</div>
             <div class="in">
                 <div class="ps-calc">
-                    <div class="row"><span class="k">적용 시급</span><span class="f">${basis}</span><span class="v">${won(x.wage)}원</span></div>
+                    <div class="row"><span class="k">적용 시급</span><span class="f">${basis}</span><span class="v">${wageText}원</span></div>
                     ${calcRows || `<div class="row"><span class="k">초과 시간</span><span class="f">고정OT 범위 내</span><span class="v">0h</span></div>`}
                     <div class="row final"><span class="k">지급액</span><span class="f">합계 (10원 단위 반올림)</span><span class="v">${won(x.pay)}원</span></div>
                 </div>
                 <div class="ps-tip">
                     · 근로계약서의 고정 시간을 넘긴 근무에 대해 지급합니다.<br>
-                    · 시급은 월급 기준(연봉÷12÷209)으로 적용하며, 금액은 10원 단위 반올림입니다.<br>
+                    · 시급은 ${x.ordinary ? '근로계약서의 통상시급(고정OT 산정 시급)' : '월급 기준(연봉÷12÷209)'}으로 적용하며, 금액은 10원 단위 반올림입니다.<br>
                     · 연장근로 결재 '승인' 건 기준이며, 급여와 별도로 경비로 지급됩니다.
                 </div>
             </div>
