@@ -1521,7 +1521,9 @@ function wagePayTableHtml(rec) {
 }
 
 function wageProrateHtml(rec) {
-    return rec.prorate ? `<div class="ps-prorate">📅 <b>일할계산</b> · ${rec.prorate.start.slice(5)} ~ ${rec.prorate.end.slice(5)} 재직 ${rec.prorate.days}일 ÷ ${rec.prorate.monthDays}일 (입사·퇴사일 포함)</div>` : '';
+    // 📅 일할계산 | 10-13 ~ 10-31 (19일) | 19일 ÷ 31일
+    const p = rec.prorate;
+    return p ? `<div class="ps-prorate">📅 <b>일할계산</b><i class="sep">|</i>${p.start.slice(5)} ~ ${p.end.slice(5)} (${p.days}일)<i class="sep">|</i>${p.days}일 ÷ ${p.monthDays}일</div>` : '';
 }
 
 // 법정 기재사항: 모든 사원 2줄 (제목 + 안내 한 줄) - 고정OT 표·계산식은 넣지 않음 (사용자 결정 2026-11-06)

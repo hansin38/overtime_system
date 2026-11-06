@@ -276,7 +276,8 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-box td.over { color: var(--pay-org); font-weight: bold; }
 .ps-taxline { display: flex; justify-content: flex-end; gap: 16px; color: #555; font-size: 11.5px; margin-top: 7px; }
 .ps-prorate { margin-top: 8px; background: var(--pay-blue-bg); border-radius: 6px; padding: 8px 12px; font-size: 11.5px; color: #335; }
-.ps-small { color: #888; font-size: 11px; margin-top: 6px; }
+.ps-prorate .sep { font-style: normal; color: #bbb; margin: 0 10px; }
+.ps-small {color: #888; font-size: 11px; margin-top: 6px; }
 
 .ps-calc { background: #fff; border: 1px solid #f3d3b3; border-radius: 6px; }
 .ps-calc .row { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: baseline; padding: 10px 14px; border-bottom: 1px solid #f6e3cf; }
