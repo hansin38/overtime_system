@@ -185,6 +185,31 @@ table.pay-hist th, table.pay-hist td { padding: 9px 8px; border: 0; border-botto
 table.pay-hist th { background: #f8f9fa; }
 .pay-busy { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.75); z-index: 2000; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; color: #333; }
 .pay-capture { position: absolute; left: -10000px; top: 0; }
+/* 일괄 발송 창 */
+.pay-bulk .bs-sub { color: var(--pay-sub); font-size: 12.5px; margin: -4px 0 14px; text-align: left; line-height: 1.6; }
+.pay-bulk .bs-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 13px; }
+.pay-bulk .bs-bar .sp { flex: 1; }
+.pay-bulk label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #495057; cursor: pointer; }
+.pay-bulk input[type=checkbox] { width: 16px; height: 16px; margin: 0; }
+.bs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bs-table th { background: #f8f9fa; color: #495057; font-weight: bold; padding: 9px 8px; border-bottom: 1px solid #dee2e6; text-align: left; }
+.bs-table td { padding: 7px 8px; border-bottom: 1px solid #f1f3f5; vertical-align: middle; text-align: left; }
+.bs-table .c { text-align: center; width: 34px; }
+.bs-table th.em { width: 250px; }
+.bs-table input[type=email] { width: 100%; box-sizing: border-box; height: 30px; border: 1px solid #ced4da; border-radius: 5px; padding: 0 8px; font-size: 12.5px; margin: 0; }
+.bs-table input[type=email].edited { background: #fff9db; border-color: #fcc419; }
+.bs-table input[type=email].bad { border-color: #e03131; background: #fff5f5; }
+.bs-table tr.dis td { color: #adb5bd; }
+.bs-table .res { font-size: 12px; white-space: nowrap; }
+.pay-bulk .ok { color: var(--pay-green); } .pay-bulk .fail { color: #e03131; } .pay-bulk .wait { color: #adb5bd; }
+.bs-tag { display: inline-block; font-size: 11.5px; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.bs-tag.save { background: #e7f0ff; color: var(--pay-blue); } .bs-tag.rev { background: #fff4e6; color: #d9480f; }
+.bs-tag.sent { background: #ebfbee; color: var(--pay-green); } .bs-tag.off { background: #f1f3f5; color: #868e96; }
+.pay-bulk .bs-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; gap: 10px; flex-wrap: wrap; }
+.pay-bulk .bs-note { font-size: 12px; color: #868e96; margin-top: 10px; line-height: 1.6; text-align: left; }
+/* 잠깐 떴다 사라지는 알림 (발송 완료 등) */
+.pay-toast { position: fixed; left: 50%; bottom: 40px; transform: translate(-50%, 12px); background: #333; color: #fff; padding: 12px 22px; border-radius: 8px; font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.2); opacity: 0; transition: opacity .25s, transform .25s; z-index: 100000; pointer-events: none; }
+.pay-toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ==========================================
    명세서 (임금명세서 / 초과근무수당 지급명세서)

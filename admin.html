@@ -334,6 +334,29 @@
         </div>
     </div>
 
+    <!-- 📧 [일괄 발송] 체크해서 고르고 이메일 바로 수정, 실패한 사람만 다시 발송 (js/payroll.js bulkSendWage) -->
+    <div id="pay-bulk-modal" class="pay-modal-bg" onclick="if (event.target === this) closeBulkSend()">
+        <div class="pay-modal wide pay-bulk">
+            <div class="mh"><b id="pay-bulk-title">임금명세서 일괄 발송</b><button class="pay-btn ghost" onclick="closeBulkSend()">닫기</button></div>
+            <div id="pay-bulk-sub" class="bs-sub"></div>
+            <div class="bs-bar">
+                <label><input type="checkbox" id="pay-bulk-all" onchange="bulkSelect(this.checked ? 'all' : 'none')"> 전체 선택</label>
+                <span class="sp"></span>
+                <button class="pay-btn sm" onclick="bulkSelect('unsent')">미발송만 선택</button>
+                <button class="pay-btn sm" onclick="bulkSelect('revised')">수정됨만 선택</button>
+            </div>
+            <table class="bs-table">
+                <thead><tr><th class="c"></th><th>이름</th><th>부서</th><th class="em">이메일</th><th>상태</th><th>결과</th></tr></thead>
+                <tbody id="pay-bulk-tbody"></tbody>
+            </table>
+            <div class="bs-foot">
+                <label><input type="checkbox" id="pay-bulk-save-email" checked> 고친 이메일을 사원 정보에도 저장</label>
+                <span style="display: flex; gap: 6px;"><button class="pay-btn" onclick="closeBulkSend()">닫기</button><button id="pay-bulk-go" class="pay-btn blue" onclick="runBulkSend()">발송</button></span>
+            </div>
+            <div class="bs-note">· 노란 칸 = 이번에 고친 이메일 · PDF 암호가 생년월일이라 생년월일 미등록 사원은 보낼 수 없어요 (사원 정보에서 입력)</div>
+        </div>
+    </div>
+
     <!-- 📮 [발송 이력] -->
     <div id="pay-log-modal" class="pay-modal-bg" onclick="if (event.target === this) closePaySendLog()">
         <div class="pay-modal">

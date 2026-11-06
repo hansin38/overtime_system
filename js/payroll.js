@@ -449,7 +449,7 @@ function renderPayMonthBar() {
     document.getElementById('pay-stat-expense').innerHTML = `${expDone}/${list.length}${expWait ? ` <small>(결재 대기 ${expWait})</small>` : ''}`;
     const bulk = document.getElementById('pay-bulk-btn');
     bulk.innerText = `일괄 발송 (${pending}명)`;
-    bulk.disabled = pending === 0;
+    bulk.disabled = list.length === 0;   // 미발송이 0명이어도 창을 열어 발송완료 사원에게 다시 보낼 수 있게
 }
 
 function renderPayEmpList() {
@@ -1314,7 +1314,7 @@ function applyPayImport() {
         .then(() => {
             setPayBusy(false); P.dirty = false; renderPayMonthBar(); renderPayEmpList(); renderPayMain();
             closePayImport();
-            // 반영 끝나면 바로 일괄 발송으로 (발송할 명단 확인창이 한 번 더 떠요)
+            // 반영 끝나면 바로 일괄 발송으로 (일괄 발송 창이 열려서 보낼 사람을 고를 수 있어요)
             if (confirm(`${rows.length}명의 임금명세서가 회계사무소 값으로 준비됐어요.
 
 지금 일괄 발송할까요? (취소하면 화면에서 하나씩 확인 후 발송)`)) bulkSendWage();
@@ -1593,11 +1593,13 @@ function viewPayDoc(kind, admin = false) {
     fitSlipBodies(document.getElementById('pay-doc-body'));
 }
 function closePayDoc() { document.getElementById('pay-doc-modal').style.display = 'none'; }
-// 명세서 보기 창: ESC로 닫기
+// 명세서 보기 창·일괄 발송 창: ESC로 닫기 (일괄 발송은 보내는 중에는 안 닫힘)
 document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     const modal = document.getElementById('pay-doc-modal');
     if (modal && modal.style.display === 'flex') closePayDoc();
+    const bulk = document.getElementById('pay-bulk-modal');
+    if (bulk && bulk.style.display === 'flex') closeBulkSend();
 });
 
 // 임금명세서는 A4 한 장 고정: 위(제목·날짜)·아래(인사말~법정 기재사항)는 그대로,
@@ -1674,11 +1676,11 @@ function logPaySend(rec, kind, ok, error, revised) {
     }).catch(err => console.error("발송 이력 저장 실패:", err));
 }
 
-// 1명 · 1종 발송
-function sendPayDocCore(empId, kind) {
+// 1명 · 1종 발송 (toOverride: 일괄 발송 창에서 고친 이메일로 보낼 때)
+function sendPayDocCore(empId, kind, toOverride) {
     const rec = kind === 'wage' ? buildRecord(empId, false) : P.expenses[empId];
     const p = prof(empId);
-    const to = (p.email || '').trim();
+    const to = (toOverride || p.email || '').trim();
     const pw = birth6(p.birthDate);
     if (!to) return Promise.reject(new Error('이메일 미등록'));
     if (!pw) return Promise.reject(new Error('생년월일 미등록'));
@@ -1716,6 +1718,19 @@ function sendPayDocCore(empId, kind) {
         });
 }
 
+// 잠깐 떴다가 사라지는 알림 (확인 버튼 없음)
+function payToast(text) {
+    const old = document.getElementById('pay-toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.id = 'pay-toast';
+    t.className = 'pay-toast';
+    t.textContent = `✅ ${text}`;
+    document.body.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('show'));
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2500);
+}
+
 function sendPayDoc(empId, kind) {
     const go = () => {
         const p = prof(empId), e = emp(empId);
@@ -1727,7 +1742,7 @@ function sendPayDoc(empId, kind) {
         if (!confirm(msg)) return;
         setPayBusy(true, `${e.name} ${label} 발송 중...`);
         sendPayDocCore(empId, kind)
-            .then(() => { alert("발송했습니다."); })
+            .then(() => { payToast(`${e.name}님에게 ${label}를 발송했습니다.`); })
             .catch(err => { console.error("발송 실패:", err); alert(`발송하지 못했습니다.\n사유: ${err.message}`); })
             .finally(() => { setPayBusy(false); renderPayMonthBar(); renderPayEmpList(); renderPayMain(); });
     };
@@ -1744,27 +1759,113 @@ function sendPayDoc(empId, kind) {
     go();
 }
 
-function bulkSendWage() {
-    const targets = monthEmployees().filter(e => ['save', 'revised'].includes(recordStatus(P.records[e.id])));
-    if (targets.length === 0) { alert("발송할 임금명세서가 없습니다. (저장됨·수정됨 상태만 발송)"); return; }
-    const missing = targets.filter(e => !prof(e.id).email || !birth6(prof(e.id).birthDate));
-    const ready = targets.filter(e => !missing.includes(e));
-    let msg = `${monthLabel(P.month)} 임금명세서를 ${ready.length}명에게 발송할까요?\n\n${ready.map(e => `· ${e.name} (${prof(e.id).email})`).join('\n')}`;
-    if (missing.length) msg += `\n\n제외 (이메일·생년월일 미등록): ${missing.map(e => e.name).join(', ')}`;
-    msg += `\n\n※ 경비명세서는 일괄 발송에 포함되지 않습니다.`;
-    if (ready.length === 0) { alert(msg); return; }
-    if (!confirm(msg)) return;
+// ------------------------------------------
+// 임금명세서 일괄 발송 창: 체크해서 고르고, 이메일을 바로 고치고, 실패한 사람만 다시 발송
+// ------------------------------------------
+const BULK = { rows: [], sending: false };   // rows: { id, email, origEmail, checked, result: ''|'ok'|'fail', at, error }
 
-    const results = [];
-    setPayBusy(true, '일괄 발송 중...');
-    ready.reduce((chain, e, i) => chain.then(() => {
-        setPayBusy(true, `일괄 발송 중... (${i + 1}/${ready.length}) ${e.name}`);
-        return sendPayDocCore(e.id, 'wage')
-            .then(() => results.push(`✅ ${e.name}`))
-            .catch(err => results.push(`❌ ${e.name} - ${err.message}`));
-    }), Promise.resolve())
-        .then(() => alert(`일괄 발송 결과\n\n${results.join('\n')}`))
-        .finally(() => { setPayBusy(false); renderPayMonthBar(); renderPayEmpList(); renderPayMain(); });
+function bulkSendWage() {
+    BULK.rows = monthEmployees().map(e => {
+        const email = (prof(e.id).email || '').trim();
+        // 이메일이 없는 사원은 자동 체크하지 않음 (이메일을 입력한 뒤 직접 체크하면 발송 가능)
+        return { id: e.id, email, origEmail: email, checked: !!email && ['save', 'revised'].includes(recordStatus(P.records[e.id])), result: '', at: 0, error: '' };
+    });
+    BULK.rows.forEach(r => { if (bulkBlockReason(r)) r.checked = false; });
+    document.getElementById('pay-bulk-title').innerText = `📧 임금명세서 일괄 발송 · ${monthLabel(P.month)}`;
+    renderBulkSend();
+    document.getElementById('pay-bulk-modal').style.display = 'flex';
+}
+
+// 보낼 수 없는 이유 (있으면 체크 불가)
+function bulkBlockReason(r) {
+    if (!P.records[r.id]) return '급여 저장 필요';
+    if (!birth6(prof(r.id).birthDate)) return '생년월일 미등록';
+    return '';
+}
+
+function renderBulkSend(summary) {
+    const statusTag = id => {
+        const rec = P.records[id], st = recordStatus(rec);
+        if (st === 'wait') return '<span class="bs-tag off">저장 전</span>';
+        if (st === 'save') return '<span class="bs-tag save">저장됨</span>';
+        if (st === 'revised') return '<span class="bs-tag rev">수정됨</span>';
+        return `<span class="bs-tag sent">${msToDate(rec.wageSentAt).slice(5)} 발송완료</span>`;
+    };
+    const rows = BULK.rows.map((r, i) => {
+        const e = emp(r.id), block = bulkBlockReason(r);
+        const res = r.result === 'ok' ? `<span class="ok">✅ ${msToDateTime(r.at).slice(-5)}</span>`
+            : r.result === 'fail' ? `<span class="fail">❌ ${esc(r.error)}</span>`
+            : r.result === 'sending' ? '<span class="wait">보내는 중...</span>'
+            : block ? esc(block) : (r.checked ? '<span class="wait">대기</span>' : '<span class="wait">-</span>');
+        const cls = [r.email !== r.origEmail ? 'edited' : '', r.result === 'fail' ? 'bad' : ''].join(' ');
+        return `<tr class="${block ? 'dis' : ''}">
+            <td class="c"><input type="checkbox" ${r.checked ? 'checked' : ''} ${block || BULK.sending ? 'disabled' : ''} onchange="BULK.rows[${i}].checked = this.checked; renderBulkSend()"></td>
+            <td>${esc(e.name)}</td><td>${esc(e.department || '-')}</td>
+            <td><input type="email" class="${cls}" value="${esc(r.email)}" placeholder="이메일 입력" ${BULK.sending ? 'disabled' : ''}
+                oninput="BULK.rows[${i}].email = this.value.trim(); this.classList.toggle('edited', BULK.rows[${i}].email !== BULK.rows[${i}].origEmail)"></td>
+            <td>${statusTag(r.id)}</td><td class="res">${res}</td>
+        </tr>`;
+    }).join('');
+    const n = BULK.rows.filter(r => r.checked).length;
+    const sentAny = BULK.rows.some(r => r.result);
+    document.getElementById('pay-bulk-sub').innerHTML = summary
+        || '저장됨·수정됨 사원은 자동으로 체크돼요. 발송완료 사원도 체크하면 다시 보낼 수 있어요. 경비명세서는 포함되지 않아요.';
+    document.getElementById('pay-bulk-tbody').innerHTML = rows;
+    const all = BULK.rows.filter(r => !bulkBlockReason(r));
+    const allBox = document.getElementById('pay-bulk-all');
+    allBox.checked = all.length > 0 && all.every(r => r.checked);
+    allBox.disabled = BULK.sending;
+    const go = document.getElementById('pay-bulk-go');
+    go.disabled = BULK.sending || n === 0;
+    go.innerText = BULK.sending ? '보내는 중...' : `선택한 ${n}명 ${sentAny ? '다시 ' : ''}발송`;
+}
+
+function bulkSelect(mode) {
+    if (BULK.sending) return;
+    BULK.rows.forEach(r => {
+        if (bulkBlockReason(r)) { r.checked = false; return; }
+        if (mode !== 'none' && !r.email) { r.checked = false; return; }   // 빠른 선택도 이메일 없는 사원은 건너뜀
+        const st = recordStatus(P.records[r.id]);
+        r.checked = mode === 'all' ? true : mode === 'none' ? false
+            : mode === 'unsent' ? ['save', 'revised'].includes(st) : st === 'revised';
+    });
+    renderBulkSend();
+}
+
+function closeBulkSend() {
+    if (BULK.sending) return;
+    document.getElementById('pay-bulk-modal').style.display = 'none';
+}
+
+function runBulkSend() {
+    const targets = BULK.rows.filter(r => r.checked && !bulkBlockReason(r));
+    if (!targets.length) return;
+    const bad = targets.find(r => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email));
+    if (bad) { alert(`${emp(bad.id).name}님의 이메일 형식을 확인해 주세요.`); return; }
+    const saveEmail = document.getElementById('pay-bulk-save-email').checked;
+    BULK.sending = true;
+    targets.forEach(r => { r.result = ''; r.error = ''; });
+    renderBulkSend();
+
+    targets.reduce((chain, r, i) => chain.then(() => {
+        r.result = 'sending';
+        renderBulkSend(`보내는 중... (${i + 1}/${targets.length}) ${esc(emp(r.id).name)}`);
+        // 고친 이메일을 사원 정보에도 저장 (체크했을 때만)
+        const saveFirst = saveEmail && r.email !== r.origEmail
+            ? db.collection("payroll_profiles").doc(r.id).set({ email: r.email }, { merge: true })
+                .then(() => { P.profiles[r.id] = { ...prof(r.id), email: r.email }; r.origEmail = r.email; })
+            : Promise.resolve();
+        return saveFirst
+            .then(() => sendPayDocCore(r.id, 'wage', r.email))
+            .then(() => { r.result = 'ok'; r.at = Date.now(); r.checked = false; })
+            .catch(err => { r.result = 'fail'; r.error = err.message || '발송 실패'; r.checked = true; });
+    }), Promise.resolve()).then(() => {
+        BULK.sending = false;
+        const ok = targets.filter(r => r.result === 'ok').length, fail = targets.length - ok;
+        renderBulkSend(`<b class="ok">${ok}명 발송 완료</b>${fail ? ` · <b class="fail">${fail}명 실패</b> — 실패한 사람은 체크된 채로 남아 있어요. 이메일을 고치고 다시 보내 보세요.` : ''}`);
+        renderPayMonthBar(); renderPayEmpList(); renderPayMain();
+        if (!fail) payToast(`${ok}명에게 임금명세서를 발송했습니다.`);
+    });
 }
 
 function setPayBusy(on, text = '') {
