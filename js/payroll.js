@@ -1473,7 +1473,7 @@ function renderWageSlipHtml(rec, opts = {}) {
 
         <div class="ps-bottom">
             ${slipFootHtml(contact.length ? `<b>문의</b> ${contact.join(' · ')}` : '')}
-            ${wageLegalHtml(rec, '본 명세서는 근로기준법 제48조 제2항에 따라 교부합니다.')}
+            ${wageLegalHtml()}
         </div>
     </div>`;
 }
@@ -1497,7 +1497,7 @@ function renderWageSlipEmployeeHtml(rec, opts = {}) {
 
         <div class="ps-bottom">
             ${slipFootHtml('')}
-            ${wageLegalHtml(rec, '')}
+            ${wageLegalHtml()}
         </div>
     </div>`;
 }
@@ -1526,14 +1526,9 @@ function wageProrateHtml(rec) {
     return p ? `<div class="ps-prorate">📅 <b>일할계산</b><i class="sep">|</i>${p.start.slice(5)} ~ ${p.end.slice(5)} (${p.days}일)<i class="sep">|</i>${p.days}일 ÷ ${p.monthDays}일</div>` : '';
 }
 
-// 법정 기재사항: 모든 사원 2줄 (제목 + 안내 한 줄) - 고정OT 표·계산식은 넣지 않음 (사용자 결정 2026-11-06)
-function wageLegalHtml(rec, tail) {
-    const body = rec.prorate ? `입사·퇴사한 달로 월급을 재직일수로 일할 계산했습니다.<br>` : `각 수당은 근로계약서에 정한 금액입니다.<br>`;
-    return `<div class="ps-legal">
-            <div class="lh">법정 기재사항 (근로기준법 제48조)</div>
-            ${body}
-            ${tail}
-        </div>`;
+// 맨 아래 작은 글씨 한 줄만 (제목·안내문 없음 - 일할계산은 위 📅 줄이 계산방법 역할) (사용자 결정 2026-11-06)
+function wageLegalHtml() {
+    return `<div class="ps-legal">본 명세서는 근로기준법 제48조 제2항에 따라 교부합니다.</div>`;
 }
 
 // rec = 경비명세서 문서 (payroll_expenses)
