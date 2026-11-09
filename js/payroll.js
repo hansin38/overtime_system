@@ -1347,10 +1347,8 @@ function applyPayImport() {
         .then(() => {
             setPayBusy(false); P.dirty = false; renderPayMonthBar(); renderPayEmpList(); renderPayMain();
             closePayImport();
-            // 반영 끝나면 바로 일괄 발송으로 (일괄 발송 창이 열려서 보낼 사람을 고를 수 있어요)
-            if (confirm(`${rows.length}명의 임금명세서가 회계사무소 값으로 준비됐어요.
-
-지금 일괄 발송할까요? (취소하면 화면에서 하나씩 확인 후 발송)`)) bulkSendWage();
+            // 등록만 알리고 끝 (메일 발송은 나중에 '일괄 발송' 버튼으로)
+            payToast(`${rows.length}명 급여대장이 등록됐어요`);
         })
         .catch(err => {
             console.error("급여대장 반영 실패:", err);
