@@ -374,7 +374,7 @@ function recordStatus(rec) {
     if (!rec.wageSentAt) return 'save';
     return rec.updatedAt > rec.wageSentAt ? 'revised' : 'sent';
 }
-const STATUS_TEXT = { wait: '미입력', save: '저장됨', sent: '발송완료', revised: '수정됨 (재발송 필요)' };
+const STATUS_TEXT = { wait: '급여대장 미등록', save: '저장됨', sent: '발송완료', revised: '수정됨 (재발송 필요)' };
 
 // ------------------------------------------
 // 탭 열기 · 데이터 로드
@@ -583,9 +583,42 @@ function visiblePayItems(type, pay, editable) {
     });
 }
 
+// 급여대장을 안 올린 달: 예상 금액 대신 '미등록' 안내만 (경비는 급여대장과 별개라 그대로)
+P.manualEntry = P.manualEntry || {};
+function renderPayUnregisteredPane(id) {
+    const mo = `${Number(P.month.slice(5))}월`;
+    document.getElementById('pay-pane').innerHTML = `
+        <div class="pay-grid">
+            <div>
+                <div class="pay-card" style="text-align: center; padding: 48px 24px;">
+                    <div style="font-size: 32px; margin-bottom: 12px;">📭</div>
+                    <h4 style="justify-content: center; margin-bottom: 8px;">${mo} 급여대장이 아직 등록되지 않았어요</h4>
+                    <div class="hint" style="margin-bottom: 20px;">회계사무소에서 받은 ${mo} 급여대장을 올리면 임금명세서가 만들어져요</div>
+                    <button class="pay-btn" onclick="openPayImport()">📥 회계사무소 급여대장 불러오기</button>
+                    <div style="margin-top: 16px;"><span class="link sub" style="cursor: pointer; text-decoration: underline;" onclick="P.manualEntry['${P.month}|${id}'] = true; renderPayMonthPane();">급여대장 없이 직접 입력하기</span></div>
+                </div>
+            </div>
+            <div class="pay-summary">
+                <div class="sum-exp" id="pay-sum-exp" style="margin-top: 0;">${expenseCardHtml(id)}</div>
+                <div class="pay-docs">
+                    <div class="pay-docs-h">📧 직원에게 보내는 명세서</div>
+                    <div class="pay-doc">
+                        <div class="t">📄 경비명세서<small id="pay-doc-exp-st"></small></div>
+                        <div class="a"><button class="pay-btn sm" onclick="viewPayDoc('expense')">보기</button><button class="pay-btn sm org" onclick="sendPayDoc('${id}', 'expense')">발송</button></div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    const x = P.expenses[id];
+    document.getElementById('pay-doc-exp-st').innerText = !(x && x.requestCount)
+        ? (pendingRequests(id).length ? '결재 대기 중' : '연장근로 신청 없음')
+        : (x.expenseSentAt ? `${msToDateTime(x.expenseSentAt)} 발송함` : '승인 확정 · 보관');
+}
+
 function renderPayMonthPane() {
     const id = P.selectedId;
     const rec = P.records[id];
+    if (!rec && !P.manualEntry[`${P.month}|${id}`]) return renderPayUnregisteredPane(id);
     const def = defaultPay(id, P.month);
     const pay = rec ? { ...emptyPay(), ...rec.pay } : def.pay;
     const deduct = rec ? rec.deduct : defaultDeduct(id, P.month, pay);
