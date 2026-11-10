@@ -1436,6 +1436,35 @@ function downloadEmpXlFromTemplate(XLSX, tpl, secret) {
             delete cell.w;
             ws[addr] = cell;
         });
+        wrapFixed(r, e, p);
+    };
+    // 계산 칸 수식을 '급여형태가 고정이면' 조건으로 감싸기 (원래 수식은 그대로, 이미 고정 조건이 있으면 그대로)
+    //   통상임금 → 빈칸 · 기본급·연장·휴일·야간 → 사이트에 저장된 금액 · 월급여 → 기본급~현장수당 합계
+    const hCol = ci('payType');
+    const origF = {};   // 감싸기 전 수식 (새 사원 줄에 복사할 때 씀)
+    const wrapFixed = (r, e, p) => {
+        if (hCol === undefined) return;
+        const n = r + 1, H = `$${XLSX.utils.encode_col(hCol)}${n}`;
+        const isFixed = payTypeOf(p) === 'fixed';
+        const baseC = ci('fixedPay.base'), siteC = ci('siteAllowance');
+        ['ordinary', 'monthly', 'fixedPay.base', 'fixedPay.overtime', 'fixedPay.holidayNight', 'split.holiday', 'split.night'].forEach(k => {
+            const c = ci(k);
+            if (c === undefined) return;
+            const addr = XLSX.utils.encode_cell({ r, c });
+            const cell = ws[addr];
+            if (!cell || !cell.f || cell.f.includes('="고정"')) return;
+            const f = EMPXL_FIELDS.find(x => x.k === k);
+            let alt;
+            if (k === 'ordinary') alt = '""';
+            else if (k === 'monthly' && baseC !== undefined && siteC !== undefined && baseC < siteC) alt = `SUM(${XLSX.utils.encode_col(baseC)}${n}:${XLSX.utils.encode_col(siteC)}${n})`;
+            else { const v = empXlCurrent(f, e, p); alt = typeof v === 'number' ? Math.round(v) : '""'; }
+            origF[addr] = cell.f;
+            cell.f = `IF(${H}="고정",${alt},${cell.f})`;
+            if (isFixed) {   // 엑셀이 다시 계산하기 전에도 맞게 보이도록 저장값도 고정 쪽으로
+                const v = k === 'ordinary' ? '' : empXlCurrent(f, e, p);
+                cell.t = typeof v === 'number' ? 'n' : 's'; cell.v = v === '' ? '' : v; delete cell.w;
+            }
+        });
     };
     const done = new Set();
     let lastRow = h;
@@ -1458,7 +1487,8 @@ function downloadEmpXlFromTemplate(XLSX, tpl, secret) {
         for (let c = range.s.c; c <= range.e.c; c++) {
             const src = cellAt(lastRow, c);
             const addr = XLSX.utils.encode_cell({ r, c });
-            if (src && src.f) ws[addr] = { t: 'n', v: 0, f: shiftFormulaRow(src.f, lastRow + 1, r + 1), ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
+            const srcF = src && (origF[XLSX.utils.encode_cell({ r: lastRow, c })] || src.f);
+            if (src && src.f) ws[addr] = { t: 'n', v: 0, f: shiftFormulaRow(srcF, lastRow + 1, r + 1), ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
             else if (src) ws[addr] = { t: 's', v: '', ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
         }
         fill(r, e);
