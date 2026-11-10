@@ -1273,17 +1273,64 @@ function empXlShowText(f, v) {
 function openEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'flex'; }
 function closeEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'none'; }
 
-function downloadEmpXl(withData) {
+// 엑셀 서식: 글꼴 10 · 머리글은 굵게+줄바꿈 · 금액은 천 단위 쉼표 · 열 너비는 내용에 맞춰 최소로 (예시 줄은 너비 계산에서 뺌)
+function empXlStyle(XLSX, ws, fields, aoa, rowCount) {
+    const textW = (v) => [...String(v ?? '')].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2000 ? 1.7 : 1), 0);
+    const font = { name: '맑은 고딕', sz: 10 };
+    const border = { bottom: { style: 'thin', color: { rgb: 'D0D4D9' } } };
+    ws['!cols'] = fields.map((f, c) => {
+        let w = 0;
+        aoa.forEach((row, r) => {
+            if (r === 1) return;   // 예시 줄
+            const v = row[c];
+            w = Math.max(w, textW(f.t === 'money' && typeof v === 'number' ? v.toLocaleString() : v));
+        });
+        // 머리글은 두 줄까지 줄바꿈되므로 절반 길이 정도면 충분
+        const head = Math.max(...f.h.split(/[\s(]/).map(textW));
+        return { wch: Math.ceil(Math.max(4, w, head, textW(f.h) / 2)) + 1 };
+    });
+    ws['!rows'] = [{ hpt: 30 }];
+    for (let r = 0; r < rowCount; r++) {
+        fields.forEach((f, c) => {
+            const a = XLSX.utils.encode_cell({ r, c });
+            if (!ws[a]) ws[a] = { t: 's', v: '' };
+            const cell = ws[a];
+            if (r === 0) cell.s = { font: { ...font, bold: true }, fill: { fgColor: { rgb: 'EEF1F4' } }, alignment: { wrapText: true, vertical: 'center', horizontal: 'center' }, border };
+            else if (r === 1) cell.s = { font: { ...font, color: { rgb: '9A8A3A' }, italic: true }, fill: { fgColor: { rgb: 'FFF9DB' } } };
+            else cell.s = { font };
+            if (f.t === 'money' && cell.t === 'n') cell.z = '#,##0';
+        });
+    }
+}
+
+// 글꼴·서식이 저장되는 엑셀 프로그램(xlsx-js-style, SheetJS 0.18.5와 사용법 같음)을 사원정보 엑셀 받을 때만 불러옴
+// - 페이지 전체가 쓰는 XLSX(급여대장 불러오기·대장 다운로드)는 그대로 두고, 따로 XLSX_STYLE 로 보관
+function loadXlsxStyle() {
+    if (window.XLSX_STYLE) return Promise.resolve(window.XLSX_STYLE);
+    return new Promise((resolve, reject) => {
+        const orig = window.XLSX;
+        const sc = document.createElement('script');
+        sc.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+        sc.onload = () => { window.XLSX_STYLE = window.XLSX; window.XLSX = orig; resolve(window.XLSX_STYLE); };
+        sc.onerror = () => { window.XLSX = orig; reject(new Error('엑셀 서식 프로그램을 불러오지 못했어요')); };
+        document.head.appendChild(sc);
+    });
+}
+
+async function downloadEmpXl(withData) {
+    let XLSX = window.XLSX;
+    try { XLSX = await loadXlsxStyle(); }
+    catch (err) { console.error(err); }   // 못 불러오면 서식 없이라도 받기
     const secret = document.getElementById('empxl-secret').checked;
     const fields = EMPXL_FIELDS.filter(f => secret || !f.secret);
     const example = {
         empNo: '예시', name: '홍길동', phoneLast4: '0000', department: '설계부', position: '사원', hireDate: '2026-11-01', resignDate: '',
-        payType: '연봉', annualSalary: 40000000, monthly: '연봉형은 자동', 'fixedPay.base': '연봉형은 자동', 'fixedPay.overtime': '연봉형은 자동', 'fixedPay.holidayNight': '연봉형은 자동',
+        payType: '연봉', annualSalary: 40000000, monthly: '자동', 'fixedPay.base': '자동', 'fixedPay.overtime': '자동', 'fixedPay.holidayNight': '자동',
         mealAllowance: 200000, vehicleAllowance: '', positionAllowance: '', siteAllowance: '', holidayBonus: 200000,
         'week.overtime': 10, 'week.holiday': 2, 'week.night': 2.5,
         'fixedOt.overtime': 43.5, 'fixedOt.holiday': 9, 'fixedOt.night': 11,
         expenseWageBasis: '월급', payslipTarget: 'O', employmentInsured: 'O',
-        from: '연봉이 바뀔 때만 예: 2027-01', birthDate: '1999-01-01', email: 'name@example.com', bankAccount: '은행 계좌번호'
+        from: '2027-01', birthDate: '1999-01-01', email: 'a@b.com', bankAccount: '은행 계좌'
     };
     const aoa = [fields.map(f => f.h), fields.map(f => example[f.k] ?? '')];
     if (withData) {
@@ -1294,7 +1341,6 @@ function downloadEmpXl(withData) {
         });
     }
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = fields.map(f => ({ wch: Math.max(10, f.h.length * 2) }));
     // 월 고정OT 칸에 수식: 1주 칸을 쓰면 엑셀에서 바로 월 시간으로 바뀜 (비어 있으면 지금 값 그대로)
     // 아래로 빈 줄 30개에도 수식을 미리 넣어 둠 (새 사원용, 1주를 안 쓰면 빈칸)
     const extra = 30;
@@ -1312,6 +1358,7 @@ function downloadEmpXl(withData) {
         }
     });
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length + extra - 1, c: fields.length - 1 } });
+    empXlStyle(XLSX, ws, fields, aoa, aoa.length + extra);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '사원정보');
     XLSX.writeFile(wb, withData ? `사원정보_${ymdOfDate(new Date())}.xlsx` : '사원정보_빈양식.xlsx');
