@@ -168,16 +168,75 @@ table.pay-year tr.fut td { color: #ccc; }
 .pay-drop { display: block; border: 2px dashed #b2dfbd; background: #f4fbf6; border-radius: 10px; padding: 18px; text-align: center; font-size: 14px; color: #1e6b33; margin-bottom: 14px; cursor: pointer; }
 .pay-drop small { display: block; color: var(--pay-sub); font-size: 12px; margin-top: 4px; }
 .pay-drop input { width: auto; margin: 10px auto 0; padding: 6px; border: 0; display: block; }
-table.pay-import-tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0; table-layout: auto; }
-table.pay-import-tbl th, table.pay-import-tbl td { padding: 9px 8px; border: 0; border-bottom: 1px solid #f1f3f5; text-align: right; font-variant-numeric: tabular-nums; }
-table.pay-import-tbl th { background: #f8f9fa; color: #555; }
-table.pay-import-tbl th:first-child, table.pay-import-tbl td:first-child { text-align: left; }
-table.pay-import-tbl tr.bad td { background: #fff5f7; }
-table.pay-import-tbl tr.bad-detail td { background: #fff5f7; text-align: left; font-size: 12.5px; color: #a61e4d; padding-top: 0; }
-table.pay-import-tbl .ok { color: var(--pay-green); font-weight: bold; }
-table.pay-import-tbl .bad { color: var(--pay-red); font-weight: bold; }
-.pay-import-chk { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; color: #333; font-weight: bold; cursor: pointer; }
-.pay-import-chk input { width: 15px; height: 15px; margin: 0; }
+/* 🔍 급여대장 검수 (불러오기 팝업이 화면 가득 커짐) */
+.pay-modal.audit { width: min(1280px, 96vw); height: 92vh; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; padding: 26px 30px; }
+.pay-modal.audit #pay-import-result { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pay-modal.audit .pay-modal-foot { align-items: center; padding-top: 16px; border-top: 1px solid var(--pay-line); margin-top: 16px; }
+.pay-audit-status { margin-right: auto; font-size: 13px; color: #555; }
+.pay-audit-status b { color: #222; }
+.pa-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+.pa-sum { border: 1px solid var(--pay-line); border-radius: 12px; padding: 14px 18px; }
+.pa-sum .k { font-size: 12px; color: var(--pay-sub); }
+.pa-sum .v { font-size: 22px; font-weight: bold; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.pa-sum.ok .v { color: var(--pay-green); } .pa-sum.bad .v { color: var(--pay-red); } .pa-sum.warn .v { color: var(--pay-amber); }
+.pa-board { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
+.pa-list { border: 1px solid var(--pay-line); border-radius: 12px; overflow: auto; }
+.pa-list .lh { padding: 12px 16px; font-size: 12px; color: var(--pay-sub); border-bottom: 1px solid var(--pay-line); position: sticky; top: 0; background: #fff; }
+.pa-person { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid #f1f3f5; cursor: pointer; }
+.pa-person:hover { background: #f8f9fa; }
+.pa-person.on { background: var(--pay-blue-bg); box-shadow: inset 3px 0 0 var(--pay-blue); }
+.pa-person .nm { font-weight: bold; font-size: 14px; }
+.pa-person .ds { font-size: 11.5px; color: var(--pay-sub); margin-top: 2px; }
+.pa-chip { margin-left: auto; font-size: 11px; font-weight: bold; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.pa-chip.ok { background: #ebfbee; color: var(--pay-green); }
+.pa-chip.bad { background: #fff0f6; color: var(--pay-red); }
+.pa-chip.done { background: var(--pay-blue-bg); color: var(--pay-blue); }
+.pa-chip.gray { background: #f1f3f5; color: #666; }
+.pa-detail { border: 1px solid var(--pay-line); border-radius: 12px; padding: 24px 28px; overflow: auto; }
+.pa-dh { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.pa-dh h3 { margin: 0; font-size: 18px; }
+table.pa-cmp { width: 100%; border-collapse: collapse; margin: 18px 0 8px; font-size: 13px; table-layout: auto; }
+table.pa-cmp th, table.pa-cmp td { padding: 10px 12px; border: 0; border-bottom: 1px solid #f1f3f5; text-align: right; font-variant-numeric: tabular-nums; }
+table.pa-cmp th { background: #f8f9fa; color: #555; font-size: 12px; }
+table.pa-cmp th:first-child, table.pa-cmp td:first-child { text-align: left; }
+table.pa-cmp td.d { color: #adb5bd; }
+table.pa-cmp tr.diff td { background: #fff0f6; }
+table.pa-cmp tr.diff td.d { color: var(--pay-red); font-weight: bold; }
+table.pa-cmp tr.tot td { font-weight: bold; border-top: 2px solid #dee2e6; }
+.pa-deduct { font-size: 12px; color: var(--pay-sub); margin-bottom: 4px; line-height: 1.7; }
+.pa-okbox { margin-top: 20px; padding: 26px; text-align: center; background: #ebfbee; border-radius: 12px; color: var(--pay-green); font-weight: bold; line-height: 1.8; }
+.pa-okbox.gray { background: #f8f9fa; color: #555; }
+.pa-okbox small { font-weight: normal; color: var(--pay-sub); }
+.pa-issue { border: 1px solid #f3c4d6; border-radius: 12px; margin-top: 20px; overflow: hidden; }
+.pa-issue .ih { background: #fff0f6; padding: 12px 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pa-issue .ih b { color: var(--pay-red); font-size: 14px; }
+.pa-issue .ib { padding: 16px 18px; }
+.pa-why { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pa-calc { border-radius: 10px; padding: 12px 16px; font-variant-numeric: tabular-nums; }
+.pa-calc.ours { background: var(--pay-blue-bg); border: 1px solid var(--pay-blue-line); }
+.pa-calc.acc { background: #f8f9fa; border: 1px solid var(--pay-line); }
+.pa-calc .t { font-size: 12px; font-weight: bold; margin-bottom: 6px; }
+.pa-calc.ours .t { color: var(--pay-blue); } .pa-calc.acc .t { color: #555; }
+.pa-calc .f { font-size: 13px; line-height: 1.85; }
+.pa-calc .r { font-size: 17px; font-weight: bold; margin-top: 4px; }
+.pa-calc mark { background: #ffe3e3; color: var(--pay-red); padding: 0 3px; border-radius: 3px; font-weight: bold; }
+.pa-verdict { margin-top: 12px; padding: 12px 16px; background: #fff9db; border-radius: 10px; font-size: 13px; line-height: 1.7; }
+.pa-chain { margin-top: 14px; font-size: 12.5px; color: #555; }
+.pa-chain span { display: inline-block; background: #f1f3f5; border-radius: 6px; padding: 3px 9px; margin-left: 4px; }
+.pa-choose-h { margin: 26px 0 10px; font-weight: bold; font-size: 14px; }
+.pa-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.pa-choice { width: auto; height: auto; border: 1.5px solid var(--pay-line); border-radius: 12px; padding: 14px 16px; cursor: pointer; background: #fff; color: #333; text-align: left; font-size: 13px; font-weight: normal; }
+.pa-choice:hover { border-color: #adb5bd; background: #fff; opacity: 1; }
+.pa-choice .ct { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }
+.pa-choice .cd { color: #666; font-size: 12.5px; line-height: 1.6; }
+.pa-choice .rec { font-size: 11px; background: var(--pay-blue); color: #fff; border-radius: 10px; padding: 1px 7px; font-weight: bold; }
+.pa-choice.sel, .pa-choice.sel:hover { border-color: var(--pay-blue); background: var(--pay-blue-bg); box-shadow: 0 0 0 3px rgba(28, 100, 217, .12); }
+.pa-memo { margin-top: 14px; background: #f8f9fa; border: 1px dashed #ced4da; border-radius: 10px; padding: 14px 16px; font-size: 12.5px; line-height: 1.8; white-space: pre-line; }
+@media (max-width: 900px) {
+    .pay-modal.audit { height: auto; overflow: auto; }
+    .pa-summary { grid-template-columns: 1fr 1fr; }
+    .pa-board, .pa-why, .pa-choices { grid-template-columns: 1fr; }
+}
 .pay-doc-body { background: #e9ecef; padding: 24px; border-radius: 8px; }
 .pay-doc-body .ps-paper { margin: 0 auto; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
 table.pay-hist { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0; table-layout: auto; }
@@ -375,3 +434,19 @@ table.pay-hist th { background: #f8f9fa; }
     .ps-logo { top: 8mm; left: 6mm; }
     /* 명세서 3종(.a4)은 printPayDoc()이 따로 만든 인쇄 창(iframe)에서 A4 한 장 정중앙으로 인쇄 */
 }
+
+/* 📄📤 사원정보 엑셀 받기·올리기 */
+.pay-xl-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.pay-xl-btns .pay-btn { width: 100%; padding: 0 4px; }
+.pay-xl-big { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pay-xl-big button { width: auto; height: auto; border: 1.5px solid var(--pay-line); background: #fff; color: #333; border-radius: 12px; padding: 22px 14px; cursor: pointer; font-size: 14px; font-weight: bold; }
+.pay-xl-big button:hover { border-color: var(--pay-blue); background: var(--pay-blue-bg); opacity: 1; }
+.pay-xl-big button span { display: block; font-size: 26px; margin-bottom: 8px; }
+.pay-xl-line { display: flex; align-items: flex-start; gap: 12px; padding: 13px 2px; border-bottom: 1px solid #f1f3f5; font-size: 13.5px; line-height: 1.7; cursor: pointer; }
+.pay-xl-line .ck { width: 16px; height: 16px; margin: 3px 0 0; flex: none; }
+.pay-xl-line .nm { font-weight: bold; width: 70px; flex: none; }
+.pay-xl-line .what { flex: 1; }
+.pay-xl-line .old { color: #aaa; text-decoration: line-through; }
+.pay-xl-line .new { color: #b35c00; font-weight: bold; }
+.pay-xl-line.err { color: var(--pay-red); cursor: default; }
+.pay-xl-line .warn { color: #b35c00; font-size: 12.5px; margin-top: 4px; }

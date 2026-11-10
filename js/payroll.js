@@ -1160,6 +1160,397 @@ function deletePayEmployee(empId) {
 }
 
 // ------------------------------------------
+// 📄 사원정보 엑셀 받기 / 📤 엑셀 올리기 (여러 명 한꺼번에 등록·수정)
+// - 받기: 빈 양식 또는 지금 정보 넣어서 (계좌·생년월일·이메일은 체크할 때만)
+//   월급여·기본급·연장·휴일야근은 연봉형이면 계산값을 채워 줌 (노무사 '급여산출계산' 엑셀과 같은 식)
+// - 올리기: 사원번호 → 없으면 이름+휴대폰 뒷4자리로 사람을 찾아 있으면 수정, 없으면 새로 등록
+//   빈칸은 기존값 유지 ('-'를 쓰면 지움) · 바뀌는 사람만 보여 주고 체크한 사람만 저장 · 엑셀에 없는 사람은 그대로
+//   연봉형의 월급여·기본급·연장·휴일야근은 저장하지 않고 계산과 비교만 (다르면 ⚠️)
+//   고정OT 1주 시간을 쓰면 월 시간 = 1주 × 365 ÷ 7 ÷ 12 (0.5 단위 올림) 으로 바꿔 저장 (근로계약서 기준)
+// - 급여조건이 바뀌면 '적용 시작 월'(비우면 지금 보고 있는 달)부터 새 조건 → 연봉 인상 이력에 추가 (사원 수정 창과 같은 방식)
+// ------------------------------------------
+const EMPXL_FIELDS = [
+    { h: '사원번호', k: 'empNo', src: 'emp' },
+    { h: '이름', k: 'name', src: 'emp', lock: true },
+    { h: '휴대폰 뒷4자리', k: 'phoneLast4', src: 'emp', t: 'phone', lock: true },
+    { h: '부서', k: 'department', src: 'emp' },
+    { h: '직급', k: 'position', src: 'emp' },
+    { h: '입사일', k: 'hireDate', src: 'emp', t: 'date' },
+    { h: '퇴사일', k: 'resignDate', src: 'emp', t: 'date' },
+    { h: '급여형태(연봉/고정)', k: 'payType', src: 'cond', t: 'payType' },
+    { h: '연봉', k: 'annualSalary', src: 'cond', t: 'money' },
+    { h: '월급여', k: 'monthly', src: 'check', t: 'money' },
+    { h: '기본급', k: 'fixedPay.base', src: 'cond', t: 'money', alias: ['고정-기본급'] },
+    { h: '연장근로수당', k: 'fixedPay.overtime', src: 'cond', t: 'money', alias: ['고정-연장근로수당'] },
+    { h: '휴일·야근수당', k: 'fixedPay.holidayNight', src: 'cond', t: 'money', alias: ['고정-휴일·야근수당'] },
+    { h: '식대', k: 'mealAllowance', src: 'cond', t: 'money' },
+    { h: '차량유지비', k: 'vehicleAllowance', src: 'cond', t: 'money' },
+    { h: '직책수당', k: 'positionAllowance', src: 'cond', t: 'money' },
+    { h: '현장수당', k: 'siteAllowance', src: 'cond', t: 'money' },
+    { h: '명절상여', k: 'holidayBonus', src: 'cond', t: 'money' },
+    { h: '1주 연장(h)', k: 'week.overtime', src: 'week', t: 'hours' },
+    { h: '1주 휴일(h)', k: 'week.holiday', src: 'week', t: 'hours' },
+    { h: '1주 야간(h)', k: 'week.night', src: 'week', t: 'hours' },
+    { h: '고정OT 연장(월h)', k: 'fixedOt.overtime', src: 'emp', t: 'hours', alias: ['고정OT 연장(h)'] },
+    { h: '고정OT 휴일(월h)', k: 'fixedOt.holiday', src: 'emp', t: 'hours', alias: ['고정OT 휴일(h)'] },
+    { h: '고정OT 야간(월h)', k: 'fixedOt.night', src: 'emp', t: 'hours', alias: ['고정OT 야간(h)'] },
+    { h: '경비시급(월급/통상)', k: 'expenseWageBasis', src: 'prof', t: 'basis' },
+    { h: '명세서 발급(O/X)', k: 'payslipTarget', src: 'prof', t: 'ox' },
+    { h: '고용보험(O/X)', k: 'employmentInsured', src: 'prof', t: 'ox' },
+    { h: '적용 시작 월', k: 'from', src: 'meta', t: 'month' },
+    { h: '생년월일', k: 'birthDate', src: 'prof', t: 'date', secret: true },
+    { h: '이메일', k: 'email', src: 'prof', secret: true },
+    { h: '계좌번호', k: 'bankAccount', src: 'prof', secret: true }
+];
+const EMPXL_LABEL = (f) => f.h.replace(/\(.*\)$/, '').trim();
+const EMPXL_CHECK_KEYS = ['monthly', 'fixedPay.base', 'fixedPay.overtime', 'fixedPay.holidayNight'];
+// 근로계약서 1주 시간 → 월 시간 (노무사 엑셀: CEILING(1주 × 365 ÷ 7 ÷ 12, 0.5))
+function weekToMonthHours(w) { return ceilHalf(w * 365 / 7 / 12); }
+
+// 월급여·기본급·연장·휴일야근 계산값 (연봉형은 연봉+고정OT로, 고정형은 입력 금액 그대로)
+function empXlCalcPay(p, e) {
+    const s = calcPayStructure(p, e);
+    if (!s) return null;
+    return {
+        monthly: s.monthly, 'fixedPay.base': s.pay.base, 'fixedPay.overtime': s.pay.overtime,
+        'fixedPay.holidayNight': s.type === 'annual' ? s.pay.holiday + s.pay.night : s.pay.holidayNight
+    };
+}
+
+// 지금 값 (엑셀에 쓰는 모양이 아니라 저장된 모양)
+function empXlCurrent(f, e, p) {
+    if (f.src === 'week') { const w = (e.fixedOtWeek || {})[f.k.split('.')[1]]; return w === undefined || w === null ? '' : w; }
+    if (f.k.startsWith('fixedOt.')) return getFixOtLimits(e)[f.k.split('.')[1]];
+    if (f.k === 'monthly' || (f.k.startsWith('fixedPay.') && payTypeOf(p) === 'annual')) {
+        const c = empXlCalcPay(p, e);
+        return c ? c[f.k] : '';
+    }
+    if (f.k.startsWith('fixedPay.')) return num((p.fixedPay || {})[f.k.split('.')[1]]);
+    if (f.k === 'payType') return payTypeOf(p);
+    if (f.k === 'payslipTarget') return p.payslipTarget === true;
+    if (f.k === 'employmentInsured') return p.employmentInsured !== false;
+    if (f.k === 'expenseWageBasis') return p.expenseWageBasis === 'ordinary' ? 'ordinary' : 'monthly';
+    const v = (f.src === 'emp' ? e : p)[f.k];
+    return f.t === 'money' ? num(v) : (v ?? '');
+}
+// 저장된 값 → 엑셀/화면 표시
+function empXlShow(f, v) {
+    if (f.t === 'money') return v === '' ? '' : num(v);
+    if (f.t === 'payType') return v === 'fixed' ? '고정' : '연봉';
+    if (f.t === 'ox') return v ? 'O' : 'X';
+    if (f.t === 'basis') return v === 'ordinary' ? '통상' : '월급';
+    return v ?? '';
+}
+function empXlShowText(f, v) {
+    if (v === '' || v === null || v === undefined) return '(없음)';
+    return f.t === 'money' ? won(v) : String(empXlShow(f, v));
+}
+
+function openEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'flex'; }
+function closeEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'none'; }
+
+function downloadEmpXl(withData) {
+    const secret = document.getElementById('empxl-secret').checked;
+    const fields = EMPXL_FIELDS.filter(f => secret || !f.secret);
+    const example = {
+        empNo: '예시', name: '홍길동', phoneLast4: '0000', department: '설계부', position: '사원', hireDate: '2026-11-01', resignDate: '',
+        payType: '연봉', annualSalary: 40000000, monthly: '연봉형은 자동', 'fixedPay.base': '연봉형은 자동', 'fixedPay.overtime': '연봉형은 자동', 'fixedPay.holidayNight': '연봉형은 자동',
+        mealAllowance: 200000, vehicleAllowance: '', positionAllowance: '', siteAllowance: '', holidayBonus: 200000,
+        'week.overtime': 10, 'week.holiday': 2, 'week.night': 2.5,
+        'fixedOt.overtime': '1주를 쓰면 자동', 'fixedOt.holiday': '', 'fixedOt.night': '',
+        expenseWageBasis: '월급', payslipTarget: 'O', employmentInsured: 'O',
+        from: '연봉이 바뀔 때만 예: 2027-01', birthDate: '1999-01-01', email: 'name@example.com', bankAccount: '은행 계좌번호'
+    };
+    const aoa = [fields.map(f => f.h), fields.map(f => example[f.k] ?? '')];
+    if (withData) {
+        const list = [...P.employees].sort((a, b) => (num(a.empNo) || 1e9) - (num(b.empNo) || 1e9) || String(a.name).localeCompare(b.name));
+        list.forEach(e => {
+            const p = profFor(e.id, P.month);
+            aoa.push(fields.map(f => f.k === 'from' ? '' : empXlShow(f, empXlCurrent(f, e, p))));
+        });
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = fields.map(f => ({ wch: Math.max(10, f.h.length * 2) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '사원정보');
+    XLSX.writeFile(wb, withData ? `사원정보_${ymdOfDate(new Date())}.xlsx` : '사원정보_빈양식.xlsx');
+    closeEmpXlDownload();
+}
+
+// 엑셀 칸 하나 읽기 → undefined(빈칸=유지) / { v } / { err }
+function empXlParse(f, raw) {
+    if (raw === '' || raw === null || raw === undefined) return undefined;
+    const s = String(raw).trim();
+    if (s === '') return undefined;
+    if (s === '-' && !f.lock) return { v: f.t === 'money' || f.t === 'hours' ? 0 : '' };   // '-' = 지우기
+    const toYmd = (x) => {
+        if (x instanceof Date) return ymdOfDate(new Date(x.getTime() + 12 * 3600000));   // 엑셀 날짜의 시간대 오차 보정
+        if (typeof x === 'number') { const d = XLSX.SSF.parse_date_code(x); return d ? `${d.y}-${pad2(d.m)}-${pad2(d.d)}` : ''; }
+        const m = /^(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]*(?:(\d{1,2}))?/.exec(String(x).trim());
+        return m ? `${m[1]}-${pad2(m[2])}${m[3] ? '-' + pad2(m[3]) : ''}` : '';
+    };
+    switch (f.t) {
+        case 'phone': {
+            const d = s.replace(/\D/g, '').padStart(4, '0');
+            return d.length === 4 ? { v: d } : { err: `휴대폰 뒷자리(${s})가 4자리가 아니에요` };
+        }
+        case 'date': {
+            const d = toYmd(raw);
+            return /^\d{4}-\d{2}-\d{2}$/.test(d) ? { v: d } : { err: `${EMPXL_LABEL(f)}(${s})를 날짜로 읽지 못했어요 (예: 2026-11-01)` };
+        }
+        case 'month': {
+            const d = toYmd(raw).slice(0, 7);
+            return /^\d{4}-\d{2}$/.test(d) ? { v: d } : { err: `적용 시작 월(${s})을 읽지 못했어요 (예: 2027-01)` };
+        }
+        case 'money':
+            if (typeof raw !== 'number' && !/\d/.test(s)) return undefined;   // '연봉형은 자동' 같은 안내 글은 무시
+            return { v: Math.round(num(raw)) };
+        case 'hours': {
+            if (typeof raw !== 'number' && !/\d/.test(s)) return undefined;
+            const n = parseFloat(s);
+            return isNaN(n) || n < 0 ? { err: `${EMPXL_LABEL(f)}(${s})이 숫자가 아니에요` } : { v: n };
+        }
+        case 'payType':
+            if (/연봉|annual/i.test(s)) return { v: 'annual' };
+            if (/고정|fixed/i.test(s)) return { v: 'fixed' };
+            return { err: `급여형태(${s})는 '연봉' 또는 '고정'으로 써 주세요` };
+        case 'ox':
+            if (/^(o|○|y|yes|예|1|true|발급|가입)$/i.test(s)) return { v: true };
+            if (/^(x|×|n|no|아니오|0|false|미발급|미가입)$/i.test(s)) return { v: false };
+            return { err: `${EMPXL_LABEL(f)}(${s})는 O 또는 X로 써 주세요` };
+        case 'basis':
+            if (s.includes('통상')) return { v: 'ordinary' };
+            if (s.includes('월급')) return { v: 'monthly' };
+            return { err: `경비시급(${s})은 '월급' 또는 '통상'으로 써 주세요` };
+        default: return { v: s };
+    }
+}
+
+function openEmpXlUpload() {
+    P.empXlRows = [];
+    document.getElementById('empxl-file').value = '';
+    document.getElementById('empxl-drop').style.display = '';
+    document.getElementById('empxl-result').innerHTML = '';
+    document.getElementById('empxl-status').innerText = '';
+    const btn = document.getElementById('empxl-save');
+    btn.disabled = true; btn.innerText = '저장';
+    document.getElementById('pay-empxl-up-modal').style.display = 'flex';
+}
+function closeEmpXlUpload() { document.getElementById('pay-empxl-up-modal').style.display = 'none'; }
+
+function onEmpXlFile(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array', cellDates: true });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+            P.empXlRows = buildEmpXlRows(rows);
+            document.getElementById('empxl-drop').style.display = 'none';
+            renderEmpXlRows();
+        } catch (err) {
+            console.error("사원정보 엑셀 읽기 실패:", err);
+            document.getElementById('empxl-result').innerHTML = `<div class="pay-note warn">${esc(err.message)}</div>`;
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// 1주 시간 → 월 고정OT로 바꾸기 (월 칸도 썼는데 다르면 1주 기준으로 저장하고 알려 줌)
+function empXlApplyWeek(vals, warns) {
+    const week = {};
+    ['overtime', 'holiday', 'night'].forEach(k => {
+        if (!(`week.${k}` in vals)) return;
+        const w = vals[`week.${k}`], m = weekToMonthHours(w);
+        week[k] = w;
+        if (`fixedOt.${k}` in vals && vals[`fixedOt.${k}`] !== m) warns.push(`고정OT ${OT_LABELS[k]}: 1주 ${w}h → 월 ${m}h로 저장 (엑셀 월 칸 ${vals[`fixedOt.${k}`]}h는 무시)`);
+        vals[`fixedOt.${k}`] = m;
+    });
+    return week;
+}
+
+// 월급여·기본급·연장·휴일야근 검사 (연봉형은 계산값과, 고정형은 월급여 = 항목 합계인지) - 1원 차이는 반올림이라 넘어감
+function empXlCheckPay(checks, cond, fixedOt, warns) {
+    const keys = Object.keys(checks);
+    if (!keys.length) return;
+    const p = { ...cond };
+    if (cond.payType === 'annual') {
+        const c = empXlCalcPay(p, { fixedOt });
+        if (!c) return;
+        keys.forEach(k => {
+            if (Math.abs(checks[k] - c[k]) > 1) warns.push(`${EMPXL_LABEL(EMPXL_FIELDS.find(f => f.k === k))}: 엑셀 ${won(checks[k])} ↔ 계산 ${won(c[k])} (연봉형은 계산값으로 써요)`);
+        });
+    } else if ('monthly' in checks) {
+        const sum = num(cond.fixedPay.base) + num(cond.fixedPay.overtime) + num(cond.fixedPay.holidayNight)
+            + num(cond.mealAllowance) + num(cond.vehicleAllowance) + num(cond.positionAllowance) + num(cond.siteAllowance);
+        if (Math.abs(checks.monthly - sum) > 1) warns.push(`월급여: 엑셀 ${won(checks.monthly)} ↔ 항목 합계 ${won(sum)}`);
+    }
+}
+
+function buildEmpXlRows(rows) {
+    const norm = (v) => String(v ?? '').replace(/\s/g, '');
+    const h = rows.findIndex(r => r.some(c => norm(c) === '이름') && r.some(c => norm(c).startsWith('휴대폰')));
+    if (h < 0) throw new Error('"이름", "휴대폰 뒷4자리" 머리글을 찾지 못했어요. [📄 엑셀 받기]로 받은 양식에 써 주세요.');
+    const cols = [];
+    rows[h].forEach((c, ci) => {
+        const f = EMPXL_FIELDS.find(x => [x.h, ...(x.alias || [])].some(n => norm(n) === norm(c)));
+        if (f) cols.push({ f, ci });
+    });
+    const curMonth = ymdOfDate(new Date()).slice(0, 7);
+    const out = [];
+    const seen = new Set();
+    for (let r = h + 1; r < rows.length; r++) {
+        const row = rows[r] || [];
+        if (!row.some(c => String(c ?? '').trim() !== '')) continue;
+        const vals = {}, errs = [];
+        cols.forEach(({ f, ci }) => {
+            const res = empXlParse(f, row[ci]);
+            if (!res) return;
+            if (res.err) errs.push(res.err); else vals[f.k] = res.v;
+        });
+        if (String(vals.empNo || '').includes('예시') || String(vals.name || '').includes('예시')) continue;
+        const label = vals.name || (vals.empNo ? `사원번호 ${vals.empNo}` : `${r + 1}번째 줄`);
+        if (errs.length) { out.push({ kind: 'err', name: label, msg: errs.join(' · ') }); continue; }
+
+        const byNo = vals.empNo ? P.employees.find(e => String(e.empNo || '') === String(vals.empNo)) : null;
+        const byName = vals.name && vals.phoneLast4 ? P.employees.find(e => e.name === vals.name && e.phoneLast4 === vals.phoneLast4) : null;
+        if (byNo && byName && byNo !== byName) { out.push({ kind: 'err', name: label, msg: `사원번호 ${vals.empNo}은(는) ${byNo.name} 님 번호예요` }); continue; }
+        const target = byNo || byName;
+        if (byNo && vals.name && vals.name !== byNo.name) { out.push({ kind: 'err', name: label, msg: `사원번호 ${vals.empNo}은(는) ${byNo.name} 님으로 등록돼 있어요` }); continue; }
+        if (target && seen.has(target.id)) { out.push({ kind: 'err', name: label, msg: '엑셀에 같은 사람이 두 줄 있어요 (아래 줄은 건너뜀)' }); continue; }
+
+        const warns = [];
+        const week = empXlApplyWeek(vals, warns);
+        const from = vals.from || P.month;
+        const pFrom = target ? profFor(target.id, from) : {};
+        const type = vals.payType || (target ? payTypeOf(pFrom) : 'annual');
+        // 연봉형의 월급여·기본급·연장·휴일야근 = 검사만 / 고정형의 월급여 = 검사만
+        const checks = {};
+        EMPXL_CHECK_KEYS.forEach(k => {
+            if (k in vals && (type === 'annual' || k === 'monthly')) { checks[k] = vals[k]; delete vals[k]; }
+        });
+
+        if (!target) {
+            // 🆕 새로 등록: 이름·휴대폰 뒷4자리 필수, 빈칸은 0 (명세서 발급·고용보험은 기본 O)
+            if (!vals.name || !vals.phoneLast4) { out.push({ kind: 'err', name: label, msg: '새로 등록하려면 이름과 휴대폰 뒷4자리가 필요해요' }); continue; }
+            if (vals.hireDate && vals.resignDate && vals.resignDate < vals.hireDate) { out.push({ kind: 'err', name: label, msg: '퇴사일이 입사일보다 빨라요' }); continue; }
+            const fixed = getFixOtLimits({});
+            const basic = {
+                name: vals.name, phoneLast4: vals.phoneLast4, empNo: vals.empNo || '', department: vals.department || '', position: vals.position || '',
+                hireDate: vals.hireDate || '', resignDate: vals.resignDate || '',
+                fixedOt: { overtime: vals['fixedOt.overtime'] ?? fixed.overtime, holiday: vals['fixedOt.holiday'] ?? fixed.holiday, night: vals['fixedOt.night'] ?? fixed.night }
+            };
+            if (Object.keys(week).length) basic.fixedOtWeek = week;
+            const cond = pickCond({
+                payType: type, annualSalary: vals.annualSalary,
+                fixedPay: { base: vals['fixedPay.base'], overtime: vals['fixedPay.overtime'], holidayNight: vals['fixedPay.holidayNight'] },
+                mealAllowance: vals.mealAllowance, vehicleAllowance: vals.vehicleAllowance, positionAllowance: vals.positionAllowance,
+                siteAllowance: vals.siteAllowance, holidayBonus: vals.holidayBonus
+            });
+            empXlCheckPay(checks, cond, basic.fixedOt, warns);
+            const profile = {
+                ...cond, birthDate: vals.birthDate || '', email: vals.email || '', bankAccount: vals.bankAccount || '',
+                payslipTarget: vals.payslipTarget ?? true, employmentInsured: vals.employmentInsured ?? true,
+                expenseWageBasis: vals.expenseWageBasis || 'monthly', pensionBase: null, healthBase: null
+            };
+            const summary = [basic.department, basic.position, cond.payType === 'fixed' ? '고정 금액' : (cond.annualSalary ? `연봉 ${won(cond.annualSalary)}` : ''), basic.hireDate ? `${basic.hireDate} 입사` : ''].filter(Boolean).join(' · ');
+            out.push({ kind: 'new', name: vals.name, summary, basic, profile, warns, on: true });
+            continue;
+        }
+
+        // ✏️ 수정: 엑셀에 쓴 칸만 비교
+        seen.add(target.id);
+        const e = target;
+        const pNow = profFor(e.id, P.month);
+        const basic = {}, prof2 = {}, changes = [];
+        const fixedOt = { ...getFixOtLimits(e) };
+        let otChanged = false;
+        const newCond = pickCond(pFrom);
+        let condChanged = false;
+        EMPXL_FIELDS.forEach(f => {
+            if (!(f.k in vals) || f.lock || f.src === 'meta' || f.src === 'week' || f.src === 'check') return;
+            const v = vals[f.k];
+            const old = empXlCurrent(f, e, f.src === 'cond' ? pFrom : pNow);
+            if (String(old) === String(v)) return;
+            const otk = f.k.startsWith('fixedOt.') ? f.k.split('.')[1] : null;
+            changes.push({ label: EMPXL_LABEL(f), old: empXlShowText(f, old), now: empXlShowText(f, v), cond: f.src === 'cond', note: otk && otk in week ? `1주 ${week[otk]}h` : '' });
+            if (otk) { fixedOt[otk] = v; otChanged = true; }
+            else if (f.k.startsWith('fixedPay.')) { newCond.fixedPay[f.k.split('.')[1]] = v; condChanged = true; }
+            else if (f.src === 'cond') { newCond[f.k] = v; condChanged = true; }
+            else if (f.src === 'emp') basic[f.k] = v;
+            else prof2[f.k] = v;
+        });
+        if (otChanged) basic.fixedOt = fixedOt;
+        if (Object.keys(week).length) {
+            const merged = { ...(e.fixedOtWeek || {}), ...week };
+            if (JSON.stringify(merged) !== JSON.stringify(e.fixedOtWeek || {})) basic.fixedOtWeek = merged;
+        }
+        const hire = basic.hireDate ?? e.hireDate, resign = basic.resignDate ?? e.resignDate;
+        if (hire && resign && resign < hire) { out.push({ kind: 'err', name: e.name, msg: '퇴사일이 입사일보다 빨라요' }); continue; }
+        empXlCheckPay(checks, newCond, fixedOt, warns);
+        if (condChanged) {
+            const hist = nextPayHistory(prof(e.id), { ...newCond, from });
+            if (hist) { prof2.payHistory = hist; Object.assign(prof2, pickCond(condFor({ payHistory: hist }, curMonth))); }
+        }
+        const hasSave = changes.length || basic.fixedOtWeek;
+        if (!hasSave && !warns.length) { out.push({ kind: 'same', name: e.name }); continue; }
+        out.push({ kind: hasSave ? 'mod' : 'warn', id: e.id, name: e.name, changes, from: condChanged ? from : '', basic, profile: prof2, warns, on: !!hasSave });
+    }
+    return out;
+}
+
+function renderEmpXlRows() {
+    const rows = P.empXlRows;
+    const shown = rows.filter(r => r.kind !== 'same');
+    const same = rows.length - shown.length;
+    const warnHtml = (r) => (r.warns || []).length ? `<div class="warn">${r.warns.map(w => `⚠️ ${esc(w)}`).join('<br>')}</div>` : '';
+    const lines = shown.map(r => {
+        const i = rows.indexOf(r);
+        if (r.kind === 'err') return `<div class="pay-xl-line err"><span class="ck"></span><span class="nm">${esc(r.name)}</span><span class="what">⚠️ ${esc(r.msg)} <span class="sub">(건너뜀)</span></span></div>`;
+        if (r.kind === 'warn') return `<div class="pay-xl-line"><span class="ck"></span><span class="nm">${esc(r.name)}</span><span class="what"><span class="sub">바뀌는 칸 없음 · 확인만 해 주세요</span>${warnHtml(r)}</span></div>`;
+        const what = r.kind === 'new'
+            ? `🆕 새로 등록 ${r.summary ? `<span class="sub">${esc(r.summary)}</span>` : ''}`
+            : (r.changes.map(c => `${esc(c.label)} <span class="old">${esc(c.old)}</span> → <span class="new">${esc(c.now)}</span>${c.note ? ` <span class="sub">(${esc(c.note)})</span>` : ''}${c.cond && r.from ? ` <span class="sub">(${r.from.replace('-', '년 ')}월부터)</span>` : ''}`).join('<br>')
+                || '<span class="sub">근로계약 1주 시간 저장</span>');
+        return `<label class="pay-xl-line"><input type="checkbox" class="ck" ${r.on ? 'checked' : ''} onchange="P.empXlRows[${i}].on = this.checked; renderEmpXlRows()"><span class="nm">${esc(r.name)}</span><span class="what">${what}${warnHtml(r)}</span></label>`;
+    }).join('');
+    document.getElementById('empxl-result').innerHTML = shown.length
+        ? `<div class="sub" style="margin-bottom: 6px;">바뀌는 사람만 보여요 · 체크를 풀면 빼고 저장해요</div>${lines}`
+        : `<div class="pay-note">바뀌는 내용이 없어요 (${same}명 모두 같음)</div>`;
+    const n = rows.filter(r => (r.kind === 'new' || r.kind === 'mod') && r.on).length;
+    document.getElementById('empxl-status').innerText = `${same ? `변경 없음 ${same}명 · ` : ''}빈칸은 그대로 둬요`;
+    const btn = document.getElementById('empxl-save');
+    btn.disabled = !n;
+    btn.innerText = `${n}명 저장`;
+}
+
+function saveEmpXl() {
+    const rows = P.empXlRows.filter(r => (r.kind === 'new' || r.kind === 'mod') && r.on);
+    if (!rows.length) return;
+    setPayBusy(true, '사원정보 저장 중...');
+    const jobs = rows.map(r => {
+        if (r.kind === 'new') {
+            return db.collection("employees").add({ ...r.basic, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+                .then(ref => db.collection("payroll_profiles").doc(ref.id).set(r.profile, { merge: true }));
+        }
+        const a = Object.keys(r.basic).length ? db.collection("employees").doc(r.id).update(r.basic) : Promise.resolve();
+        return a.then(() => Object.keys(r.profile).length ? db.collection("payroll_profiles").doc(r.id).set(r.profile, { merge: true }) : null);
+    });
+    Promise.allSettled(jobs).then(results => {
+        setPayBusy(false);
+        const failed = results.map((x, i) => x.status === 'rejected' ? rows[i].name : null).filter(Boolean);
+        results.forEach(x => { if (x.status === 'rejected') console.error("사원정보 저장 실패:", x.reason); });
+        closeEmpXlUpload();
+        loadPayrollData();
+        if (typeof loadSearchEmployeeList === 'function') loadSearchEmployeeList();
+        if (failed.length) alert(`${failed.join(', ')} 님은 저장하지 못했어요. 다시 올려 주세요.`);
+        else payToast(`${rows.length}명 사원정보를 저장했어요`);
+    });
+}
+
+// ------------------------------------------
 // 회사 정보 (명세서 하단 문의처·회사명·지급일)
 // ------------------------------------------
 const COMPANY_FIELDS = ['companyName', 'ceoName', 'contactName', 'contactPhone', 'contactEmail', 'payDay'];
@@ -1183,7 +1574,7 @@ function savePayCompany() {
 // 📥 회계사무소 급여대장 불러오기
 // - 회계사무소 엑셀(.xls/.xlsx): 사원마다 3줄 (사원번호·성명·항목 / 입사일·공제합계 / 지급합계·차인지급액)
 // - 머리글 글자로 열 위치를 찾으므로 열 순서가 바뀌어도 동작
-// - 공제 6항목은 그대로 반영, 지급이 다르면 '회계사무소 값으로 맞추기' 선택
+// - 공제 6항목은 그대로 반영, 지급은 아래 🔍 검수 화면에서 사람별로 처리 방법 선택
 // - 국민연금·건강보험 기준액, 고용보험 가입 여부, 소득세는 사원별 기준으로 학습 → 다음 달 자동 예상값에 사용
 // ------------------------------------------
 const ACC_COLUMNS = {
@@ -1198,7 +1589,13 @@ function openPayImport() {
     P.importRows = [];
     document.getElementById('pay-import-file').value = '';
     document.getElementById('pay-import-result').innerHTML = '';
-    document.getElementById('pay-import-apply').disabled = true;
+    const btn = document.getElementById('pay-import-apply');
+    btn.disabled = true;
+    btn.innerText = '검수 후 저장';
+    document.getElementById('pay-audit-status').innerHTML = '';
+    document.getElementById('pay-audit-memo').style.display = 'none';
+    document.getElementById('pay-import-drop').style.display = '';
+    document.querySelector('#pay-import-modal .pay-modal').classList.remove('audit');
     document.getElementById('pay-import-title').innerText = `📥 회계사무소 급여대장 불러오기 · ${monthLabel(P.month)}`;
     document.getElementById('pay-import-modal').style.display = 'flex';
 }
@@ -1279,46 +1676,244 @@ function onPayImportFile(input) {
     reader.readAsArrayBuffer(file);
 }
 
+// ------------------------------------------
+// 🔍 급여대장 검수 (불러오기 팝업이 화면 가득 커지면서 사람별 검수 보드로)
+// - 비교 기준: 사원정보(연봉·수당·고정OT·입사일)로 계산한 금액 (= defaultPay, 명세서 자동값과 같은 계산)
+// - 다른 항목마다 '이렇게 계산 ↔ 회계사무소는 이렇게 한 것 같아요'를 자주 나오는 실수(30일로 나눔, 재직일 ±1,
+//   평일로 일할, 일할 누락, 항목 누락, 연봉 변경 미반영, 고정OT 시간 차이)에 대입해서 찾아 보여 줌
+// - 사람마다 3가지 중 선택: 📮 정정신고 요청(저장 안 하고 보류) / 📥 업로드 자료 적용 / 🧮 계산한 자료 적용
+// - 공제 6항목은 어느 쪽을 골라도 회계사무소 값 그대로 (4대보험은 공단 신고 기준액이라 참고만)
+// ------------------------------------------
+const AUDIT_CHOICES = {
+    fix: { ic: '📮', t: '정정신고 요청', d: '이번엔 저장하지 않고 보류해요. 회계사무소에서 고친 대장을 받으면 다시 올려 주세요.' },
+    acc: { ic: '📥', t: '업로드 자료 적용', d: '회계사무소 금액 그대로 명세서에 반영해요.' },
+    calc: { ic: '🧮', t: '계산한 자료 적용', d: '사원정보로 계산한 금액으로 명세서를 만들어요. (공제는 회계사무소 값)' }
+};
+function auditDiffText(o, a) {
+    return a > o ? `${won(a - o)}원 더 신고됨` : `${won(o - a)}원 덜 신고됨`;
+}
+function auditSigned(n) { return n === 0 ? '—' : `${n > 0 ? '+' : '−'}${won(Math.abs(n))}`; }
+
+// 우리 계산 설명 (항목별)
+function auditExplainOurs(k, def, profile) {
+    const s = def.structure, r = def.range, mo = Number(P.month.slice(5));
+    if (!s) return '사원정보에 급여조건(연봉 또는 고정 금액)이 없어요';
+    const label = ACC_PAY_LABELS[k];
+    if (r && r.partial) {
+        if (k === 'base') {
+            return s.type === 'annual'
+                ? `연봉 ${won(s.annual)} ÷ 12 = ${won(s.monthlyRaw)}<br>× 재직 ${r.days}일 ÷ ${r.monthDays}일 <span class="sub">(${r.start.slice(5)} ~ ${r.end.slice(5)})</span>`
+                : `월급(식대 제외) ${won(s.monthly - s.pay.meal)}<br>× 재직 ${r.days}일 ÷ ${r.monthDays}일 <span class="sub">(${r.start.slice(5)} ~ ${r.end.slice(5)})</span>`;
+        }
+        if (k === 'meal') return '식대는 일할 없이 전액';
+        if (k === 'bonus') return (HOLIDAY_BONUS_MONTHS[Number(P.month.slice(0, 4))] || []).includes(mo) ? `명절상여 ${won(profile.holidayBonus)}` : `${mo}월은 명절상여 달이 아님`;
+        return `입사·퇴사 달은 전부 기본급으로 일할 → ${label} 0원`;
+    }
+    if (['meal', 'vehicle', 'position', 'site'].includes(k)) return `사원정보 › ${label} ${won(s.pay[k])}`;
+    if (k === 'bonus') {
+        return (HOLIDAY_BONUS_MONTHS[Number(P.month.slice(0, 4))] || []).includes(mo)
+            ? `사원정보 › 명절상여 ${won(profile.holidayBonus)} <span class="sub">(${mo}월은 명절상여 달)</span>` : `${mo}월은 명절상여 달이 아님 → 0원`;
+    }
+    if (s.type === 'fixed') return `사원정보 › 고정 금액 ${label} ${won(s.pay[k])}`;
+    if (k === 'overtime') return `통상시급 ${won2(s.ordinaryWage)} × 고정 연장 ${s.fixed.overtime}h × 1.5 = ${s.weighted.overtime}h`;
+    if (k === 'holidayNight') return `통상시급 ${won2(s.ordinaryWage)} × (휴일 ${s.fixed.holiday}h × 1.5 + 야간 ${s.fixed.night}h × 0.5) = ${s.weighted.holiday + s.weighted.night}h`;
+    if (k === 'base') return `연봉 ${won(s.annual)} ÷ 12 = ${won(s.monthly)}<br>− 식대·차량·직책·현장수당 − 고정OT 수당`;
+    return '';
+}
+
+// 일할 계산이 틀린 경우: 자주 나오는 실수에 대입해서 맞는 것 찾기
+function auditGuessProrate(a, def) {
+    const s = def.structure, r = def.range, ym = P.month, mo = Number(ym.slice(5));
+    const raw = s.type === 'annual' ? s.monthlyRaw : s.monthly - s.pay.meal;
+    const md = r.monthDays, d = r.days;
+    const near = (x) => Math.abs(Math.round(x) - a) <= 1;
+    for (const dd of [30, 31, 28, 29].filter(x => x !== md)) {
+        if (near(raw * d / dd)) return { accCalc: `${won(raw)} × ${d}일 ÷ <mark>${dd}일</mark>`, why: `${mo}월은 <b>${md}일</b>까지 있는데 회계사무소는 <b>${dd}일</b>로 나눈 것 같아요. 회사 방식(그달 달력 일수)으로는 ${md}일이 맞아요.` };
+    }
+    for (const n of [d - 1, d + 1]) {
+        if (n > 0 && near(raw * n / md)) return { accCalc: `${won(raw)} × <mark>${n}일</mark> ÷ ${md}일`, why: `재직일을 <b>${n}일</b>로 센 것 같아요. ${r.start.slice(5)} ~ ${r.end.slice(5)}는 양쪽 날짜를 포함하면 <b>${d}일</b>이에요.` };
+    }
+    const wd = countWorkDays(r), wm = countWorkDays({ start: `${ym}-01`, end: `${ym}-${pad2(md)}` });
+    if (wm > 0 && near(raw * wd / wm)) return { accCalc: `${won(raw)} × <mark>평일 ${wd}일 ÷ ${wm}일</mark>`, why: `달력 날짜 대신 <b>평일(근무일) ${wd}일 ÷ ${wm}일</b>로 계산한 것 같아요. 회사 방식은 달력 일수(${d}일 ÷ ${md}일)예요.` };
+    if (s.type === 'annual' && near((raw - s.pay.meal) * d / md)) return { accCalc: `(${won(raw)} <mark>− 식대 ${won(s.pay.meal)}</mark>) × ${d}일 ÷ ${md}일`, why: `식대를 뺀 금액으로 일할한 것 같아요. 회사 방식은 연봉÷12 전체를 일할하고 식대는 따로 전액이에요.` };
+    if (near(raw) || a === s.pay.base) return { accCalc: `<mark>일할 없이</mark> 한 달 치`, why: `${r.start.slice(5)} 입사(또는 퇴사)인데 <b>일할계산 없이 한 달 치</b>가 들어갔어요.` };
+    return null;
+}
+
+// 다른 항목마다 원인 추정 → [{ key, label, ours, acc, oursCalc, accCalc, verdict, rec }]
+function auditDiagnose(e, def, ours, accPay) {
+    const s = def.structure, r = def.range;
+    const profile = profFor(e.id, P.month);
+    const sameTotal = sumValues(ours) === sumValues(accPay);
+    return ACC_PAY_KEYS.filter(k => ours[k] !== num(accPay[k])).map(k => {
+        const o = ours[k], a = num(accPay[k]), label = ACC_PAY_LABELS[k];
+        const it = { key: k, label, ours: o, acc: a, oursCalc: auditExplainOurs(k, def, profile), accCalc: won(a), verdict: '', rec: null };
+        const diff = ` → <b>${auditDiffText(o, a)}</b>`;
+        const g = k === 'base' && s && r && r.partial ? auditGuessProrate(a, def) : null;
+        if (g) {
+            it.accCalc = g.accCalc; it.verdict = g.why + diff; it.rec = 'fix';
+        } else if (a === 0 && o > 0) {
+            it.accCalc = `${label} <mark>0원</mark> (대장에 없음)`;
+            it.verdict = `사원정보에는 ${label} ${won(o)}원이 있는데 회계사무소 대장에는 없어요. 전달이 안 됐을 수 있어요.` + diff;
+            it.rec = 'fix';
+        } else if (o === 0 && a > 0) {
+            it.accCalc = `${label} <mark>${won(a)}</mark>`;
+            it.verdict = `회계사무소 대장에만 있는 금액이에요. 사원정보에 빠져 있지 않은지 확인해 주세요.` + diff;
+            it.rec = 'acc';
+        } else if (sameTotal) {
+            if (s && s.type === 'annual' && k === 'overtime' && s.ordinaryWage > 0) {
+                it.accCalc = `통상시급 × 약 <mark>${(a / s.ordinaryWage).toFixed(1)}h</mark>`;
+                it.verdict = `월급 합계는 같고 <b>항목 나누는 방식만</b> 달라요. 고정 연장시간이 사원정보(${s.fixed.overtime}h, 가산 ${s.weighted.overtime}h)와 다르게 들어간 것 같아요. 받는 돈은 같아요.`;
+            } else {
+                it.verdict = `월급 합계는 같고 <b>항목 나누는 방식만</b> 달라요. 받는 돈은 같아요.`;
+            }
+            if (['meal', 'vehicle'].includes(k)) it.verdict += ' (비과세 금액이 달라서 세금은 달라질 수 있어요)';
+            it.rec = 'calc';
+        } else if (k === 'base' && s && s.type === 'annual' && !(r && r.partial)) {
+            const accMonthly = sumValues(accPay) - num(accPay.bonus);
+            const implied = accMonthly * 12;
+            if (Math.abs(implied - s.annual) > 12) {
+                it.accCalc = `월 합계 ${won(accMonthly)} × 12 = <mark>연봉 ${won(implied)}</mark>`;
+                it.verdict = `회계사무소는 <b>연봉 ${won(implied)}원</b> 기준으로 계산했어요. 사원정보 연봉은 ${won(s.annual)}원이에요. 연봉 변경이 전달 안 됐는지 확인해 주세요.` + diff;
+                it.rec = 'fix';
+            } else {
+                it.verdict = `원인을 찾지 못했어요. 금액만 달라요.` + diff;
+            }
+        } else {
+            it.verdict = `원인을 찾지 못했어요. 금액만 달라요.` + diff;
+        }
+        return it;
+    });
+}
+
 function buildImportRows(accMonth, people) {
     const targets = monthEmployees();
     P.importRows = targets.map(e => {
         const acc = people.find(p => e.empNo && p.empNo === String(e.empNo)) || people.find(p => p.name === (e.name || '').replace(/\s/g, ''));
-        const rec = P.records[e.id];
-        const ourPay = rec ? { ...emptyPay(), ...rec.pay } : defaultPay(e.id, P.month).pay;
-        if (!acc) return { emp: e, acc: null, ourPay };
+        const def = defaultPay(e.id, P.month);
+        const ourPay = def.pay;
+        if (!acc) return { emp: e, acc: null, ourPay, issues: [] };
         const ours = payToAccShape(ourPay);
         const accPay = { ...Object.fromEntries(ACC_PAY_KEYS.map(k => [k, 0])), ...acc.pay };
-        const diffs = ACC_PAY_KEYS.filter(k => ours[k] !== num(accPay[k])).map(k => ({ key: k, ours: ours[k], acc: num(accPay[k]) }));
-        return { emp: e, acc, accPay, ourPay, diffs, matchPay: diffs.length > 0 };
+        const issues = auditDiagnose(e, def, ours, accPay);
+        const recs = issues.map(i => i.rec);
+        const rec = recs.includes('fix') ? 'fix' : recs.length && recs.every(x => x === 'calc') ? 'calc' : recs.includes('acc') ? 'acc' : null;
+        // 지급액이 달라 고용보험도 따라 달라진 경우 안내
+        let chain = '';
+        if (issues.length && sumValues(ours) !== sumValues(accPay) && num(acc.deduct.employment) > 0) {
+            const ourEmp = floor10(taxableOf(ourPay) * INSURANCE.employment);
+            if (ourEmp !== num(acc.deduct.employment)) chain = `고용보험도 지급액 따라 달라요 (계산 ${won(ourEmp)} ↔ 대장 ${won(acc.deduct.employment)})`;
+        }
+        return { emp: e, acc, accPay, ours, ourPay, issues, rec, chain, choice: null };
     });
-    const unknown = people.filter(p => !P.importRows.some(r => r.acc === p)).length;
-    const monthWarn = accMonth && accMonth !== P.month
-        ? `<div class="pay-note warn">⚠️ 파일의 귀속월은 <b>${monthLabel(accMonth)}</b>인데, 지금 선택한 달은 <b>${monthLabel(P.month)}</b>입니다. 달을 확인해 주세요.</div>` : '';
-    const rowsHtml = P.importRows.map((r, i) => {
-        if (!r.acc) return `<tr class="bad"><td>${esc(r.emp.name)}</td><td colspan="6" class="bad" style="text-align: left;">회계사무소 파일에 없음 (사원번호 ${esc(r.emp.empNo || '-')})</td></tr>`;
-        const ourTotal = sumValues(r.ourPay);
-        const dTotal = sumValues(r.acc.deduct);
-        const payout = round10(num(r.acc.payTotal || sumValues(r.accPay)) - dTotal);
-        const ok = !r.diffs.length;
-        return `<tr class="${ok ? '' : 'bad'}">
-            <td>${esc(r.emp.name)}</td><td>${won(ourTotal)}</td><td>${won(r.acc.payTotal || sumValues(r.accPay))}</td>
-            <td class="${ourTotal === sumValues(r.accPay) ? '' : 'bad'}">${won(sumValues(r.accPay) - ourTotal)}</td>
-            <td>${won(dTotal)}</td><td>${won(payout)}</td>
-            <td style="text-align: center;">${ok ? '<span class="ok">✅ 일치</span>' : '<span class="bad">⚠️ 항목 다름</span>'}</td></tr>`
-            + (ok ? '' : `<tr class="bad-detail"><td colspan="7">
-                ${r.diffs.map(d => `${ACC_PAY_LABELS[d.key]}: 우리 <b>${won(d.ours)}</b> ↔ 회계사무소 <b>${won(d.acc)}</b>`).join(' · ')}
-                <label class="pay-import-chk"><input type="checkbox" ${r.matchPay ? 'checked' : ''} onchange="P.importRows[${i}].matchPay = this.checked"> 지급도 회계사무소 값으로 맞추기</label></td></tr>`);
-    }).join('');
+    P.importMeta = { accMonth, unknown: people.filter(p => !P.importRows.some(r => r.acc === p)).length };
+    const order = (r) => r.issues.length ? 0 : !r.acc ? 1 : 2;
+    const first = [...P.importRows].sort((a, b) => order(a) - order(b))[0];
+    P.auditSel = first ? first.emp.id : null;
+    document.querySelector('#pay-import-modal .pay-modal').classList.add('audit');
+    document.getElementById('pay-import-drop').style.display = 'none';
+    document.getElementById('pay-import-title').innerText = `🔍 급여대장 검수 · ${monthLabel(P.month)}`;
+    renderAudit();
+}
+
+function auditChoose(empId, c) {
+    const r = P.importRows.find(x => x.emp.id === empId);
+    if (r) r.choice = c;
+    renderAudit();
+}
+function auditSelect(empId) { P.auditSel = empId; renderAudit(); }
+
+function renderAudit() {
+    const rows = P.importRows, meta = P.importMeta || {};
+    const matched = rows.filter(r => r.acc);
+    const bad = matched.filter(r => r.issues.length);
+    const missing = rows.filter(r => !r.acc);
+    const diffSum = matched.reduce((s, r) => s + sumValues(r.accPay) - sumValues(r.ours), 0);
+    const monthWarn = meta.accMonth && meta.accMonth !== P.month
+        ? `<div class="pay-note warn">⚠️ 파일의 귀속월은 <b>${monthLabel(meta.accMonth)}</b>인데, 지금 선택한 달은 <b>${monthLabel(P.month)}</b>입니다. 달을 확인해 주세요.</div>` : '';
+    const chip = (r) => !r.acc ? '<span class="pa-chip gray">대장에 없음</span>'
+        : !r.issues.length ? '<span class="pa-chip ok">✅ 일치</span>'
+        : r.choice ? `<span class="pa-chip done">${AUDIT_CHOICES[r.choice].ic} ${AUDIT_CHOICES[r.choice].t}</span>`
+        : `<span class="pa-chip bad">⚠️ ${r.issues.length}건 다름</span>`;
+    const order = (r) => r.issues.length ? 0 : !r.acc ? 1 : 2;
+    const list = [...rows].sort((a, b) => order(a) - order(b)).map(r => `
+        <div class="pa-person ${r.emp.id === P.auditSel ? 'on' : ''}" onclick="auditSelect('${r.emp.id}')">
+            <div><div class="nm">${esc(r.emp.name)}</div><div class="ds">${esc([r.emp.department, r.emp.position].filter(Boolean).join(' · '))}</div></div>
+            ${chip(r)}
+        </div>`).join('');
+
     document.getElementById('pay-import-result').innerHTML = `${monthWarn}
-        <div class="sub" style="margin: 4px 0 8px;">사원번호·이름으로 짝 맞춤 · 이번 달 급여명세서 대상 ${P.importRows.length}명${unknown ? ` · 대상이 아닌 ${unknown}명은 건너뜀` : ''}</div>
-        <table class="pay-import-tbl">
-            <tr><th>이름</th><th>우리 지급합계</th><th>회계사무소 지급합계</th><th>차이</th><th>공제 합계</th><th>실지급액</th><th style="text-align:center;">상태</th></tr>
-            ${rowsHtml}
-        </table>`;
-    const n = P.importRows.filter(r => r.acc).length;
+        <div class="pa-summary">
+            <div class="pa-sum"><div class="k">검수 대상</div><div class="v">${rows.length}명</div></div>
+            <div class="pa-sum ok"><div class="k">일치</div><div class="v">${matched.length - bad.length}명</div></div>
+            <div class="pa-sum bad"><div class="k">다름</div><div class="v">${bad.length}명 · ${bad.reduce((s, r) => s + r.issues.length, 0)}건</div></div>
+            <div class="pa-sum warn"><div class="k">지급 차액 합계 (대장 − 계산)</div><div class="v">${auditSigned(diffSum)}원</div></div>
+        </div>
+        ${missing.length || meta.unknown ? `<div class="sub" style="margin: -6px 0 16px;">${missing.length ? `회계사무소 대장에 없는 사람 ${missing.length}명은 저장하지 않아요` : ''}${missing.length && meta.unknown ? ' · ' : ''}${meta.unknown ? `급여명세서 대상이 아닌 ${meta.unknown}명은 건너뜀` : ''}</div>` : ''}
+        <div class="pa-board">
+            <div class="pa-list"><div class="lh">사원 ${rows.length}명 · 다른 사람이 위로</div>${list}</div>
+            <div class="pa-detail">${renderAuditDetail(rows.find(r => r.emp.id === P.auditSel))}</div>
+        </div>`;
+
+    const need = bad.filter(r => !r.choice).length;
+    const fixN = bad.filter(r => r.choice === 'fix').length;
+    const saveN = matched.length - fixN;
+    document.getElementById('pay-audit-status').innerHTML = bad.length
+        ? `처리 선택 <b>${bad.length - need} / ${bad.length}명</b>${fixN ? ` · 정정 요청 <b>${fixN}명</b> (보류)` : ''}` : '모두 일치해요';
+    document.getElementById('pay-audit-memo').style.display = fixN ? '' : 'none';
     const btn = document.getElementById('pay-import-apply');
-    btn.disabled = n === 0;
-    btn.innerText = `공제 반영하고 저장 (${n}명)`;
+    btn.disabled = need > 0 || matched.length === 0;
+    btn.innerText = need > 0 ? `처리 방법을 골라 주세요 (${need}명 남음)` : saveN ? `저장 (${saveN}명)` : '닫기 (모두 보류)';
+}
+
+function renderAuditDetail(r) {
+    if (!r) return '';
+    const e = r.emp;
+    const head = `<div class="pa-dh"><h3>${esc(e.name)}</h3><span class="sub">${esc([e.department, e.position, e.empNo ? `사원번호 ${e.empNo}` : ''].filter(Boolean).join(' · '))}</span></div>`;
+    if (!r.acc) return `${head}<div class="pa-okbox gray">회계사무소 대장에 이 사람이 없어요 (사원번호 ${esc(e.empNo || '-')})<br><small>저장하지 않아요. 대장에서 빠졌는지 회계사무소에 확인해 주세요.</small></div>`;
+    const keys = ACC_PAY_KEYS.filter(k => r.ours[k] || num(r.accPay[k]));
+    const tr = (label, o, a, cls = '') => `<tr class="${cls} ${o !== a ? 'diff' : ''}"><td>${label}</td><td>${won(o)}</td><td>${won(a)}</td><td class="d">${auditSigned(a - o)}</td></tr>`;
+    const table = `<table class="pa-cmp">
+        <tr><th>항목</th><th>🧮 계산 (사원정보 기준)</th><th>📥 회계사무소 대장</th><th>차이</th></tr>
+        ${keys.map(k => tr(ACC_PAY_LABELS[k], r.ours[k], num(r.accPay[k]))).join('')}
+        ${tr('지급 합계', sumValues(r.ours), sumValues(r.accPay), 'tot')}
+    </table>
+    <div class="pa-deduct">공제 (회계사무소 값 그대로 반영) · ${DEDUCT_ITEMS.map(it => `${it.label} ${won(r.acc.deduct[it.key])}`).join(' · ')}</div>`;
+    if (!r.issues.length) return `${head}${table}<div class="pa-okbox">✅ 모든 지급 항목이 사원정보로 계산한 금액과 같아요</div>`;
+    const issues = r.issues.map((it, i) => `
+        <div class="pa-issue">
+            <div class="ih"><b>${i + 1}. ${it.label}</b><span>계산 ${won(it.ours)} ↔ 대장 ${won(it.acc)}</span><span class="pa-chip bad" style="margin-left: auto;">${auditSigned(it.acc - it.ours)}원</span></div>
+            <div class="ib">
+                <div class="pa-why">
+                    <div class="pa-calc ours"><div class="t">🧮 이렇게 계산했어요</div><div class="f">${it.oursCalc}</div><div class="r">= ${won(it.ours)}</div></div>
+                    <div class="pa-calc acc"><div class="t">📥 회계사무소는 이렇게 한 것 같아요</div><div class="f">${it.accCalc}</div><div class="r">= ${won(it.acc)}</div></div>
+                </div>
+                <div class="pa-verdict">💡 ${it.verdict}</div>
+            </div>
+        </div>`).join('');
+    const choices = `<div class="pa-choose-h">이 사람은 어떻게 처리할까요?</div>
+        <div class="pa-choices">${['fix', 'acc', 'calc'].map(c => `
+            <button class="pa-choice ${r.choice === c ? 'sel' : ''}" onclick="auditChoose('${e.id}', '${c}')">
+                <div class="ct">${AUDIT_CHOICES[c].ic} ${AUDIT_CHOICES[c].t} ${r.rec === c ? '<span class="rec">추천</span>' : ''}</div>
+                <div class="cd">${AUDIT_CHOICES[c].d}</div>
+            </button>`).join('')}</div>
+        ${r.choice === 'fix' ? `<div class="pa-memo">${esc(auditMemoFor(r))}</div>` : ''}`;
+    return `${head}${table}${issues}${r.chain ? `<div class="pa-chain">함께 영향: <span>${esc(r.chain)}</span></div>` : ''}${choices}`;
+}
+
+function auditMemoFor(r) {
+    const strip = (h) => h.replace(/<[^>]+>/g, '');
+    return `■ ${r.emp.name}${r.emp.empNo ? ` (사원번호 ${r.emp.empNo})` : ''}\n`
+        + r.issues.map(it => `- ${it.label}: ${won(it.acc)}원 → ${won(it.ours)}원\n  사유: ${strip(it.verdict)}`).join('\n')
+        + (r.chain ? `\n- ${r.chain}` : '');
+}
+function copyAuditMemo() {
+    const fixes = P.importRows.filter(r => r.acc && r.choice === 'fix');
+    if (!fixes.length) return;
+    const text = `${monthLabel(P.month)} 급여대장 정정 요청드립니다.\n\n${fixes.map(auditMemoFor).join('\n\n')}\n\n확인 후 정정된 급여대장 다시 보내주세요. 감사합니다.`;
+    navigator.clipboard.writeText(text)
+        .then(() => payToast('정정 요청 메모를 복사했어요'))
+        .catch(() => prompt('아래 내용을 복사해 주세요', text));
 }
 
 // 회계사무소 지급값을 우리 항목으로 (휴일·야근수당은 연봉형이면 휴일/야간 비율로 나눔)
@@ -1342,13 +1937,20 @@ function accPayToOurs(empId, accPay, ourPay) {
 }
 
 function applyPayImport() {
-    const rows = P.importRows.filter(r => r.acc);
-    if (!rows.length) return;
+    // 📮 정정신고 요청을 고른 사람은 저장하지 않고 보류 (고친 대장을 다시 올리면 그때 검수)
+    const held = P.importRows.filter(r => r.acc && r.choice === 'fix').length;
+    const rows = P.importRows.filter(r => r.acc && r.choice !== 'fix');
+    if (!rows.length) {
+        closePayImport();
+        if (held) payToast(`${held}명 정정 요청으로 보류했어요 · 고친 대장을 받으면 다시 올려 주세요`);
+        return;
+    }
     const now = Date.now();
     setPayBusy(true, '회계사무소 급여대장 반영 중...');
     const jobs = rows.map(r => {
         const id = r.emp.id;
-        const pay = r.matchPay ? accPayToOurs(id, r.accPay, r.ourPay) : r.ourPay;
+        const useAcc = r.issues.length && r.choice === 'acc';
+        const pay = useAcc ? accPayToOurs(id, r.accPay, r.ourPay) : r.ourPay;
         const deduct = Object.fromEntries(DEDUCT_ITEMS.map(it => [it.key, num(r.acc.deduct[it.key])]));
         const saved = P.records[id];
         const rec = buildRecord(id, false, { pay, deduct, etc: saved ? saved.etc || [] : [] });
@@ -1356,7 +1958,7 @@ function applyPayImport() {
         if (!rec.savedAt) rec.savedAt = now;
         rec.deductSource = 'accounting';
         rec.accountingImportedAt = now;
-        if (r.matchPay) rec.payEdited = true;
+        if (useAcc) rec.payEdited = true;
 
         // 사원별 기준 학습 (입사한 달 국민연금 0원은 미가입으로 보지 않음)
         const e = r.emp, taxable = taxableOf(pay);
@@ -1381,7 +1983,7 @@ function applyPayImport() {
             setPayBusy(false); P.dirty = false; renderPayMonthBar(); renderPayEmpList(); renderPayMain();
             closePayImport();
             // 등록만 알리고 끝 (메일 발송은 나중에 '일괄 발송' 버튼으로)
-            payToast(`${rows.length}명 급여대장이 등록됐어요`);
+            payToast(`${rows.length}명 급여대장이 등록됐어요${held ? ` · ${held}명은 정정 요청으로 보류` : ''}`);
         })
         .catch(err => {
             console.error("급여대장 반영 실패:", err);
