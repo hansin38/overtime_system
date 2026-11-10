@@ -165,7 +165,7 @@
             </table>
         </div>
 
-        <!-- 💵 급여 관리 (사원등록·월 급여·명세서 발송 / 화면 그리기는 js/payroll.js) -->
+        <!-- 💵 급여 관리 (사원등록·월 급여·명세서 발송 / 화면 그리기는 js/payroll-*.js) -->
         <div id="pay-admin-section" style="display: none;">
             <div class="pay-month-bar">
                 <select id="pay-month" onchange="changePayMonth()"></select>
@@ -376,7 +376,7 @@
         </div>
     </div>
 
-    <!-- 📧 [일괄 발송] 체크해서 고르고 이메일 바로 수정, 실패한 사람만 다시 발송 (js/payroll.js bulkSendWage) -->
+    <!-- 📧 [일괄 발송] 체크해서 고르고 이메일 바로 수정, 실패한 사람만 다시 발송 (js/payroll-slip.js bulkSendWage) -->
     <div id="pay-bulk-modal" class="pay-modal-bg" onclick="if (event.target === this) closeBulkSend()">
         <div class="pay-modal wide pay-bulk">
             <div class="mh"><b id="pay-bulk-title">임금명세서 일괄 발송</b><button class="pay-btn ghost" onclick="closeBulkSend()">닫기</button></div>
@@ -449,6 +449,11 @@
     <script src="js/ot-rules.js"></script>
     <script src="js/leavejs/leave-common.js"></script>
     <script src="js/admin.js"></script>
-    <script src="js/payroll.js"></script>
+    <!-- 💵 급여 관리: 이 순서대로 (① 공통·계산식 → ② 화면 틀·이번 달 → ③ 사원 정보 → ④ 급여대장·검수 → ⑤ 명세서·메일) -->
+    <script src="js/payroll-core.js"></script>
+    <script src="js/payroll-month.js"></script>
+    <script src="js/payroll-employee.js"></script>
+    <script src="js/payroll-import.js"></script>
+    <script src="js/payroll-slip.js"></script>
 </body>
 </html>

@@ -166,7 +166,7 @@ function logoutAdmin() {
     auth.signOut().then(() => location.reload()); // 새로고침하면 관리자 로그인 화면으로 돌아감
 }
 
-// 초과수당 시급은 급여 관리와 같은 계산을 씀 → js/payroll.js 의 expenseWageInfo() 하나만 고치면 두 화면이 같이 바뀜
+// 초과수당 시급은 급여 관리와 같은 계산을 씀 → js/payroll-core.js 의 expenseWageInfo() 하나만 고치면 두 화면이 같이 바뀜
 // 신청서마다 그 신청의 귀속 월(requestMonth) 급여조건으로 계산 (연봉 인상 이력 반영)
 function wageInfoFor(nameKey, req) {
     const who = empMapCache[nameKey];
@@ -180,7 +180,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
     Promise.all([db.collection("employees").get(), db.collection("payroll_profiles").get()]).then(([empSnapshot, profSnapshot]) => {
         const profiles = {};
         profSnapshot.forEach(doc => { profiles[doc.id] = doc.data(); });
-        // 경비 시급 기준 1회 설정 (js/payroll.js) - 결재 화면을 먼저 열어도 같은 기준으로 보이게
+        // 경비 시급 기준 1회 설정 (js/payroll-core.js) - 결재 화면을 먼저 열어도 같은 기준으로 보이게
         applyExpenseBasisDefaults(profiles, empSnapshot.docs.map(d => ({ id: d.id, ...d.data() })));
         const empMap = {}, limitMap = {};
         empSnapshot.forEach(doc => {
@@ -302,7 +302,7 @@ function processRequest(docId, status) {
     }
     
     db.collection("overtime_requests").doc(docId).update(updateData).then(() => {
-        // 승인되면 그 사원·그 달 경비(초과근무수당) 명세서를 자동으로 만들거나 다시 계산 (js/payroll.js)
+        // 승인되면 그 사원·그 달 경비(초과근무수당) 명세서를 자동으로 만들거나 다시 계산 (js/payroll-core.js)
         if (status === '승인') return onOvertimeApproved(docId);
     }).then(() => {
         alert("처리되었습니다.");
@@ -445,7 +445,7 @@ function switchAdminTab(tab) {
     document.getElementById('tab-ot-admin').classList.toggle('active', tab === 'ot');
     document.getElementById('tab-leave-admin').classList.toggle('active', isLeave);
     document.getElementById('tab-pay-admin').classList.toggle('active', tab === 'pay');
-    if (tab === 'pay') openPayrollTab(); // js/payroll.js
+    if (tab === 'pay') openPayrollTab(); // js/payroll-month.js
     if (isLeave && !leaveAdminLoaded) {
         initLeaveYearSelect();
         loadLeaveAdmin();
