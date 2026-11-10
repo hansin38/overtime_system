@@ -1257,7 +1257,7 @@ function downloadEmpXl(withData) {
         payType: '연봉', annualSalary: 40000000, monthly: '연봉형은 자동', 'fixedPay.base': '연봉형은 자동', 'fixedPay.overtime': '연봉형은 자동', 'fixedPay.holidayNight': '연봉형은 자동',
         mealAllowance: 200000, vehicleAllowance: '', positionAllowance: '', siteAllowance: '', holidayBonus: 200000,
         'week.overtime': 10, 'week.holiday': 2, 'week.night': 2.5,
-        'fixedOt.overtime': '1주를 쓰면 자동', 'fixedOt.holiday': '', 'fixedOt.night': '',
+        'fixedOt.overtime': 43.5, 'fixedOt.holiday': 9, 'fixedOt.night': 11,
         expenseWageBasis: '월급', payslipTarget: 'O', employmentInsured: 'O',
         from: '연봉이 바뀔 때만 예: 2027-01', birthDate: '1999-01-01', email: 'name@example.com', bankAccount: '은행 계좌번호'
     };
@@ -1271,6 +1271,23 @@ function downloadEmpXl(withData) {
     }
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = fields.map(f => ({ wch: Math.max(10, f.h.length * 2) }));
+    // 월 고정OT 칸에 수식: 1주 칸을 쓰면 엑셀에서 바로 월 시간으로 바뀜 (비어 있으면 지금 값 그대로)
+    // 아래로 빈 줄 30개에도 수식을 미리 넣어 둠 (새 사원용, 1주를 안 쓰면 빈칸)
+    const extra = 30;
+    ['overtime', 'holiday', 'night'].forEach(k => {
+        const wc = fields.findIndex(f => f.k === `week.${k}`), mc = fields.findIndex(f => f.k === `fixedOt.${k}`);
+        if (wc < 0 || mc < 0) return;
+        for (let r = 1; r < aoa.length + extra; r++) {
+            const w = XLSX.utils.encode_cell({ r, c: wc });
+            const cur = r < aoa.length ? aoa[r][mc] : '';
+            const wv = r < aoa.length ? aoa[r][wc] : '';
+            const calc = `CEILING(${w}*365/7/12,0.5)`;
+            const fallback = cur === '' ? '""' : cur;
+            const v = wv !== '' ? weekToMonthHours(num(wv)) : cur;
+            ws[XLSX.utils.encode_cell({ r, c: mc })] = v === '' ? { t: 's', v: '', f: `IF(${w}="",${fallback},${calc})` } : { t: 'n', v, f: `IF(${w}="",${fallback},${calc})` };
+        }
+    });
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length + extra - 1, c: fields.length - 1 } });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '사원정보');
     XLSX.writeFile(wb, withData ? `사원정보_${ymdOfDate(new Date())}.xlsx` : '사원정보_빈양식.xlsx');
