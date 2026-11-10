@@ -973,7 +973,7 @@ function renderPayInfoPane() {
                         ['급여 형태', type === 'annual' ? '연봉 자동 (포괄)' : '고정 금액'],
                         s && s.type === 'annual' ? ['통상시급', `${won2(s.ordinaryWage)}원 <small class="sub">자동</small>`] : null,
                         ['경비 시급', s ? (s.ordinaryBasis ? `${won2(s.expenseWage)}원 <small class="sub">통상시급 (고정OT 시급)</small>` : `${won(s.expenseWage)}원 <small class="sub">월급÷209</small>`) : (p.legacyHourlyWage ? `${won(p.legacyHourlyWage)}원 <small class="sub">예전 통상시급</small>` : '')],
-                        ['명절상여', p.holidayBonus ? `설·추석 각 ${won(p.holidayBonus)}` : ''],
+                        ['명절상여', p.holidayBonus ? `설·추석 각 ${won(p.holidayBonus)} · 연 ${won(p.holidayBonus * 2)} <small class="sub">(통상시급에 월 ${won(p.holidayBonus * 2 / 12)} 포함)</small>` : ''],
                         history ? ['변경 이력', history] : null
                     ])}
                 </div>
@@ -1206,12 +1206,16 @@ const EMPXL_FIELDS = [
     { h: '월급여', k: 'monthly', src: 'check', t: 'money' },
     { h: '기본급', k: 'fixedPay.base', src: 'cond', t: 'money', alias: ['고정-기본급'] },
     { h: '연장근로수당', k: 'fixedPay.overtime', src: 'cond', t: 'money', alias: ['고정-연장근로수당'] },
-    { h: '휴일·야근수당', k: 'fixedPay.holidayNight', src: 'cond', t: 'money', alias: ['고정-휴일·야근수당'] },
+    { h: '휴일·야근수당', k: 'fixedPay.holidayNight', src: 'cond', t: 'money', alias: ['고정-휴일·야근수당'], hidden: true },   // 예전 양식용 (받기에는 안 나옴)
+    { h: '휴일근로수당', k: 'split.holiday', src: 'split', t: 'money' },
+    { h: '야간근로수당', k: 'split.night', src: 'split', t: 'money' },
     { h: '식대', k: 'mealAllowance', src: 'cond', t: 'money' },
     { h: '차량유지비', k: 'vehicleAllowance', src: 'cond', t: 'money' },
     { h: '직책수당', k: 'positionAllowance', src: 'cond', t: 'money' },
     { h: '현장수당', k: 'siteAllowance', src: 'cond', t: 'money' },
-    { h: '명절상여', k: 'holidayBonus', src: 'cond', t: 'money' },
+    { h: '명절상여(설·추석 각)', k: 'holidayBonus', src: 'cond', t: 'money', alias: ['명절상여'] },
+    { h: '경비시급', k: 'expenseWage', src: 'check', t: 'rate' },
+    { h: '통상임금(시급)', k: 'ordinary', src: 'check', t: 'rate' },
     { h: '1주 연장(h)', k: 'week.overtime', src: 'week', t: 'hours' },
     { h: '1주 휴일(h)', k: 'week.holiday', src: 'week', t: 'hours' },
     { h: '1주 야간(h)', k: 'week.night', src: 'week', t: 'hours' },
@@ -1227,7 +1231,7 @@ const EMPXL_FIELDS = [
     { h: '계좌번호', k: 'bankAccount', src: 'prof', secret: true }
 ];
 const EMPXL_LABEL = (f) => f.h.replace(/\(.*\)$/, '').trim();
-const EMPXL_CHECK_KEYS = ['monthly', 'fixedPay.base', 'fixedPay.overtime', 'fixedPay.holidayNight'];
+const EMPXL_CHECK_KEYS = ['monthly', 'fixedPay.base', 'fixedPay.overtime', 'fixedPay.holidayNight', 'split.holiday', 'split.night'];
 // 근로계약서 1주 시간 → 월 시간 (노무사 엑셀: CEILING(1주 × 365 ÷ 7 ÷ 12, 0.5))
 function weekToMonthHours(w) { return ceilHalf(w * 365 / 7 / 12); }
 
@@ -1237,7 +1241,11 @@ function empXlCalcPay(p, e) {
     if (!s) return null;
     return {
         monthly: s.monthly, 'fixedPay.base': s.pay.base, 'fixedPay.overtime': s.pay.overtime,
-        'fixedPay.holidayNight': s.type === 'annual' ? s.pay.holiday + s.pay.night : s.pay.holidayNight
+        'fixedPay.holidayNight': s.type === 'annual' ? s.pay.holiday + s.pay.night : s.pay.holidayNight,
+        // 고정형은 휴일·야근수당이 한 덩어리라 휴일 칸에 전부, 야간 칸은 비움 (올리면 둘을 더해서 저장)
+        'split.holiday': s.type === 'annual' ? s.pay.holiday : s.pay.holidayNight,
+        'split.night': s.type === 'annual' ? s.pay.night : '',
+        expenseWage: s.expenseWage, ordinary: s.type === 'annual' ? s.ordinaryWage : ''
     };
 }
 
@@ -1245,7 +1253,7 @@ function empXlCalcPay(p, e) {
 function empXlCurrent(f, e, p) {
     if (f.src === 'week') { const w = (e.fixedOtWeek || {})[f.k.split('.')[1]]; return w === undefined || w === null ? '' : w; }
     if (f.k.startsWith('fixedOt.')) return getFixOtLimits(e)[f.k.split('.')[1]];
-    if (f.k === 'monthly' || (f.k.startsWith('fixedPay.') && payTypeOf(p) === 'annual')) {
+    if (f.src === 'check' || f.src === 'split' || (f.k.startsWith('fixedPay.') && payTypeOf(p) === 'annual')) {
         const c = empXlCalcPay(p, e);
         return c ? c[f.k] : '';
     }
@@ -1260,6 +1268,7 @@ function empXlCurrent(f, e, p) {
 // 저장된 값 → 엑셀/화면 표시
 function empXlShow(f, v) {
     if (f.t === 'money') return v === '' ? '' : num(v);
+    if (f.t === 'rate') return v === '' ? '' : Math.round(num(v) * 100) / 100;
     if (f.t === 'payType') return v === 'fixed' ? '고정' : '연봉';
     if (f.t === 'ox') return v ? 'O' : 'X';
     if (f.t === 'basis') return v === 'ordinary' ? '통상' : '월급';
@@ -1299,6 +1308,7 @@ function empXlStyle(XLSX, ws, fields, aoa, rowCount) {
             else if (r === 1) cell.s = { font: { ...font, color: { rgb: '9A8A3A' }, italic: true }, fill: { fgColor: { rgb: 'FFF9DB' } } };
             else cell.s = { font };
             if (f.t === 'money' && cell.t === 'n') cell.z = '#,##0';
+            if (f.t === 'rate' && cell.t === 'n') cell.z = '#,##0.00';
         });
     }
 }
@@ -1322,10 +1332,10 @@ async function downloadEmpXl(withData) {
     try { XLSX = await loadXlsxStyle(); }
     catch (err) { console.error(err); }   // 못 불러오면 서식 없이라도 받기
     const secret = document.getElementById('empxl-secret').checked;
-    const fields = EMPXL_FIELDS.filter(f => secret || !f.secret);
+    const fields = EMPXL_FIELDS.filter(f => (secret || !f.secret) && !f.hidden);
     const example = {
         empNo: '예시', name: '홍길동', phoneLast4: '0000', department: '설계부', position: '사원', hireDate: '2026-11-01', resignDate: '',
-        payType: '연봉', annualSalary: 40000000, monthly: '자동', 'fixedPay.base': '자동', 'fixedPay.overtime': '자동', 'fixedPay.holidayNight': '자동',
+        payType: '연봉', annualSalary: 40000000, monthly: '자동', 'fixedPay.base': '자동', 'fixedPay.overtime': '자동', 'split.holiday': '자동', 'split.night': '자동', expenseWage: '자동', ordinary: '자동',
         mealAllowance: 200000, vehicleAllowance: '', positionAllowance: '', siteAllowance: '', holidayBonus: 200000,
         'week.overtime': 10, 'week.holiday': 2, 'week.night': 2.5,
         'fixedOt.overtime': 43.5, 'fixedOt.holiday': 9, 'fixedOt.night': 11,
@@ -1393,6 +1403,10 @@ function empXlParse(f, raw) {
         case 'money':
             if (typeof raw !== 'number' && !/\d/.test(s)) return undefined;   // '연봉형은 자동' 같은 안내 글은 무시
             return { v: Math.round(num(raw)) };
+        case 'rate': {   // 통상시급·경비시급 (소수 그대로, 숫자가 아니면 무시)
+            const n = typeof raw === 'number' ? raw : parseFloat(s.replace(/,/g, ''));
+            return isNaN(n) ? undefined : { v: n };
+        }
         case 'hours': {
             if (typeof raw !== 'number' && !/\d/.test(s)) return undefined;
             const n = parseFloat(s);
@@ -1473,7 +1487,7 @@ function empXlCheckPay(checks, cond, fixedOt, warns) {
     } else if ('monthly' in checks) {
         const sum = num(cond.fixedPay.base) + num(cond.fixedPay.overtime) + num(cond.fixedPay.holidayNight)
             + num(cond.mealAllowance) + num(cond.vehicleAllowance) + num(cond.positionAllowance) + num(cond.siteAllowance);
-        if (Math.abs(checks.monthly - sum) > 1) warns.push(`월급여: 엑셀 ${won(checks.monthly)} ↔ 항목 합계 ${won(sum)}`);
+        if (Math.abs(checks.monthly - sum) > 2) warns.push(`월급여: 엑셀 ${won(checks.monthly)} ↔ 항목 합계 ${won(sum)}`);
     }
 }
 
@@ -1486,6 +1500,7 @@ function buildEmpXlRows(rows) {
         const f = EMPXL_FIELDS.find(x => [x.h, ...(x.alias || [])].some(n => norm(n) === norm(c)));
         if (f) cols.push({ f, ci });
     });
+    const hasBonusCol = cols.some(c => c.f.k === 'holidayBonus');
     const curMonth = ymdOfDate(new Date()).slice(0, 7);
     const out = [];
     const seen = new Set();
@@ -1515,10 +1530,28 @@ function buildEmpXlRows(rows) {
         const pFrom = target ? profFor(target.id, from) : {};
         const type = vals.payType || (target ? payTypeOf(pFrom) : 'annual');
         // 연봉형의 월급여·기본급·연장·휴일야근 = 검사만 / 고정형의 월급여 = 검사만
+        // 휴일근로수당 / 야간근로수당 두 칸 → 고정형은 더해서 휴일·야근수당으로 저장 (연봉형은 아래에서 검사만)
+        if (type !== 'annual' && ('split.holiday' in vals || 'split.night' in vals) && !('fixedPay.holidayNight' in vals)) {
+            vals['fixedPay.holidayNight'] = num(vals['split.holiday']) + num(vals['split.night']);
+        }
+        // 명절상여 열 자체가 없고 통상임금(시급)이 있으면 (직접 수식을 건 엑셀) 수식에서 거꾸로 찾기:
+        //   통상시급 × (209 + 가산시간) − 월급 = 명절상여 월할(설·추석 각 × 2 ÷ 12) → 1,000원 단위
+        if (!hasBonusCol && vals.ordinary > 0) {
+            const ot = { ...getFixOtLimits(target || {}) };
+            ['overtime', 'holiday', 'night'].forEach(k => { if (`fixedOt.${k}` in vals) ot[k] = vals[`fixedOt.${k}`]; });
+            const totalH = STD_MONTH_HOURS + ceilHalf(ot.overtime * 1.5) + ceilHalf(ot.holiday * 1.5) + ceilHalf(ot.night * 0.5);
+            const monthlyRaw = vals.annualSalary > 0 ? vals.annualSalary / 12 : num(vals.monthly);
+            if (monthlyRaw > 0) {
+                const each = Math.round((vals.ordinary * totalH - monthlyRaw) * 6 / 1000) * 1000;
+                if (each >= 0) vals.holidayBonus = each;
+            }
+        }
+        delete vals.ordinary; delete vals.expenseWage;
         const checks = {};
         EMPXL_CHECK_KEYS.forEach(k => {
             if (k in vals && (type === 'annual' || k === 'monthly')) { checks[k] = vals[k]; delete vals[k]; }
         });
+        delete vals['split.holiday']; delete vals['split.night'];
 
         if (!target) {
             // 🆕 새로 등록: 이름·휴대폰 뒷4자리 필수, 빈칸은 0 (명세서 발급·고용보험은 기본 O)
