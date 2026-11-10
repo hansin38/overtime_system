@@ -925,44 +925,68 @@ function jumpPayMonth(ym) {
     loadPayrollData();
 }
 
-// ---------- 사원 정보 ----------
+// ---------- 사원 정보 (근로계약서 임금구성표 모양) ----------
+// 왼쪽: 항목별 1주 / 월 시간 / 가산 / 금액 표 (초과근무는 '월 시간'을 넘은 시간부터라 그 열을 강조)
+// 오른쪽: 인적사항 · 4대보험 (작게)
 function renderPayInfoPane() {
     const e = emp(P.selectedId), p = profFor(P.selectedId, P.month);
     const s = calcPayStructure(p, e);
     const fixed = getFixOtLimits(e);
+    const week = e.fixedOtWeek || {};
     const type = payTypeOf(p);
     const fp = p.fixedPay || {};
     const dl = (rows) => `<dl class="pay-dl">${rows.filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v || '-'}</dd>`).join('')}</dl>`;
     const m = (v) => num(v) ? won(v) : '';
-    const payRows = type === 'annual'
-        ? [['급여 형태', '연봉 자동 (포괄)'], ['연봉', m(p.annualSalary)]]
-        : [['급여 형태', '고정 금액'], ['기본급', m(fp.base)], ['연장근로수당', m(fp.overtime)], ['휴일·야근수당', m(fp.holidayNight)]];
+    const blank = '<span class="sub">—</span>';
+    const h = (v) => v === undefined || v === null || v === '' ? blank : `${v}h`;
+    const row = (label, w, mo, wt, amt) => `<tr><td>${label}</td><td class="r">${w}</td><td class="r key">${mo}</td><td class="r">${wt}</td><td class="r">${amt}</td></tr>`;
+    const pay = s ? s.pay : {};
+    let rows = '';
+    if (type === 'annual') {
+        rows = row('기본급', '40h', '209h', blank, s ? won(pay.base) : '-')
+            + row('연장근로수당', h(week.overtime), h(fixed.overtime), s ? h(s.weighted.overtime) : blank, s ? won(pay.overtime) : '-')
+            + row('휴일근로수당', h(week.holiday), h(fixed.holiday), s ? h(s.weighted.holiday) : blank, s ? won(pay.holiday) : '-')
+            + row('야간근로수당', h(week.night), h(fixed.night), s ? h(s.weighted.night) : blank, s ? won(pay.night) : '-');
+    } else {
+        rows = row('기본급', '40h', '209h', blank, m(fp.base) || '-')
+            + row('연장근로수당', h(week.overtime), h(fixed.overtime), blank, m(fp.overtime) || '-')
+            + row('휴일·야근수당', `${h(week.holiday)} / ${h(week.night)}`, `${h(fixed.holiday)} / ${h(fixed.night)}`, blank, m(fp.holidayNight) || '-');
+    }
+    const allow = [['식대', p.mealAllowance, '비과세'], ['차량유지비', p.vehicleAllowance, '비과세'], ['직책수당', p.positionAllowance], ['현장수당', p.siteAllowance]]
+        .filter(([, v]) => num(v) > 0)
+        .map(([k, v, tag]) => row(`${k}${tag ? ` <span class="pay-chip-sm">${tag}</span>` : ''}`, '', '', '', won(v))).join('');
+    const total = `<tr class="tot"><td>월 합계</td><td></td><td class="key"></td><td class="r">${s && s.type === 'annual' ? h(s.totalHours) : ''}</td><td class="r">${s ? won(s.monthly) : '-'}</td></tr>`;
+    const history = (p.payHistory || []).length > 1 ? p.payHistory.slice().reverse().map(x =>
+        `${x.from === '0000-00' ? '처음' : x.from + '분부터'} · ${x.payType === 'fixed' ? '고정 ' + won(sumValues(x.fixedPay) + num(x.mealAllowance) + num(x.vehicleAllowance) + num(x.positionAllowance) + num(x.siteAllowance)) : '연봉 ' + won(x.annualSalary)}`).join('<br>') : '';
+    const title = type === 'annual' ? `연봉 ${won(p.annualSalary)} · 월 ${s ? won(s.monthly) : '-'}` : `고정 금액 · 월 ${s ? won(s.monthly) : '-'}`;
+
     document.getElementById('pay-pane').innerHTML = `
-        <div class="pay-info-grid">
+        <div class="pay-info-grid contract">
             <div>
-                <div class="pay-card"><h4>인적사항</h4>${dl([
-                    ['이름', esc(e.name)], ['사원번호', esc(e.empNo)], ['전화 뒷4자리', esc(e.phoneLast4)],
-                    ['생년월일 🔒', esc(p.birthDate)], ['이메일 🔒', esc(p.email)], ['입금 계좌 🔒', esc(p.bankAccount)],
-                    ['급여명세서', isTarget(e.id) ? '발급 대상' : '대상 아님']
-                ])}</div>
-                <div class="pay-card"><h4>근무조건</h4>${dl([
-                    ['부서 / 직급', `${esc(e.department || '-')} / ${esc(e.position || '-')}`],
-                    ['입사일', esc(e.hireDate)], ['퇴사일', esc(e.resignDate)],
-                    ['고정OT (월)', `연장 ${fixed.overtime}h · 휴일 ${fixed.holiday}h · 야간 ${fixed.night}h`]
-                ])}</div>
+                <div class="pay-card lock"><h4>🔒 임금 구성 <small class="sub" style="font-weight: normal;">${title}</small></h4>
+                    <table class="pay-wage-tbl">
+                        <tr><th>항목</th><th class="r">1주</th><th class="r key">월 시간</th><th class="r">가산</th><th class="r">금액</th></tr>
+                        ${rows}${allow}${total}
+                    </table>
+                    <div class="pay-wage-note">⏱ 초과근무는 <b>월 시간</b>(연장 ${fixed.overtime}h · 휴일 ${fixed.holiday}h · 야간 ${fixed.night}h)을 넘은 시간부터 경비로 계산해요</div>
+                    ${dl([
+                        ['급여 형태', type === 'annual' ? '연봉 자동 (포괄)' : '고정 금액'],
+                        s && s.type === 'annual' ? ['통상시급', `${won2(s.ordinaryWage)}원 <small class="sub">자동</small>`] : null,
+                        ['경비 시급', s ? (s.ordinaryBasis ? `${won2(s.expenseWage)}원 <small class="sub">통상시급 (고정OT 시급)</small>` : `${won(s.expenseWage)}원 <small class="sub">월급÷209</small>`) : (p.legacyHourlyWage ? `${won(p.legacyHourlyWage)}원 <small class="sub">예전 통상시급</small>` : '')],
+                        ['명절상여', p.holidayBonus ? `설·추석 각 ${won(p.holidayBonus)}` : ''],
+                        history ? ['변경 이력', history] : null
+                    ])}
+                </div>
             </div>
             <div>
-                <div class="pay-card lock"><h4>🔒 급여조건</h4>${dl([
-                    ...payRows,
-                    ['식대', m(p.mealAllowance)], ['차량유지비', m(p.vehicleAllowance)], ['직책수당', m(p.positionAllowance)],
-                    ['현장수당', m(p.siteAllowance)], ['명절상여', p.holidayBonus ? `설·추석 각 ${won(p.holidayBonus)}` : ''],
-                    ['월 지급 합계', s ? won(s.monthly) : ''],
-                    (p.payHistory || []).length > 1 ? ['변경 이력', p.payHistory.slice().reverse().map(h =>
-                        `${h.from === '0000-00' ? '처음' : h.from + '분부터'} · ${h.payType === 'fixed' ? '고정 ' + won(sumValues(h.fixedPay) + num(h.mealAllowance) + num(h.vehicleAllowance) + num(h.positionAllowance) + num(h.siteAllowance)) : '연봉 ' + won(h.annualSalary)}`).join('<br>')] : null,
-                    s && s.type === 'annual' ? ['통상시급', `${won2(s.ordinaryWage)}원 <small class="sub">자동</small>`] : null,
-                    ['경비 시급', s ? (s.ordinaryBasis ? `${won2(s.expenseWage)}원 <small class="sub">통상시급 (고정OT 시급)</small>` : `${won(s.expenseWage)}원 <small class="sub">월급÷209</small>`) : (p.legacyHourlyWage ? `${won(p.legacyHourlyWage)}원 <small class="sub">예전 통상시급</small>` : '')]
+                <div class="pay-card"><h4>인적사항</h4>${dl([
+                    ['사원번호', esc(e.empNo)], ['전화 뒷4자리', esc(e.phoneLast4)],
+                    ['부서 / 직급', `${esc(e.department || '-')} / ${esc(e.position || '-')}`],
+                    ['입사일', esc(e.hireDate)], ['퇴사일', esc(e.resignDate)],
+                    ['급여명세서', isTarget(e.id) ? '발급 대상' : '대상 아님'],
+                    ['생년월일 🔒', esc(p.birthDate)], ['이메일 🔒', esc(p.email)], ['입금 계좌 🔒', esc(p.bankAccount)]
                 ])}</div>
-                <div class="pay-card"><h4>4대보험 · 소득세 기준 <small class="sub" style="font-weight: normal;">회계사무소 급여대장을 불러오면 자동 갱신</small></h4>${dl([
+                <div class="pay-card"><h4>4대보험 · 소득세 <small class="sub" style="font-weight: normal;">급여대장 불러오면 자동 갱신</small></h4>${dl([
                     ['국민연금 기준', p.pensionBase === 0 ? '미가입' : (p.pensionBase ? won(p.pensionBase) : '이번 달 과세급여')],
                     ['건강보험 기준', p.healthBase ? won(p.healthBase) : '이번 달 과세급여'],
                     ['고용보험', p.employmentInsured === false ? '미가입' : '가입'],
