@@ -1283,7 +1283,6 @@ function empXlShowText(f, v) {
     return f.t === 'money' ? won(v) : String(empXlShow(f, v));
 }
 
-function openEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'flex'; }
 function closeEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'none'; }
 
 // 계산 칸에 엑셀 수식 (노무사 '급여산출계산'과 같은 식) - 연봉·수당·고정OT를 고치면 엑셀에서 바로 다시 계산
@@ -1369,11 +1368,117 @@ function loadXlsxStyle() {
     });
 }
 
+// ---------- 내가 올린 엑셀을 받기 양식으로 (payroll_settings/emp_excel_template, 관리자만) ----------
+// - 올릴 때 파일 그대로(base64) 저장 → [지금 정보 넣어서] 받으면 그 파일을 열어
+//   수식 칸은 그대로 두고, 값 칸(연봉·수당·고정OT·부서 등)만 지금 정보로 바꿈 · 새 사원은 맨 아래에 윗줄 수식 복사해서 추가
+const EMPXL_TPL_DOC = () => db.collection("payroll_settings").doc("emp_excel_template");
+function bytesToB64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+}
+function b64ToBytes(b64) {
+    const s = atob(b64), out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+}
+function saveEmpXlTemplate(bytes, fileName) {
+    if (bytes.length > 600000) return;   // 너무 큰 파일은 저장 안 함 (Firestore 문서 1MB 제한)
+    const tpl = { data: bytesToB64(bytes), fileName, savedAt: Date.now() };
+    EMPXL_TPL_DOC().set(tpl)
+        .then(() => { P.empXlTemplate = tpl; })
+        .catch(err => console.error("엑셀 양식 저장 실패:", err));
+}
+function loadEmpXlTemplate() {
+    if (P.empXlTemplate !== undefined) return Promise.resolve(P.empXlTemplate);
+    return EMPXL_TPL_DOC().get()
+        .then(doc => (P.empXlTemplate = doc.exists ? doc.data() : null))
+        .catch(err => { console.error("엑셀 양식 읽기 실패:", err); return null; });
+}
+function openEmpXlDownload() {
+    document.getElementById('pay-empxl-dl-modal').style.display = 'flex';
+    const info = document.getElementById('empxl-tpl-info');
+    info.innerHTML = '';
+    loadEmpXlTemplate().then(tpl => {
+        info.innerHTML = tpl
+            ? `<label class="pay-chk"><input type="checkbox" id="empxl-use-tpl" checked> 내가 올린 엑셀 모양·수식 그대로 <small class="sub">(${esc(tpl.fileName)} · ${ymdOfDate(new Date(tpl.savedAt))})</small></label>`
+            : `<div class="sub" style="margin-top: 10px;">엑셀을 한 번 올리면 다음부터 그 모양·수식 그대로 받을 수 있어요</div>`;
+    });
+}
+
+// 수식 안의 같은 줄 번호를 새 줄 번호로 (A15 → A20, $A$15 처럼 $가 붙은 줄은 그대로)
+function shiftFormulaRow(f, from, to) {
+    return f.replace(/(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(])/g, (m, a, c, b, row) => (b === '$' || Number(row) !== from) ? m : `${a}${c}${b}${to}`);
+}
+
+function downloadEmpXlFromTemplate(XLSX, tpl, secret) {
+    const wb = XLSX.read(b64ToBytes(tpl.data), { type: 'array', cellStyles: true, cellFormula: true, cellNF: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    const norm = (v) => String(v ?? '').replace(/\s/g, '');
+    const h = rows.findIndex(r => r.some(c => norm(c) === '이름') && r.some(c => norm(c).startsWith('휴대폰')));
+    if (h < 0) return false;
+    const cols = [];
+    rows[h].forEach((c, ci) => { const f = EMPXL_FIELDS.find(x => [x.h, ...(x.alias || [])].some(n => norm(n) === norm(c))); if (f) cols.push({ f, ci }); });
+    const ci = (k) => (cols.find(x => x.f.k === k) || {}).ci;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const cellAt = (r, c) => ws[XLSX.utils.encode_cell({ r, c })];
+    // 값 칸 채우기 (수식 칸은 건드리지 않음)
+    const fill = (r, e) => {
+        const p = profFor(e.id, P.month);
+        cols.forEach(({ f, ci: c }) => {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            const old = ws[addr];
+            if (old && old.f) return;
+            let v = f.k === 'from' ? '' : (f.secret && !secret ? '' : empXlShow(f, empXlCurrent(f, e, p)));
+            if (f.t === 'rate' && v !== '') v = Math.round(v * 100) / 100;
+            const cell = { ...(old || {}), t: typeof v === 'number' ? 'n' : 's', v };
+            delete cell.w;
+            ws[addr] = cell;
+        });
+    };
+    const done = new Set();
+    let lastRow = h;
+    for (let r = h + 1; r <= range.e.r; r++) {
+        const no = String((cellAt(r, ci('empNo')) || {}).v ?? '').trim();
+        const name = String((cellAt(r, ci('name')) || {}).v ?? '').trim();
+        const phone = String((cellAt(r, ci('phoneLast4')) || {}).v ?? '').replace(/\D/g, '').padStart(4, '0');
+        if (!no && !name) continue;
+        if (no.includes('예시') || name.includes('예시')) continue;
+        lastRow = r;
+        const e = (no && P.employees.find(x => String(x.empNo || '') === no)) || P.employees.find(x => x.name === name && x.phoneLast4 === phone);
+        if (e && !done.has(e.id)) { fill(r, e); done.add(e.id); }
+    }
+    // 엑셀에 없는 사원은 맨 아래에 추가 (마지막 사원 줄의 수식·서식 복사)
+    const extra = [...P.employees].filter(e => !done.has(e.id))
+        .sort((a, b) => (num(a.empNo) || 1e9) - (num(b.empNo) || 1e9) || String(a.name).localeCompare(b.name));
+    let r = lastRow;
+    extra.forEach(e => {
+        r++;
+        for (let c = range.s.c; c <= range.e.c; c++) {
+            const src = cellAt(lastRow, c);
+            const addr = XLSX.utils.encode_cell({ r, c });
+            if (src && src.f) ws[addr] = { t: 'n', v: 0, f: shiftFormulaRow(src.f, lastRow + 1, r + 1), ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
+            else if (src) ws[addr] = { t: 's', v: '', ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
+        }
+        fill(r, e);
+    });
+    if (r > range.e.r) { range.e.r = r; ws['!ref'] = XLSX.utils.encode_range(range); }
+    XLSX.writeFile(wb, `사원정보_${ymdOfDate(new Date())}.xlsx`, { cellStyles: true });
+    return true;
+}
+
 async function downloadEmpXl(withData) {
     let XLSX = window.XLSX;
     try { XLSX = await loadXlsxStyle(); }
     catch (err) { console.error(err); }   // 못 불러오면 서식 없이라도 받기
     const secret = document.getElementById('empxl-secret').checked;
+    const useTpl = document.getElementById('empxl-use-tpl');
+    if (withData && useTpl && useTpl.checked && P.empXlTemplate) {
+        try {
+            if (downloadEmpXlFromTemplate(XLSX, P.empXlTemplate, secret)) { closeEmpXlDownload(); return; }
+        } catch (err) { console.error("올린 양식으로 받기 실패 → 기본 양식으로:", err); }
+    }
     const fields = EMPXL_FIELDS.filter(f => (secret || !f.secret) && !f.hidden);
     const example = {
         empNo: '예시', name: '홍길동', phoneLast4: '0000', department: '설계부', position: '사원', hireDate: '2026-11-01', resignDate: '',
@@ -1495,6 +1600,8 @@ function onEmpXlFile(input) {
             P.empXlRows = buildEmpXlRows(rows);
             document.getElementById('empxl-drop').style.display = 'none';
             renderEmpXlRows();
+            // 올린 엑셀(.xlsx)을 '받기 양식'으로 기억 → [지금 정보 넣어서] 받을 때 이 모양·수식 그대로
+            if (/\.xlsx$/i.test(file.name)) saveEmpXlTemplate(new Uint8Array(reader.result), file.name);
         } catch (err) {
             console.error("사원정보 엑셀 읽기 실패:", err);
             document.getElementById('empxl-result').innerHTML = `<div class="pay-note warn">${esc(err.message)}</div>`;
