@@ -1222,6 +1222,9 @@ const EMPXL_FIELDS = [
     { h: '고정OT 연장(월h)', k: 'fixedOt.overtime', src: 'emp', t: 'hours', alias: ['고정OT 연장(h)'] },
     { h: '고정OT 휴일(월h)', k: 'fixedOt.holiday', src: 'emp', t: 'hours', alias: ['고정OT 휴일(h)'] },
     { h: '고정OT 야간(월h)', k: 'fixedOt.night', src: 'emp', t: 'hours', alias: ['고정OT 야간(h)'] },
+    { h: '연장 가산(h)', k: 'wt.overtime', src: 'ref', t: 'hours', rate: 1.5 },   // 참고용 (올릴 때 무시)
+    { h: '휴일 가산(h)', k: 'wt.holiday', src: 'ref', t: 'hours', rate: 1.5 },
+    { h: '야간 가산(h)', k: 'wt.night', src: 'ref', t: 'hours', rate: 0.5 },
     { h: '경비시급(월급/통상)', k: 'expenseWageBasis', src: 'prof', t: 'basis' },
     { h: '명세서 발급(O/X)', k: 'payslipTarget', src: 'prof', t: 'ox' },
     { h: '고용보험(O/X)', k: 'employmentInsured', src: 'prof', t: 'ox' },
@@ -1253,6 +1256,7 @@ function empXlCalcPay(p, e) {
 function empXlCurrent(f, e, p) {
     if (f.src === 'week') { const w = (e.fixedOtWeek || {})[f.k.split('.')[1]]; return w === undefined || w === null ? '' : w; }
     if (f.k.startsWith('fixedOt.')) return getFixOtLimits(e)[f.k.split('.')[1]];
+    if (f.src === 'ref') return ceilHalf(getFixOtLimits(e)[f.k.split('.')[1]] * f.rate);
     if (f.src === 'check' || f.src === 'split' || (f.k.startsWith('fixedPay.') && payTypeOf(p) === 'annual')) {
         const c = empXlCalcPay(p, e);
         return c ? c[f.k] : '';
@@ -1281,6 +1285,44 @@ function empXlShowText(f, v) {
 
 function openEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'flex'; }
 function closeEmpXlDownload() { document.getElementById('pay-empxl-dl-modal').style.display = 'none'; }
+
+// 계산 칸에 엑셀 수식 (노무사 '급여산출계산'과 같은 식) - 연봉·수당·고정OT를 고치면 엑셀에서 바로 다시 계산
+//   월급여 = 연봉 ÷ 12 · 가산 = CEILING(월 시간 × 1.5 / 1.5 / 0.5, 0.5)
+//   통상시급 = (월급여 + 명절상여 × 2 ÷ 12) ÷ (209 + 가산 합계)
+//   연장·휴일·야간 = 통상시급 × 가산 · 기본급 = 통상시급 × 209 − (식대~현장수당) − 명절상여 × 2 ÷ 12
+//   경비시급 = 월급여 ÷ 209 (경비시급 기준이 '통상'이면 통상시급)
+// - 급여형태가 '고정'인 줄은 저장된 금액 그대로 (IF로 분기), 이름이 빈 줄은 빈칸
+function empXlFormulas(XLSX, ws, fields, aoa, rowCount) {
+    const col = (k) => { const c = fields.findIndex(f => f.k === k); return c < 0 ? null : XLSX.utils.encode_col(c); };
+    const C = Object.fromEntries(['name', 'payType', 'annualSalary', 'monthly', 'fixedPay.base', 'fixedPay.overtime', 'split.holiday', 'split.night',
+        'mealAllowance', 'siteAllowance', 'holidayBonus', 'expenseWage', 'ordinary', 'fixedOt.overtime', 'fixedOt.holiday', 'fixedOt.night',
+        'wt.overtime', 'wt.holiday', 'wt.night', 'expenseWageBasis'].map(k => [k, col(k)]));
+    if (Object.values(C).some(v => v === null)) return;
+    for (let r = 1; r < rowCount; r++) {
+        const n = r + 1, at = (k) => `${C[k]}${n}`;
+        const ann = r < aoa.length ? aoa[r] : null;
+        const fixedVal = (k) => { if (!ann) return '""'; const v = ann[fields.findIndex(f => f.k === k)]; return typeof v === 'number' ? v : '""'; };
+        const bonusM = `${at('holidayBonus')}*2/12`;
+        const wsum = `(${at('wt.overtime')}+${at('wt.holiday')}+${at('wt.night')})`;
+        const set = (k, body, opts = {}) => {
+            const addr = `${C[k]}${n}`;
+            const fixedPart = opts.fixed || fixedVal(k);
+            const f = opts.noFixed ? `IF(${at('name')}="","",${body})` : `IF(${at('name')}="","",IF(${at('payType')}="고정",${fixedPart},${body}))`;
+            const old = ws[addr] && typeof ws[addr].v === 'number' ? ws[addr].v : '';
+            ws[addr] = old === '' ? { t: 's', v: '', f } : { t: 'n', v: old, f };
+        };
+        set('wt.overtime', `CEILING(${at('fixedOt.overtime')}*1.5,0.5)`, { noFixed: true });
+        set('wt.holiday', `CEILING(${at('fixedOt.holiday')}*1.5,0.5)`, { noFixed: true });
+        set('wt.night', `CEILING(${at('fixedOt.night')}*0.5,0.5)`, { noFixed: true });
+        set('monthly', `${at('annualSalary')}/12`, { fixed: `SUM(${at('fixedPay.base')}:${at('siteAllowance')})` });   // 고정형은 항목 합계
+        set('ordinary', `(${at('monthly')}+${bonusM})/(${STD_MONTH_HOURS}+${wsum})`);
+        set('fixedPay.overtime', `${at('ordinary')}*${at('wt.overtime')}`);
+        set('split.holiday', `${at('ordinary')}*${at('wt.holiday')}`);
+        set('split.night', `${at('ordinary')}*${at('wt.night')}`);
+        set('fixedPay.base', `${at('ordinary')}*${STD_MONTH_HOURS}-SUM(${at('mealAllowance')}:${at('siteAllowance')})-${bonusM}`);
+        set('expenseWage', `IF(AND(${at('payType')}<>"고정",${at('expenseWageBasis')}="통상"),${at('ordinary')},${at('monthly')}/${STD_MONTH_HOURS})`, { noFixed: true });
+    }
+}
 
 // 엑셀 서식: 글꼴 10 · 머리글은 굵게+줄바꿈 · 금액은 천 단위 쉼표 · 열 너비는 내용에 맞춰 최소로 (예시 줄은 너비 계산에서 뺌)
 function empXlStyle(XLSX, ws, fields, aoa, rowCount) {
@@ -1367,6 +1409,7 @@ async function downloadEmpXl(withData) {
             ws[XLSX.utils.encode_cell({ r, c: mc })] = v === '' ? { t: 's', v: '', f: `IF(${w}="",${fallback},${calc})` } : { t: 'n', v, f: `IF(${w}="",${fallback},${calc})` };
         }
     });
+    empXlFormulas(XLSX, ws, fields, aoa, aoa.length + extra);
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length + extra - 1, c: fields.length - 1 } });
     empXlStyle(XLSX, ws, fields, aoa, aoa.length + extra);
     const wb = XLSX.utils.book_new();
@@ -1482,7 +1525,7 @@ function empXlCheckPay(checks, cond, fixedOt, warns) {
         const c = empXlCalcPay(p, { fixedOt });
         if (!c) return;
         keys.forEach(k => {
-            if (Math.abs(checks[k] - c[k]) > 1) warns.push(`${EMPXL_LABEL(EMPXL_FIELDS.find(f => f.k === k))}: 엑셀 ${won(checks[k])} ↔ 계산 ${won(c[k])} (연봉형은 계산값으로 써요)`);
+            if (Math.abs(checks[k] - c[k]) > 2) warns.push(`${EMPXL_LABEL(EMPXL_FIELDS.find(f => f.k === k))}: 엑셀 ${won(checks[k])} ↔ 계산 ${won(c[k])} (연봉형은 계산값으로 써요)`);
         });
     } else if ('monthly' in checks) {
         const sum = num(cond.fixedPay.base) + num(cond.fixedPay.overtime) + num(cond.fixedPay.holidayNight)
@@ -1547,6 +1590,7 @@ function buildEmpXlRows(rows) {
             }
         }
         delete vals.ordinary; delete vals.expenseWage;
+        ['overtime', 'holiday', 'night'].forEach(k => delete vals[`wt.${k}`]);
         const checks = {};
         EMPXL_CHECK_KEYS.forEach(k => {
             if (k in vals && (type === 'annual' || k === 'monthly')) { checks[k] = vals[k]; delete vals[k]; }
@@ -1591,7 +1635,7 @@ function buildEmpXlRows(rows) {
         const newCond = pickCond(pFrom);
         let condChanged = false;
         EMPXL_FIELDS.forEach(f => {
-            if (!(f.k in vals) || f.lock || f.src === 'meta' || f.src === 'week' || f.src === 'check') return;
+            if (!(f.k in vals) || f.lock || f.src === 'meta' || f.src === 'week' || f.src === 'check' || f.src === 'ref') return;
             const v = vals[f.k];
             const old = empXlCurrent(f, e, f.src === 'cond' ? pFrom : pNow);
             if (String(old) === String(v)) return;
