@@ -484,92 +484,214 @@ function openEmpXlDownload() {
     });
 }
 
-// 수식 안의 같은 줄 번호를 새 줄 번호로 (A15 → A20, $A$15 처럼 $가 붙은 줄은 그대로)
-function shiftFormulaRow(f, from, to) {
-    return f.replace(/(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(])/g, (m, a, c, b, row) => (b === '$' || Number(row) !== from) ? m : `${a}${c}${b}${to}`);
+// ---------- 올린 엑셀 양식으로 받기: 엑셀 파일 속(XML)을 직접 고쳐서 글꼴·색·열 너비·테두리를 그대로 유지 ----------
+// - .xlsx = zip 안의 XML 파일들 → JSZip으로 열고 첫 시트 XML에서 값 칸만 바꿔 끼움 (styles.xml 등 나머지는 그대로)
+// - 공유 수식(엑셀이 아래로 채운 수식)은 칸마다 풀어서 저장, 엑셀이 열 때 전부 다시 계산하도록 fullCalcOnLoad
+const XL_COL = (c) => { let s = ''; c++; while (c) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; };
+const XL_COLNUM = (s) => [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const xmlUnesc = (s) => String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (m, d) => String.fromCharCode(d)).replace(/&amp;/g, '&');
+
+// 수식 안의 칸 주소를 dr줄·dc열 만큼 옮기기 ($가 붙은 쪽은 그대로) - 공유 수식 풀기·새 줄 복사에 씀
+function shiftFormula(f, dr, dc) {
+    return f.replace(/(^|[^A-Za-z0-9_"'])(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z])/g, (m, pre, a, c, b, row) =>
+        `${pre}${a}${a ? c : XL_COL(XL_COLNUM(c) + dc)}${b}${b ? row : Number(row) + dr}`);
+}
+// 예전 이름 (같은 줄 번호만 바꾸기)
+function shiftFormulaRow(f, from, to) { return shiftFormula(f, to - from, 0); }
+
+// 시트 XML → { head, rows: Map(줄번호 → { attrs, cells: Map(열번호 → cell) }), tail }
+function xlParseSheet(xml, sst) {
+    const m = /<sheetData\s*\/>|<sheetData>([\s\S]*?)<\/sheetData>/.exec(xml);
+    const head = xml.slice(0, m.index), tail = xml.slice(m.index + m[0].length);
+    const rows = new Map();
+    const shared = {};
+    for (const rm of (m[1] || '').matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+        const rn = Number(/\br="(\d+)"/.exec(rm[1])[1]);
+        const row = { attrs: rm[1].replace(/\s*\br="\d+"/, '').replace(/\s*\bspans="[^"]*"/, ''), cells: new Map() };
+        for (const cm of (rm[2] || '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+            const am = /\br="([A-Z]+)(\d+)"/.exec(cm[1]);
+            const c = XL_COLNUM(am[1]);
+            const attrs = cm[1].replace(/\s*\br="[^"]*"/, '');
+            const inner = cm[2] || '';
+            const t = (/\bt="([^"]*)"/.exec(attrs) || [])[1] || '';
+            const fm = /<f\b([^>]*?)(?:\/>|>([\s\S]*?)<\/f>)/.exec(inner);
+            const vm = /<v>([\s\S]*?)<\/v>/.exec(inner);
+            const cell = { attrs, raw: cm[0], t, v: vm ? xmlUnesc(vm[1]) : undefined, f: null };
+            if (t === 's' && cell.v !== undefined) cell.text = sst[Number(cell.v)];
+            else if (t === 'inlineStr') cell.text = xmlUnesc(((/<t[^>]*>([\s\S]*?)<\/t>/.exec(inner)) || [])[1] || '');
+            else if (t === 'str' || t === 'b' || t === 'e') cell.text = cell.v;
+            else if (cell.v !== undefined) cell.num = Number(cell.v);
+            if (fm) {
+                const fa = fm[1] || '';
+                const si = (/\bsi="(\d+)"/.exec(fa) || [])[1];
+                if (/t="shared"/.test(fa)) {
+                    if (fm[2]) { shared[si] = { text: xmlUnesc(fm[2]), r: rn, c }; cell.f = xmlUnesc(fm[2]); }
+                    else cell.sharedSi = si;
+                } else if (fm[2] !== undefined) cell.f = xmlUnesc(fm[2]);
+                if (cell.f || cell.sharedSi !== undefined) cell.fDirty = true;   // 칸마다 풀어서 다시 씀
+            }
+            row.cells.set(c, cell);
+        }
+        rows.set(rn, row);
+    }
+    // 공유 수식 풀기
+    rows.forEach((row, rn) => row.cells.forEach((cell, c) => {
+        if (cell.sharedSi === undefined) return;
+        const ms = shared[cell.sharedSi];
+        cell.f = ms ? shiftFormula(ms.text, rn - ms.r, c - ms.c) : null;
+    }));
+    return { head, rows, tail };
+}
+function xlCellValue(cell) { return !cell ? '' : (cell.text !== undefined ? cell.text : (cell.num !== undefined ? cell.num : '')); }
+
+// cell → XML (바뀐 칸만 새로 쓰고, 안 바뀐 칸은 원래 글자 그대로)
+function xlCellXml(rn, c, cell) {
+    const addr = `${XL_COL(c)}${rn}`;
+    if (!cell.dirty && !cell.fDirty) return cell.raw.replace(/\br="[A-Z]+\d+"/, `r="${addr}"`);
+    let attrs = cell.attrs.replace(/\s*\bt="[^"]*"/, '');
+    if (cell.f) return `<c r="${addr}"${attrs}><f>${xmlEsc(cell.f)}</f></c>`;   // 값은 엑셀이 열 때 다시 계산
+    if (cell.newVal === '' || cell.newVal === undefined) return `<c r="${addr}"${attrs}/>`;
+    if (typeof cell.newVal === 'number') return `<c r="${addr}"${attrs}><v>${cell.newVal}</v></c>`;
+    return `<c r="${addr}"${attrs} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(cell.newVal)}</t></is></c>`;
+}
+function xlSheetXml(sheet) {
+    let maxR = 1, maxC = 0;
+    const body = [...sheet.rows.keys()].sort((a, b) => a - b).map(rn => {
+        const row = sheet.rows.get(rn);
+        maxR = Math.max(maxR, rn);
+        const cells = [...row.cells.keys()].sort((a, b) => a - b).map(c => { maxC = Math.max(maxC, c); return xlCellXml(rn, c, row.cells.get(c)); }).join('');
+        return `<row r="${rn}"${row.attrs}>${cells}</row>`;
+    }).join('');
+    const head = sheet.head.replace(/<dimension ref="[^"]*"\s*\/>/, `<dimension ref="A1:${XL_COL(maxC)}${maxR}"/>`);
+    return `${head}<sheetData>${body}</sheetData>${sheet.tail}`;
 }
 
-function downloadEmpXlFromTemplate(XLSX, tpl, secret) {
-    const wb = XLSX.read(b64ToBytes(tpl.data), { type: 'array', cellStyles: true, cellFormula: true, cellNF: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-    const { h, cols } = empXlFindHeader(rows);
+// 핵심: 시트를 지금 정보로 채우기 (수식 칸은 그대로 + '고정이면' 조건 감싸기, 새 사원은 맨 아래 줄 추가)
+function xlFillTemplate(sheet, secret) {
+    const rowsArr = [];
+    const maxRow = Math.max(0, ...sheet.rows.keys());
+    const maxCol = Math.max(0, ...[...sheet.rows.values()].flatMap(r => [...r.cells.keys()]));
+    for (let rn = 1; rn <= maxRow; rn++) {
+        const row = sheet.rows.get(rn);
+        rowsArr.push(Array.from({ length: maxCol + 1 }, (_, c) => row ? xlCellValue(row.cells.get(c)) : ''));
+    }
+    const { h, cols } = empXlFindHeader(rowsArr);
     if (h < 0) return false;
     const ci = (k) => (cols.find(x => x.f.k === k) || {}).ci;
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    const cellAt = (r, c) => ws[XLSX.utils.encode_cell({ r, c })];
-    // 값 칸 채우기 (수식 칸은 건드리지 않음)
-    const fill = (r, e) => {
+    const getCell = (rn, c, create) => {
+        let row = sheet.rows.get(rn);
+        if (!row) { if (!create) return null; row = { attrs: '', cells: new Map() }; sheet.rows.set(rn, row); }
+        let cell = row.cells.get(c);
+        if (!cell && create) { cell = { attrs: '', raw: '', dirty: true }; row.cells.set(c, cell); }
+        return cell;
+    };
+    const hCol = ci('payType');
+    const origF = {};
+    const fill = (rn, e) => {
         const p = profFor(e.id, P.month);
         cols.forEach(({ f, ci: c }) => {
-            const addr = XLSX.utils.encode_cell({ r, c });
-            const old = ws[addr];
-            if (old && old.f) return;
+            const cell = getCell(rn, c, true);
+            if (cell.f) return;   // 수식 칸은 그대로
             let v = f.k === 'from' ? '' : (f.secret && !secret ? '' : empXlShow(f, empXlCurrent(f, e, p)));
             if (f.t === 'rate' && v !== '') v = Math.round(v * 100) / 100;
-            const cell = { ...(old || {}), t: typeof v === 'number' ? 'n' : 's', v };
-            delete cell.w;
-            ws[addr] = cell;
+            // 원래 숫자 칸이었으면 숫자로 (사원번호 등) - 0으로 시작하는 휴대폰 뒷자리는 글자 그대로
+            if (typeof v === 'string' && cell.num !== undefined && /^-?\d+(\.\d+)?$/.test(v) && !/^0\d/.test(v)) v = Number(v);
+            cell.newVal = v; cell.dirty = true;
         });
-        wrapFixed(r, e, p);
-    };
-    // 계산 칸 수식을 '급여형태가 고정이면' 조건으로 감싸기 (원래 수식은 그대로, 이미 고정 조건이 있으면 그대로)
-    //   통상임금 → 빈칸 · 기본급·연장·휴일·야간 → 사이트에 저장된 금액 · 월급여 → 기본급~현장수당 합계
-    const hCol = ci('payType');
-    const origF = {};   // 감싸기 전 수식 (새 사원 줄에 복사할 때 씀)
-    const wrapFixed = (r, e, p) => {
+        // 계산 칸 수식을 '급여형태가 고정이면' 조건으로 감싸기
         if (hCol === undefined) return;
-        const n = r + 1, H = `$${XLSX.utils.encode_col(hCol)}${n}`;
-        const isFixed = payTypeOf(p) === 'fixed';
+        const H = `$${XL_COL(hCol)}${rn}`;
         const baseC = ci('fixedPay.base'), siteC = ci('siteAllowance');
         ['ordinary', 'monthly', 'fixedPay.base', 'fixedPay.overtime', 'fixedPay.holidayNight', 'split.holiday', 'split.night'].forEach(k => {
             const c = ci(k);
             if (c === undefined) return;
-            const addr = XLSX.utils.encode_cell({ r, c });
-            const cell = ws[addr];
+            const cell = getCell(rn, c, false);
             if (!cell || !cell.f || cell.f.includes('="고정"')) return;
-            const f = EMPXL_FIELDS.find(x => x.k === k);
+            const fld = EMPXL_FIELDS.find(x => x.k === k);
             let alt;
             if (k === 'ordinary') alt = '""';
-            else if (k === 'monthly' && baseC !== undefined && siteC !== undefined && baseC < siteC) alt = `SUM(${XLSX.utils.encode_col(baseC)}${n}:${XLSX.utils.encode_col(siteC)}${n})`;
-            else { const v = empXlCurrent(f, e, p); alt = typeof v === 'number' ? Math.round(v) : '""'; }
-            origF[addr] = cell.f;
+            else if (k === 'monthly' && baseC !== undefined && siteC !== undefined && baseC < siteC) alt = `SUM(${XL_COL(baseC)}${rn}:${XL_COL(siteC)}${rn})`;
+            else { const v = empXlCurrent(fld, e, p); alt = typeof v === 'number' ? Math.round(v) : '""'; }
+            origF[`${rn}|${c}`] = cell.f;
             cell.f = `IF(${H}="고정",${alt},${cell.f})`;
-            if (isFixed) {   // 엑셀이 다시 계산하기 전에도 맞게 보이도록 저장값도 고정 쪽으로
-                const v = k === 'ordinary' ? '' : empXlCurrent(f, e, p);
-                cell.t = typeof v === 'number' ? 'n' : 's'; cell.v = v === '' ? '' : v; delete cell.w;
-            }
+            cell.fDirty = true;
         });
     };
+    const val = (rn, k) => { const c = ci(k); return c === undefined ? '' : String(xlCellValue(getCell(rn, c, false)) ?? '').trim(); };
     const done = new Set();
-    let lastRow = h;
-    for (let r = h + 1; r <= range.e.r; r++) {
-        const no = String((cellAt(r, ci('empNo')) || {}).v ?? '').trim();
-        const name = String((cellAt(r, ci('name')) || {}).v ?? '').trim();
-        const phone = String((cellAt(r, ci('phoneLast4')) || {}).v ?? '').replace(/\D/g, '').padStart(4, '0');
+    let lastRow = h + 1;   // 엑셀 줄 번호 (1부터)
+    for (let rn = h + 2; rn <= maxRow; rn++) {
+        const no = val(rn, 'empNo'), name = val(rn, 'name');
         if (!no && !name) continue;
         if (no.includes('예시') || name.includes('예시')) continue;
-        lastRow = r;
+        lastRow = rn;
+        const phone = val(rn, 'phoneLast4').replace(/\D/g, '').padStart(4, '0');
         const e = (no && P.employees.find(x => String(x.empNo || '') === no)) || P.employees.find(x => x.name === name && x.phoneLast4 === phone);
-        if (e && !done.has(e.id)) { fill(r, e); done.add(e.id); }
+        if (e && !done.has(e.id)) { fill(rn, e); done.add(e.id); }
     }
-    // 엑셀에 없는 사원은 맨 아래에 추가 (마지막 사원 줄의 수식·서식 복사)
+    // 엑셀에 없는 사원은 맨 아래 줄에 추가 (마지막 사원 줄의 서식·수식 복사)
     const extra = [...P.employees].filter(e => !done.has(e.id))
         .sort((a, b) => (num(a.empNo) || 1e9) - (num(b.empNo) || 1e9) || String(a.name).localeCompare(b.name));
-    let r = lastRow;
+    const src = sheet.rows.get(lastRow);
+    let rn = lastRow;
     extra.forEach(e => {
-        r++;
-        for (let c = range.s.c; c <= range.e.c; c++) {
-            const src = cellAt(lastRow, c);
-            const addr = XLSX.utils.encode_cell({ r, c });
-            const srcF = src && (origF[XLSX.utils.encode_cell({ r: lastRow, c })] || src.f);
-            if (src && src.f) ws[addr] = { t: 'n', v: 0, f: shiftFormulaRow(srcF, lastRow + 1, r + 1), ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
-            else if (src) ws[addr] = { t: 's', v: '', ...(src.s ? { s: src.s } : {}), ...(src.z ? { z: src.z } : {}) };
-        }
-        fill(r, e);
+        rn++;
+        const row = { attrs: src ? src.attrs : '', cells: new Map() };
+        if (src) src.cells.forEach((sc, c) => {
+            const sf = origF[`${lastRow}|${c}`] || sc.f;
+            row.cells.set(c, { attrs: sc.attrs.replace(/\s*\bt="[^"]*"/, ''), raw: '', dirty: true, f: sf ? shiftFormula(sf, rn - lastRow, 0) : null, newVal: '' });
+        });
+        sheet.rows.set(rn, row);
+        fill(rn, e);
     });
-    if (r > range.e.r) { range.e.r = r; ws['!ref'] = XLSX.utils.encode_range(range); }
-    XLSX.writeFile(wb, `사원정보_${ymdOfDate(new Date())}.xlsx`, { cellStyles: true });
+    return true;
+}
+
+// JSZip (엑셀 파일 열고 닫기) - 사원정보 엑셀 받을 때만 불러옴
+function loadJsZip() {
+    if (window.JSZip) return Promise.resolve(window.JSZip);
+    return new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        sc.onload = () => resolve(window.JSZip);
+        sc.onerror = () => reject(new Error('엑셀 파일 프로그램(JSZip)을 불러오지 못했어요'));
+        document.head.appendChild(sc);
+    });
+}
+
+async function downloadEmpXlFromTemplate(tpl, secret) {
+    const JSZip = await loadJsZip();
+    const zip = await JSZip.loadAsync(b64ToBytes(tpl.data));
+    // 첫 시트 파일 찾기 (workbook.xml → rels)
+    const wbXml = await zip.file('xl/workbook.xml').async('string');
+    const rid = (/<sheet\b[^>]*\br:id="([^"]+)"/.exec(wbXml) || [])[1];
+    const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    const target = ((new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*Target="([^"]+)"`)).exec(relsXml) || (new RegExp(`<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="${rid}"`)).exec(relsXml) || [])[1];
+    const sheetPath = target ? (target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '')) : 'xl/worksheets/sheet1.xml';
+    const sstFile = zip.file('xl/sharedStrings.xml');
+    const sst = sstFile ? [...(await sstFile.async('string')).matchAll(/<si>([\s\S]*?)<\/si>/g)]
+        .map(m => [...m[1].replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(x => xmlUnesc(x[1])).join('')) : [];
+    const sheet = xlParseSheet(await zip.file(sheetPath).async('string'), sst);
+    if (!xlFillTemplate(sheet, secret)) return false;
+    zip.file(sheetPath, xlSheetXml(sheet));
+    // 엑셀이 열 때 수식을 전부 다시 계산 + 계산 순서 기록(calcChain)은 지움 (없어도 엑셀이 다시 만듦)
+    let wb2 = /<calcPr\b[^>]*\/>/.test(wbXml)
+        ? wbXml.replace(/<calcPr\b([^>]*?)\s*\/>/, (m, a) => `<calcPr${a.replace(/\s*fullCalcOnLoad="[^"]*"/, '')} fullCalcOnLoad="1"/>`)
+        : wbXml.replace(/<\/workbook>/, '<calcPr fullCalcOnLoad="1"/></workbook>');
+    zip.file('xl/workbook.xml', wb2);
+    if (zip.file('xl/calcChain.xml')) {
+        zip.remove('xl/calcChain.xml');
+        zip.file('xl/_rels/workbook.xml.rels', relsXml.replace(/<Relationship\b[^>]*Target="calcChain\.xml"[^>]*\/>/, ''));
+        const ct = await zip.file('[Content_Types].xml').async('string');
+        zip.file('[Content_Types].xml', ct.replace(/<Override\b[^>]*PartName="\/xl\/calcChain\.xml"[^>]*\/>/, ''));
+    }
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `사원정보_${ymdOfDate(new Date())}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     return true;
 }
 
@@ -581,7 +703,7 @@ async function downloadEmpXl(withData) {
     const useTpl = document.getElementById('empxl-use-tpl');
     if (withData && useTpl && useTpl.checked && P.empXlTemplate) {
         try {
-            if (downloadEmpXlFromTemplate(XLSX, P.empXlTemplate, secret)) { closeEmpXlDownload(); return; }
+            if (await downloadEmpXlFromTemplate(P.empXlTemplate, secret)) { closeEmpXlDownload(); return; }
         } catch (err) { console.error("올린 양식으로 받기 실패 → 기본 양식으로:", err); }
     }
     const fields = EMPXL_FIELDS.filter(f => (secret || !f.secret) && !f.hidden);
