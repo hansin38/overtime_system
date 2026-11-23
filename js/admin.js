@@ -40,6 +40,10 @@ function startAdminSystem() {
     migrateLegacyWages().finally(() => loadAdminData());
     loadSearchEmployeeList();
     bindSearchAndActionEvents();
+
+    // 새로고침 전에 보던 탭으로 (기본은 연장근로 결재)
+    const lastTab = recallAdminView('adminTab');
+    if (['leave', 'pay', 'staff'].includes(lastTab)) switchAdminTab(lastTab);
 }
 
 // 🔐 관리자 로그인 (브라우저 탭을 닫으면 로그아웃되도록 SESSION 유지)
@@ -438,8 +442,13 @@ let leaveAdminRequests = []; // 전체 연차 신청 [{ id, data }]
 let leaveAdminLoaded = false;
 let leaveAdminEmployees = []; // 사원정보 (연차 현황표·직원명 목록용)
 
+// 마지막에 본 탭 기억 → 새로고침해도 그 탭으로 (브라우저 탭을 닫으면 처음부터 · 관리자 로그인과 같은 범위)
+function rememberAdminView(key, value) { try { sessionStorage.setItem(key, value); } catch (e) {} }
+function recallAdminView(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+
 function switchAdminTab(tab) {
     const isLeave = tab === 'leave';
+    rememberAdminView('adminTab', tab);
     document.getElementById('ot-admin-section').style.display = tab === 'ot' ? 'block' : 'none';
     document.getElementById('leave-admin-section').style.display = isLeave ? 'block' : 'none';
     document.getElementById('pay-admin-section').style.display = tab === 'pay' ? 'block' : 'none';
@@ -454,6 +463,7 @@ function switchAdminTab(tab) {
         initLeaveYearSelect();
         loadLeaveAdmin();
         leaveAdminLoaded = true;
+        if (recallAdminView('leaveSubTab') === 'summary') switchLeaveSubTab('summary');   // 연차 관리 안의 작은 탭도 기억
     }
 }
 
@@ -503,14 +513,14 @@ function toggleLeaveSort(key) {
     renderLeaveRequestList(Number(document.getElementById('leave-year-select').value));
 }
 
-// [조회]: 연도·직원명·상태 적용 (현황 탭에서 누르면 신청 내역 탭으로 - 상태는 신청 내역에만 적용되므로)
+// [조회]: 연도·직원명·상태 적용 - 지금 보고 있는 작은 탭 그대로 (2026-11-23 사용자 요청)
 function searchLeaveRequests() {
-    if (document.getElementById('leave-search-status').value) switchLeaveSubTab('list');
     applyLeaveFilters();
 }
 
 // 연차 관리 안의 작은 탭: 'list' 신청 내역(기본) / 'summary' 전 직원 연차 현황
 function switchLeaveSubTab(tab) {
+    rememberAdminView('leaveSubTab', tab);
     document.getElementById('lv-panel-list').style.display = tab === 'list' ? 'block' : 'none';
     document.getElementById('lv-panel-summary').style.display = tab === 'summary' ? 'block' : 'none';
     document.getElementById('lv-subtab-list').classList.toggle('on', tab === 'list');
@@ -536,7 +546,11 @@ function renderLeaveSummary(year, employees) {
     const tbody = document.getElementById('leave-summary-tbody');
     if (!tbody) return;
     const pickName = document.getElementById('leave-search-name')?.value || '';
-    const rows = employees.filter(emp => !pickName || emp.name === pickName).map(emp => {
+    // 상태를 고르면 그 상태의 신청이 그해에 있는 직원만 (대기는 재전송·결재중 포함)
+    const pickStatus = document.getElementById('leave-search-status')?.value || '';
+    const hasStatus = emp => leaveAdminRequests.some(({ data }) => data.employeeName === emp.name && data.employeePhone === emp.phoneLast4 && data.fiscalYear === year
+        && (() => { const st = leaveDisplayStatus(data); return st === pickStatus || (pickStatus === '대기' && (st === '재전송' || st === '결재중')); })());
+    const rows = employees.filter(emp => (!pickName || emp.name === pickName) && (!pickStatus || hasStatus(emp))).map(emp => {
         let used = 0, pending = 0;
         const mine = leaveAdminRequests.filter(({ data }) => data.employeeName === emp.name && data.employeePhone === emp.phoneLast4);
         mine.forEach(({ data }) => {
@@ -571,7 +585,7 @@ function renderLeaveSummary(year, employees) {
     });
 
     if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${pickName ? `${pickName} 님은 사원정보에 없습니다.` : '등록된 사원이 없습니다.'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #888;">${pickStatus ? `${year}년 '${pickStatus}' 신청이 있는 직원이 없습니다.` : pickName ? `${pickName} 님은 사원정보에 없습니다.` : '등록된 사원이 없습니다.'}</td></tr>`;
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -581,7 +595,6 @@ function renderLeaveSummary(year, employees) {
         const remainColor = r.remaining < 0 ? 'var(--danger-color)' : (r.entitlement > 0 && r.remaining >= r.entitlement / 2 ? '#e67e22' : '#333');
         return `<tr>
             <td>${r.emp.name}</td>
-            <td>${r.emp.department || '-'} / ${r.emp.position || '-'}</td>
             <td>${noHire ? '<span style="color: var(--danger-color);">미등록</span>' : r.emp.hireDate}</td>
             <td title="${noHire ? '' : r.detail.parts.map(p => `${p.date} ${p.label} ${p.days}일`).join('\n')}">${noHire ? '-' : formatDays(r.entitlement) + '일'}${!noHire && r.detail.yearTotal > r.entitlement ? `<br><small style="color: #888; white-space: nowrap;">연말까지 ${formatDays(r.detail.yearTotal)}일<br>다음 ${r.detail.next.slice(5).replace('-', '/')}</small>` : ''}</td>
             <td>${formatDays(r.used)}일</td>
