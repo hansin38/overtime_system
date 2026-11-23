@@ -515,7 +515,7 @@ function openLeaveHistoryModal(mode) {
 }
 
 function renderStatusBadge(status) {
-    const colors = { "승인": "#007bff", "결재중": "#1971c2", "반려": "#dc3545", "승인취소": "#dc3545", "작성": "#e67e22", "대기": "#2c3e50", "재전송": "#2c3e50" };
+    const colors = { "승인": "#28a745", "결재중": "#0066ff", "반려": "#dc3545", "승인취소": "#dc3545", "작성": "#e67e22", "대기": "#2c3e50", "재전송": "#2c3e50" };
     const c = colors[status] || "#6c757d";
     return `<span style="color:${c}; font-weight:bold;">${status || '-'}</span>`;
 }
