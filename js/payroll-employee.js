@@ -59,7 +59,7 @@ function renderPayInfoPane() {
             <div>
                 <div class="pay-card"><h4>인적사항</h4>${dl([
                     ['사원번호', esc(e.empNo)], ['전화 뒷4자리', esc(e.phoneLast4)],
-                    ['부서 / 직급', `${esc(e.department || '-')} / ${esc(e.position || '-')}`],
+                    ['부서 / 직위', `${esc(e.department || '-')} / ${esc(e.position || '-')}`],
                     ['입사일', esc(e.hireDate)], ['퇴사일', esc(e.resignDate)],
                     ['급여명세서', isTarget(e.id) ? '발급 대상' : '대상 아님'],
                     ['생년월일 🔒', esc(p.birthDate)], ['이메일 🔒', esc(p.email)], ['입금 계좌 🔒', esc(p.bankAccount)]
@@ -103,6 +103,7 @@ function openPayEmpModal(empId = null) {
         site: m(p.siteAllowance), bonus: empId ? m(p.holidayBonus) : '200,000',
         pensionBase: m(p.pensionBase), healthBase: m(p.healthBase)
     };
+    fillEmpPickOptions(v.dept, v.position);   // 부서·직위 목록 먼저 채우고 값 넣기
     [...EMP_TEXT_FIELDS, ...EMP_MONEY_FIELDS].forEach(k => { document.getElementById('pe-' + k).value = v[k] ?? ''; });
     document.getElementById('pe-expBasis').value = p.expenseWageBasis === 'ordinary' ? 'ordinary' : 'monthly';
     document.getElementById('pe-empIns').checked = p.employmentInsured !== false;
@@ -115,6 +116,32 @@ function openPayEmpModal(empId = null) {
     document.getElementById('pay-emp-title').innerText = empId ? `사원 정보 수정 (${e.name})` : '사원 등록';
     updateEmpCalcPreview();
     document.getElementById('pay-emp-modal').style.display = 'flex';
+}
+
+// 👔 직위 목록 (낮은 직위 → 높은 직위) · 목록에 없는 기존 값(예: 과장/차장)도 그대로 고를 수 있게 뒤에 붙임
+const EMP_POSITIONS = ['사원', '주임', '대리', '과장', '차장', '부장', '이사', '상무', '전무', '부사장', '사장', '대표이사'];
+const EMP_PICK_NEW = '__new__';
+
+// 부서: 지금 등록된 사원들의 부서(가나다순) + [＋ 새 부서 입력] / 직위: EMP_POSITIONS + 기존 값 + [＋ 직접 입력]
+function fillEmpPickOptions(dept, position) {
+    const used = (k) => [...new Set((P.employees || []).map(x => x[k]).filter(Boolean))];
+    const depts = [...new Set(used('department').concat(dept ? [dept] : []))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const extraPos = [...new Set(used('position').concat(position ? [position] : []))].filter(x => !EMP_POSITIONS.includes(x));
+    const opts = (list, label) => '<option value="">선택</option>' + list.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('') + `<option value="${EMP_PICK_NEW}">＋ ${label}</option>`;
+    document.getElementById('pe-dept').innerHTML = opts(depts, '새 부서 입력');
+    document.getElementById('pe-position').innerHTML = opts(EMP_POSITIONS.concat(extraPos), '직접 입력');
+}
+// [＋ 새 부서 입력] / [＋ 직접 입력]을 고르면 이름을 받아서 목록에 넣고 선택
+function onEmpPick(sel, label) {
+    if (sel.value !== EMP_PICK_NEW) return;
+    const name = (prompt(`새 ${label} 이름을 입력하세요`) || '').trim();
+    if (!name) { sel.value = sel.dataset.prev || ''; return; }
+    if (![...sel.options].some(o => o.value === name)) {
+        const o = document.createElement('option');
+        o.value = name; o.textContent = name;
+        sel.insertBefore(o, sel.lastElementChild);
+    }
+    sel.value = name;
 }
 
 function closePayEmpModal() {
@@ -302,7 +329,7 @@ const EMPXL_FIELDS = [
     { h: '이름', k: 'name', src: 'emp', lock: true },
     { h: '휴대폰 뒷4자리', k: 'phoneLast4', src: 'emp', t: 'phone', lock: true },
     { h: '부서', k: 'department', src: 'emp' },
-    { h: '직급', k: 'position', src: 'emp' },
+    { h: '직위', alias: ['직급'], k: 'position', src: 'emp' },   // 예전 양식의 '직급' 머리글도 읽음
     { h: '입사일', k: 'hireDate', src: 'emp', t: 'date' },
     { h: '퇴사일', k: 'resignDate', src: 'emp', t: 'date' },
     { h: '급여형태(연봉/고정)', k: 'payType', src: 'cond', t: 'payType' },

@@ -283,8 +283,9 @@
             <div class="pay-grp">
                 <div class="gh">근무조건</div>
                 <div class="pay-fg">
-                    <div><label>부서</label><input id="pe-dept"></div>
-                    <div><label>직급</label><input id="pe-position"></div>
+                    <!-- 부서·직위는 목록에서 고르기 (부서는 지금 있는 부서 + 새 부서 입력, 직위는 사원~대표이사) -->
+                    <div><label>부서</label><select id="pe-dept" class="pe-select" onchange="onEmpPick(this, '부서')"></select></div>
+                    <div><label>직위</label><select id="pe-position" class="pe-select" onchange="onEmpPick(this, '직위')"></select></div>
                     <div><label>입사일 (첫 근무일)</label><input id="pe-hire" type="date"></div>
                     <div><label>퇴사일 (마지막 근무일)</label><input id="pe-resign" type="date"></div>
                 </div>

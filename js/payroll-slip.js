@@ -37,7 +37,7 @@ function slipInfoHtml(rec) {
     return `
         <table class="ps-info">
             <tr><th>성명</th><td>${esc(rec.name)}</td><th>사원번호</th><td>${esc(rec.empNo || '-')}</td></tr>
-            <tr><th>부서</th><td>${esc(rec.department || '-')}</td><th>직급</th><td>${esc(rec.position || '-')}</td></tr>
+            <tr><th>부서</th><td>${esc(rec.department || '-')}</td><th>직위</th><td>${esc(rec.position || '-')}</td></tr>
         </table>`;
 }
 
@@ -582,7 +582,7 @@ function downloadLedger(kind) {
     let rows;
     if (kind === 'wage') {
         rows = recs.map(r => {
-            const row = { '귀속월': r.month, '지급일': r.payDate, '사원번호': r.empNo, '성명': r.name, '부서': r.department, '직급': r.position, '소정근로일수': r.workDays };
+            const row = { '귀속월': r.month, '지급일': r.payDate, '사원번호': r.empNo, '성명': r.name, '부서': r.department, '직위': r.position, '소정근로일수': r.workDays };
             PAY_ITEMS.forEach(it => { row[it.label] = r.pay[it.key] || 0; });
             row['지급액 계'] = r.totals.pay;
             row['과세'] = r.totals.taxable;
