@@ -523,6 +523,14 @@ function resetLeaveFilters() {
     applyLeaveFilters();
 }
 
+// 전 직원 연차 현황 정렬: 'remain' 잔여 많은 순(기본) / 'name' 이름 / 'hire' 입사일 (dir 1 오름차순, -1 내림차순)
+let leaveSumSort = { key: 'remain', dir: -1 };
+function toggleLeaveSumSort(key) {
+    if (document.getElementById('leave-search-name').value) return;   // 직원명 '전체'일 때만 정렬
+    leaveSumSort = leaveSumSort.key === key ? { key, dir: -leaveSumSort.dir } : { key, dir: 1 };
+    renderLeaveSummary(Number(document.getElementById('leave-year-select').value), leaveAdminEmployees);
+}
+
 // 사원별 발생/사용/대기/잔여 (잔여 많은 순 → 사용촉진 대상이 위로)
 function renderLeaveSummary(year, employees) {
     const tbody = document.getElementById('leave-summary-tbody');
@@ -541,7 +549,26 @@ function renderLeaveSummary(year, employees) {
         const entitlement = detail.granted;
         const remaining = entitlement - used - pending;
         return { emp, entitlement, detail, used, pending, remaining };
-    }).sort((a, b) => b.remaining - a.remaining);
+    }).sort((a, b) => {
+        // 기본: 잔여 많은 순 (사용촉진 대상이 위로) / 이름·입사일 머리글을 누르면 그 기준 (빈 입사일은 맨 아래)
+        const byName = (a.emp.name || '').localeCompare(b.emp.name || '', 'ko');
+        if (leaveSumSort.key === 'name') return leaveSumSort.dir * byName;
+        if (leaveSumSort.key === 'hire') {
+            const x = a.emp.hireDate || '', y = b.emp.hireDate || '';
+            if (!x || !y) return x === y ? byName : (x ? -1 : 1);
+            return leaveSumSort.dir * x.localeCompare(y) || byName;
+        }
+        return b.remaining - a.remaining || byName;
+    });
+    // 머리글 정렬 표시: 직원명 '전체'로 볼 때만 (한 사람만 보면 정렬할 게 없으니 일반 머리글)
+    const canSort = !pickName;
+    const arrow = k => leaveSumSort.key === k ? (leaveSumSort.dir > 0 ? '▲' : '▼') : '↕';
+    [['lvsum-sort-name', 'name', '이름'], ['lvsum-sort-hire', 'hire', '입사일']].forEach(([id, k, label]) => {
+        const th = document.getElementById(id);
+        if (!th) return;
+        th.innerText = canSort ? `${label} ${arrow(k)}` : label;
+        th.classList.toggle('lv-sort-th', canSort);
+    });
 
     if (rows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${pickName ? `${pickName} 님은 사원정보에 없습니다.` : '등록된 사원이 없습니다.'}</td></tr>`;
