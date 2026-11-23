@@ -5,7 +5,7 @@
 // 줄을 누르면 사원 정보 수정 창(openPayEmpModal), 등록·엑셀 받기/올리기도 여기서 (payroll-employee.js)
 // ==========================================
 
-const STAFF = { state: 'active', sort: { key: 'name', dir: 1 } };
+const STAFF = { state: 'active', sort: { key: 'name', dir: 1 }, selected: new Set() };   // selected: [선택 삭제]용 체크한 사원 id
 
 // 표 칸: k 정렬 키 (없으면 정렬 안 함)
 const STAFF_COLS = [
@@ -39,6 +39,7 @@ function editInStaffTab(empId) {
 }
 
 function setStaffState(v) {
+    if (v !== STAFF.state) STAFF.sort = v === 'resigned' ? { key: 'resign', dir: -1 } : { key: 'name', dir: 1 };
     STAFF.state = v;
     document.querySelectorAll('#staff-state button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
     renderStaffTable();
@@ -51,7 +52,7 @@ function sortStaff(key) {
 
 // 오늘 기준 재직 상태
 function staffState(e, today) {
-    if (e.resignDate && e.resignDate < today) return 'resigned';
+    if (e.resignDate) return 'resigned';   // 퇴사 처리하면 바로 '퇴사' (퇴사 예정 따로 없음 · 로그인은 퇴사일 다음 날부터 막힘)
     if (e.hireDate && e.hireDate > today) return 'upcoming';
     return 'active';
 }
@@ -90,8 +91,10 @@ function staffRows() {
     return P.employees.map(e => {
         const p = prof(e.id);
         const mine = (P.leaveRequests || []).filter(d => d.employeeName === e.name && d.employeePhone === e.phoneLast4).map(data => ({ data }));
-        const detail = calcLeaveDetail(e.hireDate, year, mine);
-        const used = leaveUsedInYear(mine, year);
+        const gone = !!e.resignDate;   // 퇴사자는 퇴사일 기준 연차
+        const ly = gone ? Number(e.resignDate.slice(0, 4)) : year;   // 퇴사자는 퇴사한 해 · 퇴사일까지 생긴 연차로
+        const detail = calcLeaveDetail(e.hireDate, ly, mine, gone ? e.resignDate : today);
+        const used = leaveUsedInYear(mine, ly);
         return {
             e, p, today,
             state: staffState(e, today),
@@ -114,7 +117,7 @@ function renderStaffTable() {
     const missingCnt = active.filter(r => r.missing.length).length;
     const kpi = (label, val, sub, onclick, warn) => `<div class="staff-kpi${warn ? ' warn' : ''}${onclick ? ' click' : ''}"${onclick ? ` onclick="${onclick}"` : ''}><small>${label}</small><b>${val}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
     document.getElementById('staff-kpis').innerHTML =
-        kpi('재직', `${active.length}명`, active.filter(r => r.state === 'upcoming').length ? `입사 예정 ${active.filter(r => r.state === 'upcoming').length}명 포함` : '', "setStaffState('active')")
+        kpi('재직', `${active.length}명`, active.some(r => r.state === 'upcoming') ? `입사 예정 ${active.filter(r => r.state === 'upcoming').length}명 포함` : '', "setStaffState('active')")
         + kpi('이번 달 입사', `${all.filter(r => (r.e.hireDate || '').startsWith(ym)).length}명`, '')
         + kpi(`${yy}년 퇴사`, `${all.filter(r => (r.e.resignDate || '').startsWith(yy)).length}명`, '', "setStaffState('resigned')")
         + kpi('명세서 대상', `${active.filter(r => r.p.payslipTarget === true).length}명`, '')
@@ -140,7 +143,7 @@ function renderStaffTable() {
     const keyOf = {
         empNo: r => r.e.empNo || null, name: r => r.e.name || null, dept: r => r.e.department || null, position: r => r.e.position || null,
         hire: r => r.e.hireDate || null, service: r => (r.service.months >= 0 ? r.service.months : null), leave: r => (r.leave ? r.leave.remaining : null),
-        payType: r => payTypeOf(r.p), target: r => (r.p.payslipTarget === true ? 0 : 1), state: r => r.state, missing: r => -r.missing.length,
+        payType: r => payTypeOf(r.p), target: r => (r.p.payslipTarget === true ? 0 : 1), state: r => r.state, resign: r => r.e.resignDate || null, missing: r => -r.missing.length,
     }[STAFF.sort.key];
     list.sort((a, b) => {
         const x = keyOf(a), y = keyOf(b);
@@ -150,11 +153,19 @@ function renderStaffTable() {
         return STAFF.sort.dir * c || byName;
     });
 
-    // 머리글 (누르면 정렬)
-    document.getElementById('staff-head').innerHTML = STAFF_COLS.map(c => {
+    // 체크 상태: 지금 목록에 보이는 사람만 남김 (검색·필터로 안 보이게 된 사람은 선택 해제)
+    const visibleIds = new Set(list.map(r => r.e.id));
+    [...STAFF.selected].forEach(id => { if (!visibleIds.has(id)) STAFF.selected.delete(id); });
+    const allOn = list.length > 0 && list.every(r => STAFF.selected.has(r.e.id));
+    updateStaffSelBtn();
+
+    // 머리글 (맨 앞 전체 선택 체크 · 나머지는 누르면 정렬)
+    document.getElementById('staff-head').innerHTML = `<th class="staff-cb"><input type="checkbox" title="보이는 직원 전체 선택" ${allOn ? 'checked' : ''} onclick="toggleStaffAll(this.checked)"></th>` + STAFF_COLS.map(col => {
+        // 퇴사 보기에서는 '상태' 칸이 퇴사일 정렬
+        const c = col.k === 'state' && STAFF.state === 'resigned' ? { ...col, k: 'resign', h: '퇴사일', title: '퇴사일' } : col;
         const on = STAFF.sort.key === c.k;
         return `<th class="sortable"${c.title ? ` title="${c.title}"` : ''} onclick="sortStaff('${c.k}')">${c.h} <span class="arr${on ? ' on' : ''}">${on ? (STAFF.sort.dir > 0 ? '▲' : '▼') : '↕'}</span></th>`;
-    }).join('') + '<th></th>';
+    }).join('');
 
     if (!list.length) {
         tbody.innerHTML = `<tr><td colspan="${STAFF_COLS.length + 1}" style="color: #888;">${P.employees.length ? '조건에 맞는 직원이 없어요' : '등록된 사원이 없어요. [＋ 사원등록]으로 추가해 주세요.'}</td></tr>`;
@@ -168,22 +179,46 @@ function renderStaffTable() {
             : `<b class="${r.leave.remaining < 0 ? 'neg' : ''}">${formatDays(r.leave.remaining)}</b><span class="sub"> / ${formatDays(r.leave.granted)}일</span>`;
         const miss = r.missing.length
             ? r.missing.map(([k, why]) => `<span class="staff-miss" title="${why}">${k}</span>`).join('')
-            : '<span class="staff-ok">✓</span>';
-        return `<tr class="${r.state === 'resigned' ? 'resigned' : ''}" onclick="openPayEmpModal('${e.id}')" title="눌러서 정보 수정">
+            : '';   // 빠진 정보가 없으면 비워 둠
+        const on = STAFF.selected.has(e.id);
+        return `<tr class="${r.state === 'resigned' ? 'resigned' : ''}${on ? ' picked' : ''}" onclick="openPayEmpModal('${e.id}')" title="눌러서 정보 수정">
+            <td class="staff-cb" onclick="event.stopPropagation()"><input type="checkbox" ${on ? 'checked' : ''} onclick="toggleStaffPick('${e.id}', this.checked)"></td>
             <td>${esc(e.empNo || '-')}</td>
             <td><b>${esc(e.name)}</b></td>
             <td>${esc(e.department || '-')}</td>
             <td>${esc(e.position || '-')}</td>
-            <td>${esc(e.hireDate || '-')}${r.state === 'resigned' ? `<small>퇴사 ${esc(e.resignDate)}</small>` : ''}</td>
+            <td>${esc(e.hireDate || '-')}</td>
             <td>${r.service.text}</td>
             <td>${leave}</td>
             <td>${payTypeOf(p) === 'fixed' ? '고정' : '연봉'}</td>
             <td>${p.payslipTarget === true ? '<span class="staff-chip ok">대상</span>' : '<span class="sub">-</span>'}</td>
-            <td>${stateChip[r.state]}</td>
+            <td><button class="staff-state-btn" title="눌러서 퇴사 처리 · 퇴사 취소" onclick="event.stopPropagation(); openResignDialog('${e.id}')">${stateChip[r.state]}</button>${e.resignDate && r.state !== 'upcoming' ? `<small>${esc(e.resignDate)}</small>` : ''}</td>
             <td class="l">${miss}</td>
-            <td><button class="staff-del" title="삭제" onclick="event.stopPropagation(); deletePayEmployee('${e.id}')">삭제</button></td>
         </tr>`;
     }).join('');
+}
+
+// ☑ 체크박스 선택 → [선택 삭제 (N)] (삭제 내역에 보관돼 되돌릴 수 있음)
+function toggleStaffPick(id, on) {
+    if (on) STAFF.selected.add(id); else STAFF.selected.delete(id);
+    renderStaffTable();
+}
+function toggleStaffAll(on) {
+    document.querySelectorAll('#staff-tbody .staff-cb input').forEach(cb => {
+        const id = (cb.getAttribute('onclick').match(/'([^']+)'/) || [])[1];
+        if (id) { if (on) STAFF.selected.add(id); else STAFF.selected.delete(id); }
+    });
+    renderStaffTable();
+}
+function updateStaffSelBtn() {
+    const btn = document.getElementById('staff-seldel-btn');
+    if (!btn) return;
+    btn.disabled = STAFF.selected.size === 0;
+    btn.innerText = STAFF.selected.size ? `선택 삭제 (${STAFF.selected.size})` : '선택 삭제';
+}
+function deleteSelectedStaff() {
+    if (!STAFF.selected.size) return;
+    deletePayEmployees([...STAFF.selected]).then(done => { if (done) { STAFF.selected.clear(); updateStaffSelBtn(); } });
 }
 
 // ------------------------------------------
@@ -262,4 +297,64 @@ function purgeDeletedStaff(id) {
     db.collection("deleted_employees").doc(id).delete()
         .then(() => openDeletedStaff())
         .catch(err => { console.error("완전 삭제 실패:", err); alert("지우는 중 오류가 발생했어요."); });
+}
+
+// ------------------------------------------
+// 🚪 퇴사 처리 (삭제가 아니라 퇴사일만 넣어 비활성화)
+//  - 퇴사일 다음 날부터 직원 페이지 로그인 막힘 (index.js · employee.js · leave-employee.js)
+//  - 퇴사한 달까지 급여·명세서는 그대로, 다음 달부터 급여 목록에서 빠짐 (isEmployedIn)
+//  - 연차 일괄 등록 사원 목록에서도 빠짐 · 정보와 연장근로·연차·급여 기록은 그대로
+// ------------------------------------------
+let resignEmpId = null;
+
+function resignLeaveText(e, date) {
+    if (!e.hireDate || !date) return '';
+    const y = Number(date.slice(0, 4));
+    const mine = (P.leaveRequests || []).filter(d => d.employeeName === e.name && d.employeePhone === e.phoneLast4).map(data => ({ data }));
+    const granted = calcLeaveDetail(e.hireDate, y, mine, date).granted;
+    const left = granted - leaveUsedInYear(mine, y);
+    return `${y}년 연차: 퇴사일까지 발생 ${formatDays(granted)}일 · 남은 연차 <b class="${left < 0 ? 'neg' : ''}">${formatDays(left)}일</b> <small>(연차수당 정산 참고)</small>`;
+}
+
+function openResignDialog(empId) {
+    const e = emp(empId);
+    if (!e) return;
+    resignEmpId = empId;
+    const today = ymdOfDate(new Date());
+    const has = !!e.resignDate;
+    document.getElementById('resign-title').innerText = has ? `퇴사 정보 · ${e.name}` : `퇴사 처리 · ${e.name}`;
+    document.getElementById('resign-body').innerHTML = `
+        <div class="resign-row"><label>퇴사일</label><input type="date" id="resign-date" value="${esc(e.resignDate || today)}" min="${esc(e.hireDate || '')}" oninput="document.getElementById('resign-leave').innerHTML = resignLeaveText(emp(resignEmpId), this.value)"></div>
+        <div class="resign-info">입사일 ${esc(e.hireDate || '-')} · ${esc(e.department || '-')} / ${esc(e.position || '-')}</div>
+        <div id="resign-leave" class="resign-leave">${resignLeaveText(e, e.resignDate || today)}</div>
+        <ul class="resign-notes">
+            <li>정보는 지워지지 않아요. 직원 관리 [퇴사]에서 언제든 다시 볼 수 있어요.</li>
+            <li>퇴사일 <b>다음 날부터</b> 직원 페이지(연장근로·연차) 로그인이 막혀요.</li>
+            <li>퇴사한 달까지 급여·명세서는 그대로 낼 수 있고, 다음 달부터 급여 목록에서 빠져요.</li>
+        </ul>`;
+    document.getElementById('resign-save-btn').innerText = has ? '퇴사일 저장' : '퇴사 처리';
+    document.getElementById('resign-cancel-btn').style.display = has ? '' : 'none';
+    document.getElementById('staff-resign-modal').style.display = 'flex';
+}
+function closeResignDialog() { document.getElementById('staff-resign-modal').style.display = 'none'; }
+
+function saveResign() {
+    const e = emp(resignEmpId);
+    const date = document.getElementById('resign-date').value;
+    if (!e) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert('퇴사일을 선택해 주세요.'); return; }
+    if (e.hireDate && date < e.hireDate) { alert('퇴사일이 입사일보다 빠릅니다.'); return; }
+    if (!confirm(`${e.name} 님을 ${date} 퇴사로 처리할까요?`)) return;
+    db.collection("employees").doc(resignEmpId).update({ resignDate: date })
+        .then(() => { closeResignDialog(); loadPayrollData(); if (typeof loadSearchEmployeeList === 'function') loadSearchEmployeeList(); })
+        .catch(err => { console.error('퇴사 처리 실패:', err); alert('저장 중 오류가 발생했어요.'); });
+}
+
+// 퇴사 취소 (실수로 처리했거나 재입사) → 퇴사일을 비워 다시 재직
+function cancelResign() {
+    const e = emp(resignEmpId);
+    if (!e || !confirm(`${e.name} 님의 퇴사를 취소하고 다시 재직으로 돌릴까요?`)) return;
+    db.collection("employees").doc(resignEmpId).update({ resignDate: '' })
+        .then(() => { closeResignDialog(); loadPayrollData(); if (typeof loadSearchEmployeeList === 'function') loadSearchEmployeeList(); })
+        .catch(err => { console.error('퇴사 취소 실패:', err); alert('저장 중 오류가 발생했어요.'); });
 }

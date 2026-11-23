@@ -574,3 +574,21 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .lvimp-emp input { width: 14px; height: 14px; margin: 0; }
 .lvimp-emp small { color: #999; font-weight: normal; font-size: 11px; }
 .lvimp-pick > small { color: #888; font-size: 12px; }
+/* 🚪 퇴사 처리: 상태 칸 버튼 · 창 */
+.staff-state-btn { width: auto; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; }
+.staff-state-btn:hover .staff-chip { outline: 2px solid #adb5bd; outline-offset: 1px; }
+.staff-chip.warn { background: #fff4e6; color: #e8590c; }
+.resign-row { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
+.resign-row label { font-weight: bold; font-size: 14px; margin: 0; }
+.resign-row input { width: auto; height: 36px; margin: 0; padding: 0 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+.resign-info { font-size: 12.5px; color: #868e96; margin-bottom: 8px; }
+.resign-leave { background: #f8f9fa; border-radius: 6px; padding: 9px 12px; font-size: 13px; margin-bottom: 10px; }
+.resign-leave b.neg { color: var(--danger-color); }
+.resign-leave small { color: #999; }
+.resign-notes { margin: 0; padding-left: 18px; font-size: 12.5px; color: #666; line-height: 1.8; text-align: left; }
+/* ☑ 직원 관리 체크박스 · 선택 삭제 */
+.staff-tbl th.staff-cb, .staff-tbl td.staff-cb { width: 36px; padding: 0 4px; cursor: default; }
+.staff-cb input { width: 16px; height: 16px; margin: 0; cursor: pointer; vertical-align: middle; }
+.staff-tbl tr.picked td { background: #fff5f5; }
+.staff-seldel:not(:disabled) { color: var(--danger-color); border-color: #ffc9c9; }
+.staff-seldel:disabled { opacity: .45; cursor: default; }

@@ -124,6 +124,13 @@ function loadMyLeaveBalance() {
         .get()
         .then((snapshot) => {
             myEmployeeData = snapshot.empty ? null : snapshot.docs[0].data();
+            // 로그인해 둔 채로 퇴사 처리된 경우: 로그아웃시키고 첫 화면으로 (퇴사일 다음 날부터)
+            if (myEmployeeData && myEmployeeData.resignDate && myEmployeeData.resignDate < toYmd(new Date())) {
+                alert("퇴사 처리된 계정이라 이용할 수 없습니다.");
+                sessionStorage.removeItem('currentUser');
+                location.href = '../index.html';
+                throw new Error('RESIGNED');
+            }
             return db.collection("leave_requests")
                 .where("employeeName", "==", currentUser.name)
                 .where("employeePhone", "==", currentUser.phone)
@@ -135,6 +142,7 @@ function loadMyLeaveBalance() {
             renderMonthlyUsage();
         })
         .catch(err => {
+            if (err && err.message === 'RESIGNED') return;   // 퇴사자 → 이미 첫 화면으로 보냄
             console.error("연차 정보 조회 실패:", err);
             if (box) box.innerHTML = `<span style="color:#dc3545;">연차 정보 조회 중 오류가 발생했습니다.</span>`;
         });

@@ -52,6 +52,13 @@ function logoutUser() {
 // 관리자 로그인은 메인 화면에 노출하지 않고 admin.html에서 별도 진행
 
 
+// 퇴사일이 오늘보다 앞이면 퇴사자 (퇴사일 당일까지는 근무일이라 로그인 가능)
+function isResignedEmployee(e) {
+    if (!e || !e.resignDate) return false;
+    const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return e.resignDate < today;
+}
+
 // 사원 로그인 (기존 오리지널 DB 조회 로직 토씨 하나 안 틀리고 그대로!)
 function handleLogin() {
     const nameInput = document.getElementById('login-name').value.trim();
@@ -79,6 +86,11 @@ function handleLogin() {
         .then((snapshot) => {
             if (snapshot.empty) {
                 alert("등록되지 않은 사원이거나 정보가 일치하지 않습니다. 관리자에게 사원 등록 여부를 문의해 주세요.");
+                return;
+            }
+            // 퇴사 처리된 사원(퇴사일 다음 날부터)은 로그인 막음 - 정보·기록은 관리자 화면에 그대로 보관
+            if (isResignedEmployee(snapshot.docs[0].data())) {
+                alert("퇴사 처리된 계정이라 로그인할 수 없습니다. 문의는 관리자에게 해 주세요.");
                 return;
             }
             

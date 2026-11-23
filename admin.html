@@ -240,6 +240,7 @@
                 </div>
                 <label class="staff-chk"><input type="checkbox" id="staff-missing" onchange="renderStaffTable()"> 정보 누락만</label>
                 <div class="staff-actions">
+                    <button class="pay-btn staff-seldel" id="staff-seldel-btn" onclick="deleteSelectedStaff()" disabled title="체크한 사원 삭제 (삭제 내역에 보관돼 되돌릴 수 있어요)">선택 삭제</button>
                     <button class="pay-btn ghost" id="staff-deleted-btn" onclick="openDeletedStaff()" title="삭제한 사원 보기 · 되돌리기">🗑 삭제 내역</button>
                     <button class="pay-btn" onclick="openEmpXlDownload()">📄 엑셀 받기</button>
                     <button class="pay-btn" onclick="openEmpXlUpload()">📤 엑셀 올리기</button>
@@ -352,6 +353,19 @@
             </div>
             <label class="pay-chk" style="margin-top: 20px;"><input type="checkbox" id="empxl-secret"> 계좌번호·생년월일·이메일도 넣기</label>
             <div id="empxl-tpl-info"></div>
+        </div>
+    </div>
+
+    <!-- 🚪 [퇴사 처리] 직원 관리 표의 상태 칸을 누르면 열림 · 삭제가 아니라 퇴사일만 넣어 비활성화 (js/staff-admin.js) -->
+    <div id="staff-resign-modal" class="pay-modal-bg" onclick="if (event.target === this) closeResignDialog()">
+        <div class="pay-modal" style="width: 460px;">
+            <div class="mh"><b id="resign-title">퇴사 처리</b><button class="pay-btn ghost" onclick="closeResignDialog()">✕</button></div>
+            <div id="resign-body"></div>
+            <div class="pay-modal-foot" style="align-items: center;">
+                <button id="resign-cancel-btn" class="pay-btn ghost" style="margin-right: auto; color: var(--danger-color);" onclick="cancelResign()">퇴사 취소</button>
+                <button class="pay-btn" onclick="closeResignDialog()">닫기</button>
+                <button id="resign-save-btn" class="pay-btn blue" onclick="saveResign()">퇴사 처리</button>
+            </div>
         </div>
     </div>
 

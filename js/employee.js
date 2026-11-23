@@ -23,7 +23,15 @@ function loadMyFixOtLimits() {
         .get()
         .then(snapshot => {
             if (snapshot.empty) return;
-            myFixOtLimits = getFixOtLimits(snapshot.docs[0].data());
+            // 로그인해 둔 채로 퇴사 처리된 경우: 로그아웃시키고 첫 화면으로
+            const me = snapshot.docs[0].data();
+            if (me.resignDate && me.resignDate < new Date().toLocaleDateString('sv-SE')) {
+                alert("퇴사 처리된 계정이라 이용할 수 없습니다.");
+                sessionStorage.removeItem('currentUser');
+                location.href = 'index.html';
+                return;
+            }
+            myFixOtLimits = getFixOtLimits(me);
             calculateTotalHours();
         })
         .catch(err => console.error("고정OT 정보 로드 실패:", err));
