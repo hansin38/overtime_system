@@ -25,6 +25,15 @@ const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const SIGN_SLOTS = { director: '전 무', manager: '과 장' };
 const SIGN_LINK_HOURS = 3;
 
+// 👥 연차신청서 대상 (주요 멤버): 사원 정보의 '연차신청서 대상' 체크(leaveTarget)가 기준
+//    체크한 적이 없는 사원은 임원 직위면 대상 아님, 그 외는 대상으로 봄 (2026-11-23 사용자 결정)
+const LEAVE_EXEC_POSITIONS = ['회장', '대표', '사장', '부사장', '전무', '상무', '이사', '감사', '고문'];
+function isLeaveTarget(e) {
+    if (!e) return false;
+    if (typeof e.leaveTarget === 'boolean') return e.leaveTarget;
+    return !LEAVE_EXEC_POSITIONS.some(p => String(e.position || '').includes(p));
+}
+
 // ✅ 최종 승인: 제일 높은 결재자(전무)가 서명했거나, 관리자가 대신 승인했거나, 엑셀로 올린 이전 자료
 //    과장만 서명한 건은 '결재중' (2026-11-23 사용자 결정 - 예전에 과장 서명만으로 '승인'된 건도 결재중으로 봄)
 function leaveIsFinal(d) {

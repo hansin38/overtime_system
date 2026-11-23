@@ -162,7 +162,8 @@ function renderStaffTable() {
     const stateChip = { active: '<span class="staff-chip ok">재직</span>', upcoming: '<span class="staff-chip blue">입사 예정</span>', resigned: '<span class="staff-chip gray">퇴사</span>' };
     tbody.innerHTML = list.map(r => {
         const e = r.e, p = r.p;
-        const leave = !r.leave ? '<span class="sub">-</span>'
+        const leave = !isLeaveTarget(e) ? '<span class="sub" title="사원 정보에서 연차신청서 대상 체크를 해제한 직원">대상 아님</span>'
+            : !r.leave ? '<span class="sub">-</span>'
             : `<b class="${r.leave.remaining < 0 ? 'neg' : ''}">${formatDays(r.leave.remaining)}</b><span class="sub"> / ${formatDays(r.leave.granted)}일</span>`;
         const miss = r.missing.length
             ? r.missing.map(([k, why]) => `<span class="staff-miss" title="${why}">${k}</span>`).join('')

@@ -107,6 +107,7 @@ function openPayEmpModal(empId = null) {
     document.getElementById('pe-expBasis').value = p.expenseWageBasis === 'ordinary' ? 'ordinary' : 'monthly';
     document.getElementById('pe-empIns').checked = p.employmentInsured !== false;
     document.getElementById('pe-target').checked = empId ? p.payslipTarget === true : true;
+    document.getElementById('pe-leaveTarget').checked = empId ? isLeaveTarget(e) : true;   // 연차신청서 대상 (leave-common.js)
     setEmpPayType(payTypeOf(p));
     // 이름·전화번호는 연장근로·연차 신청과 연결되어 있어 수정 시 잠금
     document.getElementById('pe-name').disabled = !!empId;
@@ -152,6 +153,7 @@ function readEmpForm() {
         pensionBase: optMoney('pensionBase'), healthBase: optMoney('healthBase'),
         employmentInsured: document.getElementById('pe-empIns').checked,
         payslipTarget: document.getElementById('pe-target').checked,
+        leaveTarget: document.getElementById('pe-leaveTarget').checked,
         expenseWageBasis: g('expBasis') === 'ordinary' ? 'ordinary' : 'monthly',
         from: g('from')
     };
@@ -201,7 +203,8 @@ function savePayEmployee() {
 
     const basic = {
         empNo: f.empNo, department: f.department, position: f.position,
-        hireDate: f.hireDate, resignDate: f.resignDate, fixedOt: f.fixedOt
+        hireDate: f.hireDate, resignDate: f.resignDate, fixedOt: f.fixedOt,
+        leaveTarget: f.leaveTarget   // 연차신청서 대상 - 연차 화면에서도 읽으므로 기본정보(employees)에 저장
     };
     const secret = {
         birthDate: f.birthDate, email: f.email, bankAccount: f.bankAccount,

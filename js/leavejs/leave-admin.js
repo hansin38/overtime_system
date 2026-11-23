@@ -51,9 +51,7 @@ const LV_UNPAID_RULES = [   // 난임치료가 '치료'로 병가에 잡히지 �
     { re: /병원|병가|질병|입원|치료|아파|몸살/, label: '병가(무급)' },
 ];
 
-// 연차신청서를 받지 않는 임원 직위 (샘플 양식 '사원 목록'에서 뺌, 부장 이하만 표시)
-const LV_EXEC_POSITIONS = ['회장', '대표', '사장', '부사장', '전무', '상무', '이사', '감사', '고문'];
-function lvIsExec(e) { return LV_EXEC_POSITIONS.some(p => String(e.position || '').includes(p)); }
+// 연차신청서 대상(주요 멤버)만 양식 사원 목록에 - 기준은 leave-common.js isLeaveTarget (사원 정보의 체크)
 
 let lvImport = { employees: [], rows: [] };
 
@@ -85,7 +83,7 @@ function renderLeaveImportPicker() {
     db.collection("employees").get().then(snap => {
         const today = toYmd(new Date());
         lvPickEmps = snap.docs.map(d => d.data())
-            .filter(e => e.name && !(e.resignDate && e.resignDate < today) && !lvIsExec(e))
+            .filter(e => e.name && !(e.resignDate && e.resignDate < today) && isLeaveTarget(e))
             .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
         box.innerHTML = lvPickEmps.length
             ? lvPickEmps.map((e, i) => `<label class="lvimp-emp"><input type="checkbox" data-i="${i}" onchange="syncLeaveImportAll()"> ${lvEsc(e.name)}<small>${lvEsc(e.department || '')}</small></label>`).join('')
