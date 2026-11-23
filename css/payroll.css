@@ -510,3 +510,51 @@ table.pay-wage-tbl .key { background: var(--pay-blue-bg); color: var(--pay-blue)
 table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce; }
 .pay-chip-sm { display: inline-block; font-size: 10.5px; padding: 1px 7px; border-radius: 10px; background: #f1f3f5; color: #666; margin-left: 4px; font-weight: normal; }
 .pay-wage-note { font-size: 12.5px; color: #335; background: #f4f8ff; border-radius: 8px; padding: 10px 12px; margin: 14px 0 6px; line-height: 1.6; }
+
+/* 👥 직원 관리 탭 (staff-admin.js) */
+.pay-staff-link { display: block; text-align: center; font-size: 12.5px; color: #868e96; margin: 12px 0 4px; text-decoration: none; }
+.pay-staff-link:hover { color: var(--pay-blue); text-decoration: underline; }
+.staff-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+.staff-kpi { background: #fff; border: 1px solid #e9ecef; border-radius: 10px; padding: 14px 16px; text-align: left; }
+.staff-kpi small { display: block; color: #868e96; font-size: 12.5px; }
+.staff-kpi b { display: block; font-size: 22px; margin-top: 4px; color: #212529; }
+.staff-kpi span { display: block; font-size: 11.5px; color: #adb5bd; margin-top: 2px; }
+.staff-kpi.click { cursor: pointer; }
+.staff-kpi.click:hover { border-color: var(--pay-blue); }
+.staff-kpi.warn { border-color: #ffc078; background: #fff9f0; }
+.staff-kpi.warn b { color: #e8590c; }
+.staff-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+.staff-search { width: 240px; height: 36px; margin: 0; padding: 0 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+.staff-bar select { height: 36px; margin: 0; padding: 0 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; width: auto; min-width: 120px; }
+.staff-seg { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
+.staff-seg button { width: auto; background: #fff; color: #555; border: 0; border-radius: 0; padding: 0 14px; height: 34px; font-size: 13.5px; font-weight: bold; }
+.staff-seg button + button { border-left: 1px solid #ccc; }
+.staff-seg button.on { background: #333; color: #fff; }
+.staff-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; margin: 0; cursor: pointer; }
+.staff-chk input { width: 16px; height: 16px; margin: 0; }
+.staff-actions { display: flex; gap: 6px; margin-left: auto; }
+.staff-wrap { overflow-x: auto; }
+.staff-tbl { margin: 0; table-layout: auto; }
+.staff-tbl th { white-space: nowrap; font-size: 13.5px; padding: 10px 8px; }
+.staff-tbl th.sortable { cursor: pointer; user-select: none; }
+.staff-tbl th.sortable:hover { background: #e7f0ff; color: #1c62c4; }
+.staff-tbl td { padding: 10px 8px; font-size: 13.5px; white-space: nowrap; }
+.staff-tbl td.l { text-align: left; white-space: normal; }
+.staff-tbl td small { display: block; color: #adb5bd; font-size: 11.5px; }
+.staff-tbl tbody tr { cursor: pointer; }
+.staff-tbl tbody tr:hover td { background: #f4f8ff; }
+.staff-tbl tr.resigned td { color: #adb5bd; }
+.staff-tbl .sub { color: #adb5bd; }
+.staff-tbl b.neg { color: var(--danger-color); }
+.staff-chip { display: inline-block; font-size: 12px; font-weight: bold; padding: 2px 9px; border-radius: 12px; }
+.staff-chip.ok { background: #ebfbee; color: #2b8a3e; }
+.staff-chip.blue { background: #e7f5ff; color: #1971c2; }
+.staff-chip.gray { background: #f1f3f5; color: #868e96; }
+.staff-miss { display: inline-block; font-size: 11.5px; background: #fff4e6; color: #d9480f; border-radius: 10px; padding: 1px 8px; margin: 1px 3px 1px 0; cursor: help; }
+.staff-ok { color: #2b8a3e; font-weight: bold; }
+.staff-del { width: auto; background: none; border: 0; padding: 4px 6px; font-size: 12px; font-weight: normal; color: #adb5bd; cursor: pointer; }
+.staff-del:hover { color: var(--danger-color); text-decoration: underline; opacity: 1; }
+.staff-foot { font-size: 12px; color: #999; margin-top: 10px; text-align: left; }
+@media (max-width: 900px) { .staff-kpis { grid-template-columns: 1fr 1fr; } .staff-actions { margin-left: 0; } }
+.staff-tbl th .arr { color: #adb5bd; font-size: 12px; }   /* 정렬 가능 표시 ↕ · 지금 정렬 중인 칸은 ▲▼ 진하게 */
+.staff-tbl th .arr.on { color: #212529; }

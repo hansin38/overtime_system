@@ -72,9 +72,12 @@ function loadPayrollData() {
             renderPayMonthBar();
             renderPayEmpList();
             renderPayMain();
+            if (typeof renderStaffTable === 'function') renderStaffTable();   // 👥 직원 관리 표도 같이 갱신 (staff-admin.js)
         });
     }).catch(err => {
         console.error("급여 데이터 로드 실패:", err);
+        const staffBody = document.getElementById('staff-tbody');
+        if (staffBody) staffBody.innerHTML = `<tr><td colspan="12" style="color: var(--danger-color);">직원 정보를 불러오지 못했습니다. 관리자 로그인 상태를 확인해 주세요.</td></tr>`;
         document.getElementById('pay-main').innerHTML = `<div class="pay-empty">급여 데이터를 불러오지 못했습니다.<br><small>관리자 로그인 상태와 Firestore 보안 규칙을 확인해 주세요.</small></div>`;
     });
 }

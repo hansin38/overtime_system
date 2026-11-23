@@ -443,10 +443,13 @@ function switchAdminTab(tab) {
     document.getElementById('ot-admin-section').style.display = tab === 'ot' ? 'block' : 'none';
     document.getElementById('leave-admin-section').style.display = isLeave ? 'block' : 'none';
     document.getElementById('pay-admin-section').style.display = tab === 'pay' ? 'block' : 'none';
+    document.getElementById('staff-admin-section').style.display = tab === 'staff' ? 'block' : 'none';
     document.getElementById('tab-ot-admin').classList.toggle('active', tab === 'ot');
     document.getElementById('tab-leave-admin').classList.toggle('active', isLeave);
     document.getElementById('tab-pay-admin').classList.toggle('active', tab === 'pay');
+    document.getElementById('tab-staff-admin').classList.toggle('active', tab === 'staff');
     if (tab === 'pay') openPayrollTab(); // js/payroll-month.js
+    if (tab === 'staff') openStaffTab(); // js/staff-admin.js
     if (isLeave && !leaveAdminLoaded) {
         initLeaveYearSelect();
         loadLeaveAdmin();

@@ -40,6 +40,7 @@
             <button id="tab-ot-admin" class="tab-btn active" onclick="switchAdminTab('ot')">📝 연장근로 결재</button>
             <button id="tab-leave-admin" class="tab-btn" onclick="switchAdminTab('leave')">🏖️ 연차 관리</button>
             <button id="tab-pay-admin" class="tab-btn" onclick="switchAdminTab('pay')">💵 급여 관리</button>
+            <button id="tab-staff-admin" class="tab-btn" onclick="switchAdminTab('staff')">👥 직원 관리</button>
         </div>
 
         <div id="ot-admin-section">
@@ -213,11 +214,8 @@
                     <input id="pay-search" class="pay-search" placeholder="🔍 이름 검색" oninput="renderPayEmpList()">
                     <div id="pay-emp-list" class="pay-emp-list"></div>
                     <div id="pay-emp-others" class="pay-emp-list others"></div>
-                    <button class="pay-btn blue pay-add" onclick="openPayEmpModal()">＋ 사원등록</button>
-                    <div class="pay-xl-btns">
-                        <button class="pay-btn sm" onclick="openEmpXlDownload()">📄 엑셀 받기</button>
-                        <button class="pay-btn sm" onclick="openEmpXlUpload()">📤 엑셀 올리기</button>
-                    </div>
+                    <!-- 사원 등록·엑셀은 👥 직원 관리 탭으로 옮김 -->
+                    <a href="#" class="pay-staff-link" onclick="switchAdminTab('staff'); return false;">👥 사원 등록·엑셀은 직원 관리 탭에서</a>
                     <div class="pay-legend">
                         <span><span class="pay-dot d-sent"></span>발송완료</span>
                         <span><span class="pay-dot d-save"></span>저장됨</span>
@@ -227,6 +225,31 @@
                 </div>
                 <div id="pay-main"></div>
             </div>
+        </div>
+
+        <!-- 👥 직원 관리 (전체 명단·검색·정보 누락 확인 / 줄을 누르면 사원 정보 수정 창 - js/staff-admin.js) -->
+        <div id="staff-admin-section" style="display: none;">
+            <div id="staff-kpis" class="staff-kpis"></div>
+            <div class="staff-bar">
+                <input id="staff-search" class="staff-search" placeholder="🔍 이름 · 사원번호 · 부서 검색" oninput="renderStaffTable()">
+                <select id="staff-dept" onchange="renderStaffTable()"><option value="">전체 부서</option></select>
+                <div class="staff-seg" id="staff-state">
+                    <button type="button" data-v="active" class="on" onclick="setStaffState('active')">재직</button>
+                    <button type="button" data-v="resigned" onclick="setStaffState('resigned')">퇴사</button>
+                    <button type="button" data-v="all" onclick="setStaffState('all')">전체</button>
+                </div>
+                <label class="staff-chk"><input type="checkbox" id="staff-missing" onchange="renderStaffTable()"> 정보 누락만</label>
+                <div class="staff-actions">
+                    <button class="pay-btn" onclick="openEmpXlDownload()">📄 엑셀 받기</button>
+                    <button class="pay-btn" onclick="openEmpXlUpload()">📤 엑셀 올리기</button>
+                    <button class="pay-btn blue" onclick="openPayEmpModal()">＋ 사원등록</button>
+                </div>
+            </div>
+            <div class="staff-wrap"><table class="staff-tbl">
+                <thead><tr id="staff-head"></tr></thead>
+                <tbody id="staff-tbody"><tr><td colspan="11" style="color: #888;">불러오는 중...</td></tr></tbody>
+            </table></div>
+            <div class="staff-foot">줄을 누르면 사원 정보 수정 창이 열려요 · 이름·전화번호는 연장근로·연차 로그인과 연결돼 있어 수정할 수 없어요 · 퇴사자는 삭제 대신 퇴사일을 입력해 주세요</div>
         </div>
     </div>
 
@@ -497,5 +520,6 @@
     <script src="js/payroll-employee.js"></script>
     <script src="js/payroll-import.js"></script>
     <script src="js/payroll-slip.js"></script>
+    <script src="js/staff-admin.js"></script>
 </body>
 </html>
