@@ -29,6 +29,7 @@ function openStaffTab() {
     }
     document.getElementById('staff-tbody').innerHTML = `<tr><td colspan="${STAFF_COLS.length}" style="color: #888;">불러오는 중...</td></tr>`;
     loadPayrollData();   // 끝나면 renderStaffTable() 호출됨
+    loadDeletedStaffCount();   // [🗑 삭제 내역 (N)] 개수
 }
 
 // 급여 관리(보기 전용)의 '직원 관리에서 수정' → 직원 관리 탭으로 옮겨서 그 사람 수정 창 열기
@@ -183,4 +184,82 @@ function renderStaffTable() {
             <td><button class="staff-del" title="삭제" onclick="event.stopPropagation(); deletePayEmployee('${e.id}')">삭제</button></td>
         </tr>`;
     }).join('');
+}
+
+// ------------------------------------------
+// 🗑 삭제 내역 (deleted_employees 보관함) · 되돌리기 · 완전 삭제
+// 보관함을 못 읽어도(규칙 게시 전 등) 직원 관리 화면은 그대로 동작하도록 따로 불러옴
+// ------------------------------------------
+let deletedStaff = [];
+
+function loadDeletedStaffCount() {
+    return db.collection("deleted_employees").get().then(snap => {
+        deletedStaff = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (b.deletedAt?.toMillis?.() || 0) - (a.deletedAt?.toMillis?.() || 0));
+        const btn = document.getElementById('staff-deleted-btn');
+        if (btn) btn.innerText = `🗑 삭제 내역${deletedStaff.length ? ` (${deletedStaff.length})` : ''}`;
+        return deletedStaff;
+    }).catch(err => { console.warn("삭제 내역을 불러오지 못함:", err); deletedStaff = []; return null; });
+}
+
+function openDeletedStaff() {
+    document.getElementById('staff-deleted-modal').style.display = 'flex';
+    const box = document.getElementById('staff-deleted-list');
+    box.innerHTML = '<div class="pay-empty">불러오는 중...</div>';
+    loadDeletedStaffCount().then(list => {
+        if (list === null) {
+            box.innerHTML = `<div class="pay-note warn">삭제 내역을 불러오지 못했어요. Firebase 콘솔 > Firestore > 규칙에 새 규칙(deleted_employees)을 게시했는지 확인해 주세요.</div>`;
+            return;
+        }
+        if (!list.length) { box.innerHTML = '<div class="pay-empty">삭제한 사원이 없어요.</div>'; return; }
+        box.innerHTML = `<div class="staff-wrap"><table class="staff-tbl staff-del-tbl">
+            <thead><tr><th>이름</th><th>사원번호</th><th>부서 / 직위</th><th>입사일</th><th>삭제한 날</th><th></th></tr></thead>
+            <tbody>${list.map(d => {
+                const e = d.employee || {};
+                const at = d.deletedAt?.toDate ? d.deletedAt.toDate() : null;
+                return `<tr style="cursor: default;">
+                    <td><b>${esc(e.name || '-')}</b></td>
+                    <td>${esc(e.empNo || '-')}</td>
+                    <td>${esc(e.department || '-')} / ${esc(e.position || '-')}</td>
+                    <td>${esc(e.hireDate || '-')}</td>
+                    <td>${at ? `${ymdOfDate(at)} ${pad2(at.getHours())}:${pad2(at.getMinutes())}` : '-'}</td>
+                    <td style="white-space: nowrap;">
+                        <button class="pay-btn sm blue" onclick="restoreDeletedStaff('${d.id}')">되돌리기</button>
+                        <button class="pay-btn sm ghost" style="color: var(--danger-color);" onclick="purgeDeletedStaff('${d.id}')">완전 삭제</button>
+                    </td>
+                </tr>`;
+            }).join('')}</tbody></table></div>`;
+    });
+}
+function closeDeletedStaff() { document.getElementById('staff-deleted-modal').style.display = 'none'; }
+
+// 되돌리기: 같은 문서 번호로 사원 정보·급여 정보 복원 → 연장근로·연차 기록(이름+전화 뒷4자리)도 다시 연결
+function restoreDeletedStaff(id) {
+    const d = deletedStaff.find(x => x.id === id);
+    if (!d || !d.employee) return;
+    const e = d.employee;
+    const clash = (P.employees || []).find(x => x.name === e.name && String(x.phoneLast4) === String(e.phoneLast4));
+    if (clash) { alert(`${e.name} (전화 ${e.phoneLast4}) 사원이 이미 다시 등록돼 있어요.\n같은 사람이 두 명이 되지 않게 되돌리지 않았어요.`); return; }
+    if (!confirm(`${e.name} 사원을 되돌릴까요?\n사원 정보·급여 정보가 삭제 전 그대로 돌아와요.`)) return;
+    const batch = db.batch();
+    batch.set(db.collection("employees").doc(id), e);
+    if (d.profile) batch.set(db.collection("payroll_profiles").doc(id), d.profile);
+    batch.delete(db.collection("deleted_employees").doc(id));
+    batch.commit().then(() => {
+        alert(`${e.name} 사원을 되돌렸어요.`);
+        openDeletedStaff();
+        loadPayrollData();
+        if (typeof loadSearchEmployeeList === 'function') loadSearchEmployeeList();
+    }).catch(err => { console.error("되돌리기 실패:", err); alert("되돌리는 중 오류가 발생했어요."); });
+}
+
+// 완전 삭제: 보관함에서도 지움 (되돌릴 수 없음)
+function purgeDeletedStaff(id) {
+    const d = deletedStaff.find(x => x.id === id);
+    if (!d) return;
+    const name = (d.employee && d.employee.name) || '';
+    if (!confirm(`${name} 사원을 삭제 내역에서도 완전히 지울까요?\n⚠️ 이후에는 되돌릴 수 없어요.`)) return;
+    db.collection("deleted_employees").doc(id).delete()
+        .then(() => openDeletedStaff())
+        .catch(err => { console.error("완전 삭제 실패:", err); alert("지우는 중 오류가 발생했어요."); });
 }

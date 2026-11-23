@@ -240,6 +240,7 @@
                 </div>
                 <label class="staff-chk"><input type="checkbox" id="staff-missing" onchange="renderStaffTable()"> 정보 누락만</label>
                 <div class="staff-actions">
+                    <button class="pay-btn ghost" id="staff-deleted-btn" onclick="openDeletedStaff()" title="삭제한 사원 보기 · 되돌리기">🗑 삭제 내역</button>
                     <button class="pay-btn" onclick="openEmpXlDownload()">📄 엑셀 받기</button>
                     <button class="pay-btn" onclick="openEmpXlUpload()">📤 엑셀 올리기</button>
                     <button class="pay-btn blue" onclick="openPayEmpModal()">＋ 사원등록</button>
@@ -351,6 +352,15 @@
             </div>
             <label class="pay-chk" style="margin-top: 20px;"><input type="checkbox" id="empxl-secret"> 계좌번호·생년월일·이메일도 넣기</label>
             <div id="empxl-tpl-info"></div>
+        </div>
+    </div>
+
+    <!-- 🗑 [삭제한 사원] 보관함 조회 · 되돌리기 · 완전 삭제 (js/staff-admin.js) -->
+    <div id="staff-deleted-modal" class="pay-modal-bg" onclick="if (event.target === this) closeDeletedStaff()">
+        <div class="pay-modal wide">
+            <div class="mh"><b>🗑 삭제한 사원</b><button class="pay-btn ghost" onclick="closeDeletedStaff()">✕</button></div>
+            <div class="pay-note">삭제한 사원은 여기 보관돼요. <b>[되돌리기]</b>를 누르면 사원 정보·급여 정보가 그대로 돌아오고, 연장근로·연차 기록도 다시 연결돼요.</div>
+            <div id="staff-deleted-list"></div>
         </div>
     </div>
 

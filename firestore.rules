@@ -30,5 +30,8 @@ service cloud.firestore {
     match /payroll_send_logs/{id} { allow read, write: if isAdmin(); }
     match /payroll_settings/{id} { allow read, write: if isAdmin(); }
     match /payroll_expenses/{id} { allow read, write: if isAdmin(); }
+
+    // 🗑 삭제한 사원 보관함 (직원 관리 > 삭제 내역에서 되돌리기 · 급여정보 포함이라 관리자만)
+    match /deleted_employees/{id} { allow read, write: if isAdmin(); }
   }
 }

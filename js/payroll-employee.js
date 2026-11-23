@@ -252,17 +252,32 @@ function savePayEmployee() {
     });
 }
 
+// 삭제 = 보관함(deleted_employees)으로 옮김 → 직원 관리 > 🗑 삭제 내역에서 되돌리기 가능 (2026-11-23)
+// 기본정보·급여정보를 한 번에(batch) 옮겨서, 보관이 안 되면 삭제도 안 됨
 function deletePayEmployee(empId) {
     const e = emp(empId);
-    if (!confirm(`${e.name} 사원을 삭제할까요?\n※ 직원 로그인이 막히고 급여정보가 삭제됩니다. 이미 저장된 월별 급여(임금대장)는 보관됩니다.\n퇴사자는 삭제 대신 퇴사일을 입력하고, 급여명세서만 빼려면 '발급 대상' 체크를 해제하세요.`)) return;
-    Promise.all([
-        db.collection("employees").doc(empId).delete(),
-        db.collection("payroll_profiles").doc(empId).delete()
-    ]).then(() => {
+    if (!confirm(`${e.name} 사원을 삭제할까요?\n※ 직원 로그인이 막히고 급여 관리 목록에서 빠져요. 연장근로·연차 기록과 저장된 월별 급여는 그대로 남아요.\n삭제한 사원은 직원 관리 > [🗑 삭제 내역]에서 되돌릴 수 있어요.\n\n퇴사자는 삭제 대신 퇴사일을 입력하고, 급여명세서만 빼려면 '발급 대상' 체크를 해제하세요.`)) return;
+    const { id, ...employee } = e;
+    const batch = db.batch();
+    batch.set(db.collection("deleted_employees").doc(empId), {
+        employee,
+        profile: P.profiles[empId] || null,
+        deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        deletedBy: (typeof auth !== 'undefined' && auth.currentUser && auth.currentUser.email) || ''
+    });
+    batch.delete(db.collection("employees").doc(empId));
+    batch.delete(db.collection("payroll_profiles").doc(empId));
+    batch.commit().then(() => {
         P.selectedId = null;
         loadPayrollData();
         if (typeof loadSearchEmployeeList === 'function') loadSearchEmployeeList();
-    }).catch(err => { console.error("사원 삭제 실패:", err); alert("삭제 중 오류가 발생했습니다."); });
+        if (typeof loadDeletedStaffCount === 'function') loadDeletedStaffCount();
+    }).catch(err => {
+        console.error("사원 삭제 실패:", err);
+        alert(err && err.code === 'permission-denied'
+            ? "삭제 내역 보관함 권한이 없어 삭제하지 않았어요.\nFirebase 콘솔 > Firestore > 규칙에 새 규칙(deleted_employees)을 게시했는지 확인해 주세요."
+            : "삭제 중 오류가 발생했습니다.");
+    });
 }
 
 // ------------------------------------------
