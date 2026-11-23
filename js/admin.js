@@ -591,7 +591,7 @@ function renderLeaveRequestList(year) {
         tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년${cond ? ` ${cond}` : ''} 연차 신청 내역이 없습니다.</td></tr>`;
         return;
     }
-    const statusColors = { "승인": "var(--success-color)", "반려": "var(--danger-color)", "승인취소": "var(--danger-color)", "대기": "#f39c12", "재전송": "#3498db", "결재중": "#0066ff" };
+    const statusColors = { "승인": "var(--success-color)", "반려": "var(--danger-color)", "승인취소": "var(--danger-color)", "대기": "#f39c12", "재전송": "#3498db", "결재중": "#007aff" };
     const btnStyle = "padding: 5px 8px; font-size: 12px; height: 32px; width: auto;";
     const dangerStyle = `${btnStyle} color: var(--danger-color); border-color: var(--danger-color);`;
     tbody.innerHTML = list.map(({ id, data }) => {
