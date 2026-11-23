@@ -141,6 +141,8 @@
                     <button type="button" class="btn-batch-delete" onclick="resetLeaveFilters()">초기화</button>
                 </div>
             </div>
+            <!-- 1년에 한두 번 쓰는 기능이라 검색 칸 바로 아래 작은 링크로 -->
+            <div class="lvimp-link"><a href="#" onclick="openLeaveImport(); return false;">📤 이전 연차 내역 엑셀로 일괄 등록</a></div>
             <!-- 연차 관리 안의 작은 탭: 신청 내역(기본) / 전 직원 연차 현황(보고 싶을 때) -->
             <div class="lv-subtabs">
                 <button type="button" id="lv-subtab-list" class="on" onclick="switchLeaveSubTab('list')">📜 연차 신청 내역 <small id="leave-list-count"></small></button>
@@ -183,8 +185,6 @@
                 <tbody id="leave-admin-tbody"></tbody>
             </table>
             </div>
-            <!-- 1년에 한두 번 쓰는 기능이라 맨 아래 작은 링크로만 -->
-            <div class="lvimp-link"><a href="#" onclick="openLeaveImport(); return false;">📤 이전 연차 내역 엑셀로 일괄 등록</a></div>
         </div>
 
         <!-- 💵 급여 관리 (월 급여·명세서 발송 · 사원 정보는 보기만 - 수정은 👥 직원 관리 / 화면 그리기는 js/payroll-*.js) -->
@@ -357,10 +357,19 @@
     <div id="lvimp-modal" class="pay-modal-bg" onclick="if (event.target === this) closeLeaveImport()">
         <div class="pay-modal wide">
             <div class="mh"><b>📤 이전 연차 내역 올리기</b><button class="pay-btn ghost" onclick="closeLeaveImport()">✕</button></div>
-            <div class="lvimp-step">① 처음이면 양식부터 받아서 [입력] 시트를 채워 주세요 <button class="pay-btn sm" onclick="downloadLeaveImportSample()">⬇ 샘플 양식 받기</button></div>
+            <!-- ① 사원 체크 → 사람별 시트가 있는 양식 받기 (시트 이름 = 사원) -->
+            <div class="lvimp-pick">
+                <div class="lvimp-pick-head">
+                    <b>① 사원을 고르고 양식을 받으세요</b>
+                    <label class="lvimp-all"><input type="checkbox" id="lvimp-all" onchange="toggleLeaveImportAll(this.checked)"> 전체 선택</label>
+                    <button class="pay-btn sm blue" onclick="downloadLeaveImportSample()">⬇ 양식 받기</button>
+                </div>
+                <div id="lvimp-emps" class="lvimp-emps"></div>
+                <small>고른 사람마다 엑셀 시트가 하나씩 생겨요 · 각 시트에 <b>시작일 · 종료일 · 반차 · 사유</b>만 채우면 돼요</small>
+            </div>
             <label class="pay-drop">
                 ② 채운 엑셀을 선택하세요
-                <small>한 줄 = 휴가 한 건 · 일수는 주말·공휴일 빼고 자동 계산 · 결재 없이 바로 '승인'으로 등록</small>
+                <small>일수는 주말·공휴일 빼고 자동 계산 · 사유로 경조사·여름휴가·무급 자동 판단 · 결재 없이 바로 '승인'으로 등록</small>
                 <input type="file" id="lvimp-file" accept=".xls,.xlsx" onchange="onLeaveImportFile(this)">
             </label>
             <div id="lvimp-result"></div>

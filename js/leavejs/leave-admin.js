@@ -60,55 +60,88 @@ let lvImport = { employees: [], rows: [] };
 function lvEsc(s) { return String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
 
 // ------------------------------------------
-// 샘플 양식 받기: 입력 · 작성 안내 · 사원 목록 3개 시트
+// ① 사원 고르기 → 사람별 시트 양식 받기 (2026-11-23 사용자 결정: 2안)
+//    시트 이름 = 사원 이름 (같은 이름이 둘이면 '이름(뒷4)') · 각 시트 칸: 시작일 · 종료일 · 반차 · 사유 · 신청일
+//    맨 앞에 '작성 안내' 시트 · 올릴 때는 시트 이름으로 사원을 찾음 (예전 '입력' 시트 형식도 그대로 읽음)
 // ------------------------------------------
-function downloadLeaveImportSample() {
+const LV_SHEET_COLS = [
+    { k: 'start',  h: '시작일', w: 12 },
+    { k: 'end',    h: '종료일', w: 12 },
+    { k: 'half',   h: '반차',   w: 6 },
+    { k: 'reason', h: '사유',   w: 34 },
+    { k: 'date',   h: '신청일', w: 12 },
+];
+let lvPickEmps = [];   // 고를 수 있는 사원 (재직 · 임원 제외)
+
+function lvSheetName(e, all) {
+    const dup = all.filter(x => x.name === e.name).length > 1;
+    return (dup ? `${e.name}(${e.phoneLast4 || ''})` : e.name).replace(/[\\/?*[\]:]/g, '').slice(0, 31);
+}
+
+function renderLeaveImportPicker() {
+    const box = document.getElementById('lvimp-emps');
+    if (!box) return;
+    box.innerHTML = '<span class="sub">불러오는 중...</span>';
     db.collection("employees").get().then(snap => {
-        const emps = snap.docs.map(d => d.data()).filter(e => e.name && !e.resignDate && !lvIsExec(e))
+        const today = toYmd(new Date());
+        lvPickEmps = snap.docs.map(d => d.data())
+            .filter(e => e.name && !(e.resignDate && e.resignDate < today) && !lvIsExec(e))
             .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-        const wb = XLSX.utils.book_new();
+        box.innerHTML = lvPickEmps.length
+            ? lvPickEmps.map((e, i) => `<label class="lvimp-emp"><input type="checkbox" data-i="${i}" onchange="syncLeaveImportAll()"> ${lvEsc(e.name)}<small>${lvEsc(e.department || '')}</small></label>`).join('')
+            : '<span class="sub">연차신청서 대상 사원이 없어요 (직원 관리에서 등록)</span>';
+        document.getElementById('lvimp-all').checked = false;
+    }).catch(err => { console.error(err); box.innerHTML = '<span class="sub">사원 목록을 불러오지 못했어요.</span>'; });
+}
+function toggleLeaveImportAll(on) {
+    document.querySelectorAll('#lvimp-emps input[type=checkbox]').forEach(cb => { cb.checked = on; });
+}
+function syncLeaveImportAll() {
+    const cbs = [...document.querySelectorAll('#lvimp-emps input[type=checkbox]')];
+    document.getElementById('lvimp-all').checked = cbs.length > 0 && cbs.every(cb => cb.checked);
+}
 
-        const input = XLSX.utils.aoa_to_sheet([LV_IMPORT_COLS.map(c => c.h)]);
-        input['!cols'] = LV_IMPORT_COLS.map(c => ({ wch: c.w }));
-        XLSX.utils.book_append_sheet(wb, input, '입력');
+function downloadLeaveImportSample() {
+    const picked = [...document.querySelectorAll('#lvimp-emps input[type=checkbox]:checked')].map(cb => lvPickEmps[Number(cb.dataset.i)]);
+    if (!picked.length) { alert('양식을 받을 사원을 먼저 골라 주세요.'); return; }
+    const wb = XLSX.utils.book_new();
+    const y = new Date().getFullYear();
+    const guide = [
+        ['이전 연차 내역 등록 양식 (사원별 시트)'],
+        [],
+        ['① 아래 시트 탭이 사원 이름이에요. 그 사람 시트에 한 줄 = 휴가 한 건으로 채워 주세요.'],
+        ['② 칸은 시작일 · 종료일 · 반차 · 사유만 쓰면 돼요. 하루짜리는 종료일을 비워도 되고, 신청일은 비우면 시작일로 저장돼요.'],
+        ['③ 반차는 Y만 쓰면 0.5일이에요 (N 또는 비움 = 전일). 일수는 주말·공휴일·대체공휴일 빼고 자동 계산해요.'],
+        ['④ 연차에서 뺄지는 사유를 보고 자동으로 정해요 (취업규칙 기준).'],
+        ['     · 결혼 5일 · 배우자 출산 10일 · 부모/배우자 사망 5일 · 조부모/자녀/형제자매 사망 3일 → 경조사 (안 뺌)'],
+        ['     · 여름휴가 → 1년 5일까지 안 뺌 (넘는 날은 년차로 뺌, 이월 없음)'],
+        ['     · 병원 · 병가 · 생리 · 난임 → 무급 (안 뺌)   · 그 외 → 년차로 뺌'],
+        ['⑤ 시트 이름·머리글(시작일·종료일…)은 바꾸지 마세요. 내용이 없는 시트는 그냥 건너뛰어요.'],
+        ['⑥ 관리자 페이지 > 🏖️ 연차 관리 > [이전 연차 내역 엑셀로 일괄 등록] > ② 에서 이 파일을 선택하면 검수표가 나와요.'],
+        [],
+        ['작성 예시'],
+        LV_SHEET_COLS.map(c => c.h),
+        [`${y}-01-13`, '', 'N', '개인사유', `${y}-01-12`],
+        [`${y}-04-22`, '', 'Y', '병원 아닌 개인 용무', ''],
+        [`${y}-05-18`, `${y}-05-22`, 'N', '결혼', `${y}-05-14`],
+        [`${y}-08-05`, `${y}-08-07`, 'N', '여름휴가', ''],
+        [`${y}-09-30`, `${y}-10-02`, 'N', '여름휴가 2일 + 개인사유', ''],
+    ];
+    const g = XLSX.utils.aoa_to_sheet(guide);
+    g['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 8 }, { wch: 34 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, g, '작성 안내');
 
-        const y = new Date().getFullYear();
-        const ex = emps[0] ? emps[0].name : '홍길동';
-        const guide = [
-            ['이전 연차 내역 일괄 등록 양식'],
+    picked.forEach(e => {
+        const info = [e.department, e.position, e.phoneLast4 && `전화 ${e.phoneLast4}`].filter(Boolean).join(' · ');
+        const ws = XLSX.utils.aoa_to_sheet([
+            [`${e.name} 님 이전 연차 내역${info ? ` (${info})` : ''}`],
             [],
-            ['① [입력] 시트에 한 줄 = 휴가 한 건으로 채워 주세요. 첫 줄(머리글)은 지우거나 바꾸지 마세요.'],
-            ['② 이름은 그 사람 첫 줄에만 써도 돼요. 아래 줄이 비어 있으면 윗줄과 같은 사람으로 봐요.'],
-            ['③ 연차에서 뺄지는 사유를 보고 자동으로 정해요 (취업규칙 기준).'],
-            ['     · 결혼 5일 · 배우자 출산 10일 · 부모/배우자 사망 5일 · 조부모/자녀/형제자매 사망 3일 → 경조사 (안 뺌, 휴일 포함해서 셈)'],
-            ['     · 여름휴가 → 1년 5일까지 안 뺌 (8월~12월 사용, 이월 없음). 5일 넘는 날은 년차로 뺌'],
-            ['     · 병원 · 병가 · 생리 · 난임 → 무급 (안 뺌)'],
-            ['     · 그 외 → 년차로 뺌 (공휴일·대체공휴일·주말은 자동 제외)'],
-            ['④ 반차는 Y만 쓰면 0.5일이에요. 일수·적용일수 칸은 참고용이라 비워도 되고, 쓰면 자동 계산과 맞는지 비교해 드려요.'],
-            ['⑤ 관리자 페이지 > 🏖️ 연차 관리 > 맨 아래 [이전 연차 내역 엑셀로 일괄 등록]에서 파일을 선택하면 검수표가 나와요.'],
-            [],
-            ['칸', '필수', '쓰는 법'],
-            ...LV_IMPORT_COLS.map(c => [c.h, c.req ? '필수' : '', c.note]),
-            [],
-            ['작성 예시 (이 시트가 아니라 [입력] 시트에 써 주세요)'],
-            LV_IMPORT_COLS.map(c => c.h),
-            [ex, '', '', `${y}-01-13`, `${y}-01-13`, 1, 'N', '개인사유', `${y}-01-12`, 1],
-            ['', '', '', `${y}-04-22`, `${y}-04-22`, 0.5, 'Y', '', `${y}-04-22`, 0.5],
-            ['', '', '', `${y}-05-18`, `${y}-05-22`, 5, 'N', '결혼', `${y}-05-14`, ''],
-            ['', '', '', `${y}-08-05`, `${y}-08-07`, 3, 'N', '여름휴가', `${y}-07-21`, ''],
-            ['', '', '', `${y}-09-30`, `${y}-10-02`, 3, 'N', '여름휴가 2일 + 개인사유', `${y}-09-23`, 1],
-        ];
-        const g = XLSX.utils.aoa_to_sheet(guide);
-        g['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 70 }, { wch: 12 }, { wch: 12 }, { wch: 6 }, { wch: 6 }, { wch: 24 }, { wch: 12 }, { wch: 8 }];
-        XLSX.utils.book_append_sheet(wb, g, '작성 안내');
-
-        const list = XLSX.utils.aoa_to_sheet([['이름', '전화뒷4자리', '소속', '직위', '입사일'],
-            ...emps.map(e => [e.name, e.phoneLast4 || '', e.department || '', e.position || '', e.hireDate || ''])]);
-        list['!cols'] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 12 }];
-        XLSX.utils.book_append_sheet(wb, list, '사원 목록');
-
-        XLSX.writeFile(wb, '이전연차내역_등록양식.xlsx');
-    }).catch(err => { console.error(err); alert('사원 목록을 불러오지 못했어요.'); });
+            LV_SHEET_COLS.map(c => c.h),
+        ]);
+        ws['!cols'] = LV_SHEET_COLS.map(c => ({ wch: c.w }));
+        XLSX.utils.book_append_sheet(wb, ws, lvSheetName(e, lvPickEmps));
+    });
+    XLSX.writeFile(wb, picked.length === 1 ? `이전연차_${picked[0].name}.xlsx` : `이전연차_${picked.length}명.xlsx`);
 }
 
 // ------------------------------------------
@@ -121,9 +154,38 @@ function openLeaveImport() {
     document.getElementById('lvimp-status').innerText = '';
     document.getElementById('lvimp-save').disabled = true;
     document.getElementById('lvimp-modal').style.display = 'flex';
+    renderLeaveImportPicker();
     renderLeaveImportBatches();
 }
 function closeLeaveImport() { document.getElementById('lvimp-modal').style.display = 'none'; }
+
+// 사람별 시트 → 예전 '입력' 시트와 같은 모양(이름 칸 포함)으로 합쳐서 같은 검사 로직에 넘김
+//  meta: 줄마다 { sheet, line } (검수표에 '시트 이름 · 엑셀 줄 번호'로 표시)
+function lvSheetsToRows(wb) {
+    const norm = s => String(s).replace(/[\s*]/g, '');
+    const head = ['이름', '전화뒷4자리', '휴가종류', '시작일', '종료일', '일수', '반차', '사유', '신청일', '적용일수'];
+    const rows = [head], meta = [];
+    let found = 0;
+    wb.SheetNames.forEach(sn => {
+        if (sn === '작성 안내') return;
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: '' });
+        const hIdx = aoa.findIndex(r => r.map(norm).includes('시작일'));
+        if (hIdx < 0 || aoa[hIdx].map(norm).includes('이름')) return;   // 사람별 시트가 아님 (예전 형식은 따로)
+        found++;
+        const h = aoa[hIdx].map(norm);
+        const ci = k => h.indexOf(k);
+        const nameM = sn.match(/^(.+?)\((\d{4})\)$/);
+        const name = nameM ? nameM[1] : sn;
+        const phone = nameM ? nameM[2] : (String(aoa[0] && aoa[0][0] || '').match(/전화\s*(\d{4})/) || [])[1] || '';
+        aoa.slice(hIdx + 1).forEach((r, i) => {
+            const v = k => (ci(k) >= 0 ? r[ci(k)] : '');
+            if (![v('시작일'), v('종료일'), v('사유'), v('반차')].some(x => String(x).trim() !== '')) return;   // 빈 줄·합계 줄
+            rows.push([name, phone, v('휴가종류'), v('시작일'), v('종료일'), v('일수'), v('반차'), v('사유'), v('신청일'), ci('적용일수') >= 0 ? v('적용일수') : '']);
+            meta.push({ sheet: sn, line: hIdx + i + 2 });
+        });
+    });
+    return found ? { rows, meta, hasApplied: wb.SheetNames.some(sn => { const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' }); return a.some(r => r.map(norm).includes('적용일수')); }) } : null;
+}
 
 function onLeaveImportFile(input) {
     const file = input.files && input.files[0];
@@ -131,11 +193,15 @@ function onLeaveImportFile(input) {
     document.getElementById('lvimp-status').innerText = '읽는 중...';
     const reader = new FileReader();
     reader.onload = () => {
-        let rows;
+        let rows, meta = null, hasApplied = true;
         try {
             const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
-            const ws = wb.Sheets['입력'] || wb.Sheets[wb.SheetNames[0]];
-            rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+            const bySheet = lvSheetsToRows(wb);
+            if (bySheet) ({ rows, meta, hasApplied } = bySheet);
+            else {   // 예전 형식: '입력' 시트 한 장에 이름 칸
+                const ws = wb.Sheets['입력'] || wb.Sheets[wb.SheetNames[0]];
+                rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+            }
         } catch (e) {
             console.error(e);
             alert('엑셀 파일을 읽지 못했어요.');
@@ -145,7 +211,7 @@ function onLeaveImportFile(input) {
         Promise.all([db.collection("employees").get(), db.collection("leave_requests").get()]).then(([empSnap, reqSnap]) => {
             lvImport.employees = empSnap.docs.map(d => d.data()).filter(e => e.name);
             leaveAdminRequests = reqSnap.docs.map(d => ({ id: d.id, data: d.data() }));
-            lvImport.rows = parseLeaveImportRows(rows);
+            lvImport.rows = parseLeaveImportRows(rows, meta, hasApplied);
             renderLeaveImportResult();
         }).catch(err => { console.error(err); alert('사원·연차 정보를 불러오지 못했어요.'); });
     };
@@ -215,7 +281,8 @@ function lvSplitLogs(logs, n) {
     return [head, tail];
 }
 
-function parseLeaveImportRows(sheetRows) {
+// meta: 사람별 시트 형식이면 줄마다 { sheet, line } / hasApplied: 적용일수 칸이 실제로 있었는지 (없으면 비교 안 함)
+function parseLeaveImportRows(sheetRows, meta = null, hasApplied = true) {
     const norm = s => String(s).replace(/[\s*]/g, '');
     const hIdx = sheetRows.findIndex(r => r.map(norm).includes('이름') && r.map(norm).includes('시작일'));
     if (hIdx < 0) { alert("'이름'·'시작일' 머리글을 찾지 못했어요. 샘플 양식의 [입력] 시트를 사용해 주세요."); return []; }
@@ -240,7 +307,9 @@ function parseLeaveImportRows(sheetRows) {
         if (name) { if (name !== lastName) lastPhone = ''; lastName = name; if (phone) lastPhone = phone; }
         else { name = lastName; phone = phone || lastPhone; }
 
-        const row = { line: hIdx + i + 2, errors: [], warns: [], parts: [], name };
+        const m = meta && meta[i];
+        const row = { line: m ? m.line : hIdx + i + 2, sheet: m ? m.sheet : '', errors: [], warns: [], parts: [], name };
+        row.where = m ? `${m.sheet} ${m.line}행` : `${row.line}번 줄`;
         let cands = lvImport.employees.filter(e => e.name === name);
         if (phone) cands = cands.filter(e => String(e.phoneLast4) === phone);
         if (!name) row.errors.push('이름 없음');
@@ -272,7 +341,7 @@ function parseLeaveImportRows(sheetRows) {
         row.reason = String(get(r, 'reason')).trim();
         row.typeRaw = String(get(r, 'type')).trim();
         row.givenDays = lvNum(get(r, 'days'));
-        row.givenApplied = col.applied >= 0 ? (lvNum(get(r, 'applied')) || 0) : null;   // 적용일수 칸이 있으면 빈칸 = 0
+        row.givenApplied = col.applied >= 0 && hasApplied ? (lvNum(get(r, 'applied')) || 0) : null;   // 적용일수 칸이 있으면 빈칸 = 0
         row.cls = lvClassify(row.typeRaw, row.reason);
         out.push(row);
     });
@@ -324,8 +393,8 @@ function parseLeaveImportRows(sheetRows) {
         const key = `${r.emp.name}|${r.emp.phoneLast4}`;
         taken[key] = taken[key] || {};
         const dupIn = dates.filter(d => taken[key][d]);
-        if (dupIn.length) r.errors.push(`엑셀 ${taken[key][dupIn[0]]}번 줄과 날짜 겹침`);
-        if (!dup.length && !dupIn.length) dates.forEach(d => { taken[key][d] = r.line; });
+        if (dupIn.length) r.errors.push(`엑셀 ${taken[key][dupIn[0]]}과 날짜 겹침`);
+        if (!dup.length && !dupIn.length) dates.forEach(d => { taken[key][d] = r.where; });
         if (r.emp.hireDate && r.startDate < r.emp.hireDate) r.warns.push(`입사일(${r.emp.hireDate}) 이전 날짜`);
 
         r.deducted = r.parts.filter(p => LEAVE_TYPES[p.leaveType].deduct).reduce((s, p) => s + p.logs.reduce((a, l) => a + l.days, 0), 0);
@@ -383,9 +452,9 @@ function renderLeaveImportResult() {
             return `<div><b>${lvEsc(t.name)}</b> ${t.year}년 연차 차감 <b>${formatDays(t.add)}일</b>${t.before ? ` (이미 등록 ${formatDays(t.before)}일 포함 시 ${formatDays(after)}일)` : ''}${t.ent != null ? ` / 발생 ${t.ent}일 → 잔여 <b class="${t.ent - after < 0 ? 'neg' : ''}">${formatDays(t.ent - after)}일</b>` : ''}${match}</div>`;
         }).join('')}</div>` : ''}
         <div class="lvimp-wrap"><table class="lvimp-tbl">
-            <thead><tr><th>줄</th><th>이름</th><th>기간</th><th>일수</th><th>사유</th><th>판단 (주황 = 연차 차감)</th><th>검사</th></tr></thead>
+            <thead><tr><th>시트·행</th><th>이름</th><th>기간</th><th>일수</th><th>사유</th><th>판단 (주황 = 연차 차감)</th><th>검사</th></tr></thead>
             <tbody>${rows.map(r => `<tr class="${r.errors.length ? 'bad' : r.warns.length ? 'warn' : ''}">
-                <td>${r.line}</td>
+                <td>${r.sheet ? `<small>${lvEsc(r.sheet)}</small>` : ""}${r.line}</td>
                 <td>${lvEsc(r.name)}${r.emp ? `<small>${lvEsc(r.emp.department || '')}</small>` : ''}</td>
                 <td>${r.startDate ? lvEsc(periodSummary(r)) : '-'}</td>
                 <td>${r.totalDays ? formatDays(r.totalDays) + '일' : '-'}</td>
