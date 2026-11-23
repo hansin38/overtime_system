@@ -163,6 +163,8 @@
                 </thead>
                 <tbody id="leave-admin-tbody"></tbody>
             </table>
+            <!-- 1년에 한두 번 쓰는 기능이라 맨 아래 작은 링크로만 -->
+            <div class="lvimp-link"><a href="#" onclick="openLeaveImport(); return false;">📤 이전 연차 내역 엑셀로 일괄 등록</a></div>
         </div>
 
         <!-- 💵 급여 관리 (사원등록·월 급여·명세서 발송 / 화면 그리기는 js/payroll-*.js) -->
@@ -309,6 +311,26 @@
         </div>
     </div>
 
+    <!-- 🏖️ [이전 연차 내역 올리기] 검수표 확인 후 문제없는 줄만 '승인'으로 등록 (js/leavejs/leave-admin.js) -->
+    <div id="lvimp-modal" class="pay-modal-bg" onclick="if (event.target === this) closeLeaveImport()">
+        <div class="pay-modal wide">
+            <div class="mh"><b>📤 이전 연차 내역 올리기</b><button class="pay-btn ghost" onclick="closeLeaveImport()">✕</button></div>
+            <div class="lvimp-step">① 처음이면 양식부터 받아서 [입력] 시트를 채워 주세요 <button class="pay-btn sm" onclick="downloadLeaveImportSample()">⬇ 샘플 양식 받기</button></div>
+            <label class="pay-drop">
+                ② 채운 엑셀을 선택하세요
+                <small>한 줄 = 휴가 한 건 · 일수는 주말·공휴일 빼고 자동 계산 · 결재 없이 바로 '승인'으로 등록</small>
+                <input type="file" id="lvimp-file" accept=".xls,.xlsx" onchange="onLeaveImportFile(this)">
+            </label>
+            <div id="lvimp-result"></div>
+            <div class="pay-modal-foot" style="align-items: center;">
+                <span id="lvimp-status" class="sub" style="margin-right: auto; font-size: 13px;"></span>
+                <button class="pay-btn" onclick="closeLeaveImport()">닫기</button>
+                <button id="lvimp-save" class="pay-btn blue" onclick="saveLeaveImport()" disabled>등록</button>
+            </div>
+            <div id="lvimp-batches"></div>
+        </div>
+    </div>
+
     <!-- 📤 [사원정보 엑셀 올리기] 바뀌는 사람만 보여 주고 체크한 사람만 저장 -->
     <div id="pay-empxl-up-modal" class="pay-modal-bg" onclick="if (event.target === this) closeEmpXlUpload()">
         <div class="pay-modal" style="width: 640px;">
@@ -449,6 +471,7 @@
     <script src="js/ot-rules.js"></script>
     <script src="js/leavejs/leave-common.js"></script>
     <script src="js/admin.js"></script>
+    <script src="js/leavejs/leave-admin.js"></script>
     <!-- 💵 급여 관리: 이 순서대로 (① 공통·계산식 → ② 화면 틀·이번 달 → ③ 사원 정보 → ④ 급여대장·검수 → ⑤ 명세서·메일) -->
     <script src="js/payroll-core.js"></script>
     <script src="js/payroll-month.js"></script>

@@ -143,11 +143,13 @@ function signatureDateText(sign) {
 }
 
 // 결재란 표 (휴가신청서·작성자 화면 공용)
-function renderApprovalTableHtml(signatures, signable) {
+// imported: 관리자가 엑셀로 올린 이전 자료 → 빈 서명칸에 '이전 자료' 표시
+function renderApprovalTableHtml(signatures, signable, imported = false) {
     const signs = signatures || {};
     const signCells = Object.keys(SIGN_SLOTS).map(slot => {
         const sign = signs[slot];
         if (sign && sign.img) return `<td><img src="${sign.img}" alt="서명"></td>`;
+        if (imported) return `<td style="color: #888; font-size: 11px;">이전 자료</td>`;
         if (signable) return `<td class="lp-sign-target" onclick="openSignPad('${slot}')">👉 여기를 눌러<br>서명하세요</td>`;
         return `<td></td>`;
     }).join('');
@@ -194,7 +196,7 @@ function renderLeaveSheetHtml(data, requests, options = {}) {
 
             <div class="lp-approval-row">
                 <p>아래와 같은 사유로 휴가신청서를 제출합니다.</p>
-                ${renderApprovalTableHtml(data.signatures, options.signable)}
+                ${renderApprovalTableHtml(data.signatures, options.signable, data.imported)}
             </div>
 
             <table class="lp-main">

@@ -441,6 +441,26 @@ table.pay-hist th { background: #f8f9fa; }
     /* 명세서 3종(.a4)은 printPayDoc()이 따로 만든 인쇄 창(iframe)에서 A4 한 장 정중앙으로 인쇄 */
 }
 
+/* 🏖️ 이전 연차 내역 올리기 (검수표 · 올린 묶음) */
+.lvimp-link { text-align: right; margin-top: 24px; font-size: 12px; }
+.lvimp-link a { color: #999; text-decoration: none; }
+.lvimp-link a:hover { color: #555; text-decoration: underline; }
+.lvimp-step { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: #555; margin-bottom: 10px; }
+.lvimp-sum { display: flex; gap: 14px; font-size: 13px; margin-bottom: 8px; }
+.lvimp-sum .ok b { color: #2b8a3e; } .lvimp-sum .warn b { color: #e67700; } .lvimp-sum .bad b { color: #c92a2a; }
+.lvimp-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--pay-line); border-radius: 8px; }
+.lvimp-tbl { width: 100%; border-collapse: collapse; margin: 0; font-size: 12.5px; table-layout: auto; }
+.lvimp-tbl td:last-child { min-width: 240px; }
+.lvimp-tbl th { position: sticky; top: 0; background: #f1f3f5; z-index: 1; }
+.lvimp-tbl th, .lvimp-tbl td { border: 0; border-bottom: 1px solid #eee; padding: 7px 8px; text-align: center; white-space: nowrap; }
+.lvimp-tbl td.l { text-align: left; white-space: normal; }
+.lvimp-tbl td small { display: block; color: #999; font-size: 11px; }
+.lvimp-tbl tr.warn td { background: #fff9db; }
+.lvimp-tbl tr.bad td { background: #fff5f5; color: #a61e1e; }
+.lvimp-bh { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--pay-line); font-weight: bold; font-size: 13px; color: #555; }
+.lvimp-batch { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: #555; padding: 4px 0; }
+.lvimp-batch .pay-btn { color: var(--danger-color, #c92a2a); }
+
 /* 📄📤 사원정보 엑셀 받기·올리기 */
 .pay-xl-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
 .pay-xl-btns .pay-btn { width: 100%; padding: 0 4px; }

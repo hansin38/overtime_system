@@ -514,6 +514,7 @@ function renderLeaveSummary(year, employees) {
 
 // 결재 칸 표시 (표 머리글 순서: 과장 / 전무)
 function leaveSignStatusHtml(data) {
+    if (data.imported) return '<span style="color: #888;">📁 이전 자료</span>';   // 엑셀로 올린 이전 내역 (종이 결재)
     return ['manager', 'director'].map(slot => {
         const s = data.signatures && data.signatures[slot];
         return s ? `✅ ${signatureDateText(s)}` : '⬜';
