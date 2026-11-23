@@ -500,6 +500,20 @@ function toggleLeaveSort(key) {
     renderLeaveRequestList(Number(document.getElementById('leave-year-select').value));
 }
 
+// [조회]: 연도·직원명·상태 적용 (현황 탭에서 누르면 신청 내역 탭으로 - 상태는 신청 내역에만 적용되므로)
+function searchLeaveRequests() {
+    if (document.getElementById('leave-search-status').value) switchLeaveSubTab('list');
+    applyLeaveFilters();
+}
+
+// 연차 관리 안의 작은 탭: 'list' 신청 내역(기본) / 'summary' 전 직원 연차 현황
+function switchLeaveSubTab(tab) {
+    document.getElementById('lv-panel-list').style.display = tab === 'list' ? 'block' : 'none';
+    document.getElementById('lv-panel-summary').style.display = tab === 'summary' ? 'block' : 'none';
+    document.getElementById('lv-subtab-list').classList.toggle('on', tab === 'list');
+    document.getElementById('lv-subtab-summary').classList.toggle('on', tab === 'summary');
+}
+
 function resetLeaveFilters() {
     document.getElementById('leave-search-name').value = '';
     document.getElementById('leave-search-status').value = '';
@@ -586,6 +600,12 @@ function renderLeaveRequestList(year) {
     if (thSub) thSub.innerText = `제출일 ${leaveSort.key === 'submitted' ? arrow : '↕'}`;
     if (thStart) thStart.innerText = `휴가 기간 ${leaveSort.key === 'start' ? arrow : '↕'}`;
 
+    // 제목 옆 건수: 조건이 있으면 '조건 · N건'
+    const countEl = document.getElementById('leave-list-count');
+    if (countEl) {
+        const label = [pickName, pickStatus && (pickStatus === "대기" ? "대기·결재중" : pickStatus)].filter(Boolean).join(' · ');
+        countEl.innerText = `${label ? label + ' · ' : ''}${list.length}건`;
+    }
     if (list.length === 0) {
         const cond = [pickName, pickStatus && `'${pickStatus}'`].filter(Boolean).join(' · ');
         tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년${cond ? ` ${cond}` : ''} 연차 신청 내역이 없습니다.</td></tr>`;

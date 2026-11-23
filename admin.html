@@ -123,7 +123,7 @@
 
         <!-- 🏖️ 연차 관리 (서명은 결재자가 링크로 진행, 관리자는 연차 갯수 관리·사용촉진용) -->
         <div id="leave-admin-section" style="display: none;">
-            <!-- 🔍 연도 · 직원명 · 상태 (고르면 바로 적용, 직원명은 위 현황표·아래 신청 내역 둘 다 / 상태는 신청 내역만) -->
+            <!-- 🔍 연도 · 직원명 · 상태 (고르면 바로 적용, 직원명은 신청 내역·연차 현황 둘 다 / 상태는 신청 내역만) -->
             <div class="lv-filter">
                 <label><span>연도:</span><select id="leave-year-select" onchange="loadLeaveAdmin()"></select></label>
                 <label><span>직원명:</span><select id="leave-search-name" onchange="applyLeaveFilters()"><option value="">전체</option></select></label>
@@ -135,10 +135,19 @@
                     <option value="반려">반려</option>
                     <option value="승인취소">승인취소</option>
                 </select></label>
-                <button type="button" class="btn-batch-delete" onclick="resetLeaveFilters()">초기화</button>
+                <div class="lv-filter-btns">
+                    <button type="button" class="btn-batch-delete lv-search-btn" onclick="searchLeaveRequests()">조회</button>
+                    <button type="button" class="btn-batch-delete" onclick="resetLeaveFilters()">초기화</button>
+                </div>
             </div>
-            <h3 style="margin: 0 0 10px; text-align: left;">📊 전 직원 연차 현황</h3>
-            <small style="color: #888;">년차·월차만 집계합니다 (여름휴가·경조사·기타 제외). 잔여가 많은 순으로 정렬되며, 하반기 사용촉진 대상 확인용입니다.</small>
+            <!-- 연차 관리 안의 작은 탭: 신청 내역(기본) / 전 직원 연차 현황(보고 싶을 때) -->
+            <div class="lv-subtabs">
+                <button type="button" id="lv-subtab-list" class="on" onclick="switchLeaveSubTab('list')">📜 연차 신청 내역 <small id="leave-list-count"></small></button>
+                <button type="button" id="lv-subtab-summary" onclick="switchLeaveSubTab('summary')">📊 전 직원 연차 현황</button>
+            </div>
+
+            <div id="lv-panel-summary" style="display: none;">
+            <small style="color: #888;">년차·월차만 집계합니다 (여름휴가·경조사·기타 제외). 잔여가 많은 순으로 정렬되며, 하반기 사용촉진 대상 확인용입니다. · 상태 칸은 신청 내역에만 적용돼요.</small>
             <table style="margin-top: 10px;">
                 <thead>
                     <tr>
@@ -154,9 +163,10 @@
                 </thead>
                 <tbody id="leave-summary-tbody"></tbody>
             </table>
+            </div>
 
-            <h3 style="margin-top: 35px;">📜 연차 신청 내역</h3>
-            <table>
+            <div id="lv-panel-list">
+            <table style="margin-top: 0;">
                 <thead>
                     <tr>
                         <th id="leave-sort-submitted" onclick="toggleLeaveSort('submitted')" class="lv-sort-th" title="눌러서 제출일 순으로 정렬 (한 번 더 누르면 반대로)">제출일 ▼</th>
@@ -171,6 +181,7 @@
                 </thead>
                 <tbody id="leave-admin-tbody"></tbody>
             </table>
+            </div>
             <!-- 1년에 한두 번 쓰는 기능이라 맨 아래 작은 링크로만 -->
             <div class="lvimp-link"><a href="#" onclick="openLeaveImport(); return false;">📤 이전 연차 내역 엑셀로 일괄 등록</a></div>
         </div>
