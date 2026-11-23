@@ -344,7 +344,7 @@ function lvPersonTotals(rows) {
         if (!map[k]) {
             const before = leaveAdminRequests.filter(({ data }) => data.employeeName === r.emp.name && data.employeePhone === r.emp.phoneLast4
                 && data.fiscalYear === y && ACTIVE_STATUSES.includes(data.status) && isDeductible(data)).reduce((s, { data }) => s + (data.totalDays || 0), 0);
-            map[k] = { name: r.emp.name, year: y, add: 0, given: 0, hasGiven: false, before, ent: r.emp.hireDate ? calcAnnualLeaveEntitlement(r.emp.hireDate, y) : null };
+            map[k] = { name: r.emp.name, year: y, add: 0, given: 0, hasGiven: false, before, ent: r.emp.hireDate ? calcLeaveDetail(r.emp.hireDate, y, leaveAdminRequests.filter(({ data }) => data.employeeName === r.emp.name && data.employeePhone === r.emp.phoneLast4)).yearTotal : null };
         }
         map[k].add += r.deducted;
         if (r.givenApplied != null) { map[k].given += r.givenApplied; map[k].hasGiven = true; }

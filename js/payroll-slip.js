@@ -8,9 +8,10 @@
 // ------------------------------------------
 function leaveSummaryFor(e, year) {
     if (!e.hireDate) return null;
-    const entitlement = calcAnnualLeaveEntitlement(e.hireDate, year);
-    const used = P.leaveRequests
-        .filter(d => d.employeeName === e.name && d.employeePhone === e.phoneLast4 && d.fiscalYear === year && d.status === "승인" && isDeductible(d))
+    const mine = P.leaveRequests.filter(d => d.employeeName === e.name && d.employeePhone === e.phoneLast4);
+    const entitlement = calcAnnualLeaveEntitlement(e.hireDate, year, mine.map(data => ({ data })));
+    const used = mine
+        .filter(d => d.fiscalYear === year && d.status === "승인" && isDeductible(d))
         .reduce((s, d) => s + (d.totalDays || 0), 0);
     return { entitlement, used, remaining: entitlement - used };
 }

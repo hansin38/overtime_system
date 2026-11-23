@@ -505,15 +505,16 @@ function renderLeaveSummary(year, employees) {
     const pickName = document.getElementById('leave-search-name')?.value || '';
     const rows = employees.filter(emp => !pickName || emp.name === pickName).map(emp => {
         let used = 0, pending = 0;
-        leaveAdminRequests.forEach(({ data }) => {
-            if (data.employeeName !== emp.name || data.employeePhone !== emp.phoneLast4) return;
+        const mine = leaveAdminRequests.filter(({ data }) => data.employeeName === emp.name && data.employeePhone === emp.phoneLast4);
+        mine.forEach(({ data }) => {
             if (data.fiscalYear !== year || !isDeductible(data)) return;
             if (data.status === "승인") used += data.totalDays || 0;
             else if (data.status === "대기" || data.status === "재전송") pending += data.totalDays || 0;
         });
-        const entitlement = calcAnnualLeaveEntitlement(emp.hireDate, year);
+        const detail = calcLeaveDetail(emp.hireDate, year, mine);   // 오늘까지 발생 + 연말까지 예정
+        const entitlement = detail.granted;
         const remaining = entitlement - used - pending;
-        return { emp, entitlement, used, pending, remaining };
+        return { emp, entitlement, detail, used, pending, remaining };
     }).sort((a, b) => b.remaining - a.remaining);
 
     if (rows.length === 0) {
@@ -529,7 +530,7 @@ function renderLeaveSummary(year, employees) {
             <td>${r.emp.name}</td>
             <td>${r.emp.department || '-'} / ${r.emp.position || '-'}</td>
             <td>${noHire ? '<span style="color: var(--danger-color);">미등록</span>' : r.emp.hireDate}</td>
-            <td>${noHire ? '-' : r.entitlement + '일'}</td>
+            <td title="${noHire ? '' : r.detail.parts.map(p => `${p.date} ${p.label} ${p.days}일`).join('\n')}">${noHire ? '-' : formatDays(r.entitlement) + '일'}${!noHire && r.detail.yearTotal > r.entitlement ? `<br><small style="color: #888; white-space: nowrap;">연말까지 ${formatDays(r.detail.yearTotal)}일<br>다음 ${r.detail.next.slice(5).replace('-', '/')}</small>` : ''}</td>
             <td>${formatDays(r.used)}일</td>
             <td>${r.pending > 0 ? formatDays(r.pending) + '일' : '-'}</td>
             <td><b style="color: ${remainColor};">${noHire ? '-' : formatDays(r.remaining) + '일'}</b></td>

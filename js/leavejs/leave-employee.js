@@ -99,14 +99,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // 해당 연도의 발생/사용/잔여 (사용 = 대기+재전송+승인 중 년차·월차)
 function getLeaveBalance(year) {
-    const entitlement = calcAnnualLeaveEntitlement(myEmployeeData?.hireDate, year);
+    const detail = calcLeaveDetail(myEmployeeData?.hireDate, year, myLeaveRequests);   // 오늘까지 발생 + 연말까지 예정
+    const entitlement = detail.granted;
     let used = 0;
     myLeaveRequests.forEach(({ data }) => {
         if (data.fiscalYear === year && ACTIVE_STATUSES.includes(data.status) && isDeductible(data)) {
             used += (data.totalDays || 0);
         }
     });
-    return { entitlement, used, remaining: Math.max(0, entitlement - used) };
+    return { entitlement, detail, used, remaining: Math.max(0, entitlement - used) };
 }
 
 /**
@@ -150,13 +151,16 @@ function renderBalanceBox() {
         box.innerHTML = `<span style="color:#dc3545;">입사일자가 등록되지 않았습니다. 관리자에게 등록을 요청해주세요.</span>`;
         return;
     }
-    const { entitlement, used, remaining } = getLeaveBalance(FISCAL_YEAR);
+    const { entitlement, detail, used, remaining } = getLeaveBalance(FISCAL_YEAR);
+    // 1년 미만 등 앞으로 더 생기는 연차가 있으면 다음 발생일·연말 예정 일수 안내
+    const upcoming = detail.yearTotal > entitlement
+        ? `<div class="balance-legend" style="margin-top: 4px;"><span>📅 다음 발생 ${detail.next.slice(5).replace('-', '/')} · ${FISCAL_YEAR}년 말까지 총 ${formatDays(detail.yearTotal)}일</span></div>` : '';
     // 진행 막대: 발생 대비 사용 비율 (초과 사용 시 100%로 채우고 빨간색)
     const usedPct = entitlement > 0 ? Math.min(used / entitlement * 100, 100) : 0;
     const over = remaining < 0 ? ' over' : '';
     box.innerHTML = `
         <div class="balance-top">
-            <span>${FISCAL_YEAR}년도 연차 <b>${entitlement}일</b> 중 <b>${formatDays(used)}일</b> 사용</span>
+            <span>${FISCAL_YEAR}년도 연차 <b>${formatDays(entitlement)}일</b> 중 <b>${formatDays(used)}일</b> 사용</span>
             <span class="balance-remain${over}">잔여 ${formatDays(remaining)}일</span>
         </div>
         <div class="balance-bar"><div class="balance-bar-used${over}" style="width:${usedPct}%;"></div></div>
@@ -164,6 +168,7 @@ function renderBalanceBox() {
             <span><span class="balance-dot"></span>사용(대기+승인) ${formatDays(used)}일</span>
             <span><span class="balance-dot remain"></span>잔여 ${formatDays(remaining)}일</span>
         </div>
+        ${upcoming}
     `;
 }
 

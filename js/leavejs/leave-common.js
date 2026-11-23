@@ -64,31 +64,73 @@ function periodSummary(d) {
 }
 
 /**
- * 입사일자와 회계연도를 기준으로 해당 연도의 "발생 연차 일수"를 계산합니다.
- * - 입사 연도: 입사월부터 12월까지 근무 개월수만큼 부여 (최대 11일) = 월차
- * - 1년 이상 근속: 15일, 3년차부터 2년마다 1일씩 가산 (최대 25일) - 근로기준법 제60조 기준
- * 회사의 실제 취업규칙과 다를 수 있으니, 정책이 다르면 이 함수만 수정하면 됩니다.
+ * 📘 연차 발생 계산 - 근로기준법 제60조 + 취업규칙 제33조(회계연도 기준 운영, 이월 없음)
+ *  ① 1년 미만: 1개월 개근마다 1일 (월차) - 입사일과 같은 날짜에 생김 (10/13 입사 → 11/13, 12/13 …), 최대 11일
+ *  ② 입사 다음 해 1/1: 15일 × (입사한 해 근무일수 ÷ 그해 일수) 비례 부여, 소수점은 근로자에게 유리하게 올림
+ *     + 1년이 될 때까지 남은 월차는 계속 매달 생김
+ *     + 입사한 해에 못 쓴 월차는 다음 해로 넘어감 (1년 미만 월차는 입사 1년까지 사용 가능 - 제60조 제7항)
+ *  ③ 입사 후 2번째 1/1부터: 15일, 3번째 1/1부터 2년마다 1일 가산, 최대 25일
+ *  - '발생(granted)'은 오늘까지 실제로 생긴 일수 (지난 연도는 연말 기준, 앞으로의 연도는 1/1 기준)
+ *  - 1년 미만 월차와 1년 후 15일은 따로 셈 (2020년 법 개정: 월차 사용분을 15일에서 빼지 않음)
  */
-function calcAnnualLeaveEntitlement(hireDateStr, fiscalYear) {
-    if (!hireDateStr) return 0;
-    const hireDate = new Date(hireDateStr);
-    if (isNaN(hireDate.getTime())) return 0;
-
-    const hireYear = hireDate.getFullYear();
-    const hireMonth = hireDate.getMonth() + 1; // 1~12
-
-    if (fiscalYear < hireYear) return 0;
-
-    if (fiscalYear === hireYear) {
-        // 입사 연도: 입사월 포함 12월까지 근무 개월수 (최대 11일)
-        const monthsWorked = 12 - hireMonth + 1;
-        return Math.max(0, Math.min(monthsWorked, 11));
+function leaveMonthlyDates(hireDateStr) {
+    // 1~11개월째 개근하는 날의 다음 날 = 입사일과 같은 날짜 (그 날짜가 없는 달은 다음 달 1일)
+    const h = parseYmd(hireDateStr);
+    const out = [];
+    for (let k = 1; k <= 11; k++) {
+        let dt = new Date(h.getFullYear(), h.getMonth() + k, h.getDate());
+        if (dt.getMonth() !== (h.getMonth() + k) % 12) dt = new Date(h.getFullYear(), h.getMonth() + k + 1, 1);
+        out.push(toYmd(dt));
     }
+    return out;
+}
 
-    // 만 1년 이상 근속: (해당 회계연도 1/1 기준) 근속 연수
-    const serviceYears = fiscalYear - hireYear;
-    const entitlement = 15 + Math.floor((serviceYears - 1) / 2);
-    return Math.min(entitlement, 25);
+// requests: 한 사원의 [{ data }] → 그해 년차·월차 사용 일수 (대기·재전송·승인)
+function leaveUsedInYear(requests, year) {
+    return (requests || []).reduce((s, { data }) =>
+        s + (data.fiscalYear === year && ACTIVE_STATUSES.includes(data.status) && isDeductible(data) ? (data.totalDays || 0) : 0), 0);
+}
+
+// 반환: { granted 오늘까지 발생, yearTotal 연말까지 발생 예정, parts 내역, next 다음 발생일 }
+function calcLeaveDetail(hireDateStr, year, requests, today = toYmd(new Date())) {
+    const empty = { granted: 0, yearTotal: 0, parts: [], next: '' };
+    if (!hireDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(hireDateStr)) return empty;
+    const hireYear = Number(hireDateStr.slice(0, 4));
+    if (year < hireYear) return empty;
+    const yStart = `${year}-01-01`, yEnd = `${year}-12-31`;
+    const asOf = today < yStart ? yStart : today > yEnd ? yEnd : today;
+    const parts = [];   // { label, days, date }
+
+    const monthly = leaveMonthlyDates(hireDateStr).filter(d => d.startsWith(String(year)));
+    monthly.forEach(d => parts.push({ label: '월차', days: 1, date: d }));
+    if (year === hireYear + 1) {
+        const yearDays = (hireYear % 4 === 0 && hireYear % 100 !== 0) || hireYear % 400 === 0 ? 366 : 365;
+        const worked = Math.round((parseYmd(`${hireYear}-12-31`) - parseYmd(hireDateStr)) / 86400000) + 1;
+        parts.push({ label: `비례 연차 (15일×${worked}/${yearDays})`, days: Math.ceil(15 * worked / yearDays), date: yStart });
+        // 입사한 해에 생긴 월차 중 못 쓴 것 → 1년이 될 때까지 쓸 수 있게 넘김
+        const prevGranted = leaveMonthlyDates(hireDateStr).filter(d => d.startsWith(String(hireYear))).length;
+        let carry = Math.max(0, prevGranted - leaveUsedInYear(requests, hireYear));
+        // 입사 1년이 지나면 넘어온 월차는 소멸 → 1년 되기 전까지 실제로 쓴 만큼만 남김
+        const ann = `${year}${hireDateStr.slice(4)}`;
+        if (asOf >= ann) {
+            const usedBefore = (requests || []).reduce((s, { data }) => s + (data.fiscalYear === year && ACTIVE_STATUSES.includes(data.status) && isDeductible(data)
+                ? (data.detailLogs || []).filter(l => l.date < ann).reduce((a, l) => a + (l.days || 0), 0) : 0), 0);
+            carry = Math.min(carry, usedBefore);
+        }
+        if (carry > 0) parts.push({ label: `${hireYear}년 월차 남은 것 (${ann.slice(5)}까지)`, days: carry, date: yStart });
+    } else if (year >= hireYear + 2) {
+        const n = year - hireYear;   // 입사 후 n번째 1월 1일
+        parts.push({ label: '연차', days: Math.min(25, 15 + Math.floor((n - 1) / 2)), date: yStart });
+    }
+    const granted = parts.filter(p => p.date <= asOf).reduce((s, p) => s + p.days, 0);
+    const yearTotal = parts.reduce((s, p) => s + p.days, 0);
+    const next = (parts.find(p => p.date > asOf) || {}).date || '';
+    return { granted, yearTotal, parts, next };
+}
+
+// 예전 호출용: 오늘까지 발생한 일수
+function calcAnnualLeaveEntitlement(hireDateStr, fiscalYear, requests) {
+    return calcLeaveDetail(hireDateStr, fiscalYear, requests).granted;
 }
 
 // -----------------------------------------------------------------
