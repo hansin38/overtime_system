@@ -492,6 +492,14 @@ function applyLeaveFilters() {
     renderLeaveRequestList(year);
 }
 
+// 신청 내역 정렬: key 'submitted'(제출일) / 'start'(휴가 시작일), dir -1 최신순(기본) / 1 오래된 순
+// 머리글을 누르면 그 기준으로, 같은 머리글을 다시 누르면 방향만 바뀜
+let leaveSort = { key: 'submitted', dir: -1 };
+function toggleLeaveSort(key) {
+    leaveSort = leaveSort.key === key ? { key, dir: -leaveSort.dir } : { key, dir: -1 };
+    renderLeaveRequestList(Number(document.getElementById('leave-year-select').value));
+}
+
 function resetLeaveFilters() {
     document.getElementById('leave-search-name').value = '';
     document.getElementById('leave-search-status').value = '';
@@ -557,7 +565,17 @@ function renderLeaveRequestList(year) {
     const list = leaveAdminRequests
         .filter(({ data }) => data.fiscalYear === year && data.status !== "작성") // 회수(작성) 건 제외
         .filter(({ data }) => (!pickName || data.employeeName === pickName) && statusOk(data.status))
-        .sort((a, b) => (b.data.submittedAt?.toMillis?.() || 0) - (a.data.submittedAt?.toMillis?.() || 0));
+        // 제출일 또는 휴가 시작일 순 (▼ 최신순 / ▲ 오래된 순), 같으면 다른 기준도 같은 방향
+        // (엑셀로 올린 이전 자료는 같은 신청일이 여러 건)
+        .sort((a, b) => {
+            const bySub = (a.data.submittedAt?.toMillis?.() || 0) - (b.data.submittedAt?.toMillis?.() || 0);
+            const byStart = String(a.data.startDate || '').localeCompare(String(b.data.startDate || ''));
+            return leaveSort.dir * (leaveSort.key === 'start' ? (byStart || bySub) : (bySub || byStart));
+        });
+    const arrow = leaveSort.dir < 0 ? '▼' : '▲';
+    const thSub = document.getElementById('leave-sort-submitted'), thStart = document.getElementById('leave-sort-start');
+    if (thSub) thSub.innerText = `제출일 ${leaveSort.key === 'submitted' ? arrow : '↕'}`;
+    if (thStart) thStart.innerText = `휴가 기간 ${leaveSort.key === 'start' ? arrow : '↕'}`;
 
     if (list.length === 0) {
         const cond = [pickName, pickStatus && `'${pickStatus}'`].filter(Boolean).join(' · ');

@@ -447,7 +447,7 @@ function openLeaveHistoryModal(mode) {
             items.sort((a, b) => {
                 const ta = (mode === 'temp') ? (a.data.savedAt?.toDate?.().getTime() || 0) : (a.data.submittedAt?.toDate?.().getTime() || 0);
                 const tb = (mode === 'temp') ? (b.data.savedAt?.toDate?.().getTime() || 0) : (b.data.submittedAt?.toDate?.().getTime() || 0);
-                return tb - ta;
+                return tb - ta || String(b.data.startDate || '').localeCompare(String(a.data.startDate || ''));   // 같은 날 낸 신청은 휴가 시작일 늦은 순
             });
 
             tbody.innerHTML = "";

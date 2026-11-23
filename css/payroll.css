@@ -448,6 +448,8 @@ table.pay-hist th { background: #f8f9fa; }
 .lv-filter label span { font-weight: bold; font-size: 14px; color: #333; }
 .lv-filter select { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 120px; height: 34px; cursor: pointer; background: #fff; margin: 0; }
 .lv-filter .btn-batch-delete { margin: 0 0 0 auto; height: 34px; padding: 0 16px; font-size: 13px; line-height: 32px; width: auto; }
+.lv-sort-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.lv-sort-th:hover { background: #e7f0ff; color: #1c62c4; }
 .lvimp-link { text-align: right; margin-top: 24px; font-size: 12px; }
 .lvimp-link a { color: #999; text-decoration: none; }
 .lvimp-link a:hover { color: #555; text-decoration: underline; }
