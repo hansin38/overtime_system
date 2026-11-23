@@ -458,7 +458,7 @@ function openLeaveHistoryModal(mode) {
 
             items.forEach(item => {
                 const d = item.data;
-                const statusCell = (mode === 'temp') ? '' : `<td style="padding:10px; text-align:center;">${renderStatusBadge(d.status)}</td>`;
+                const statusCell = (mode === 'temp') ? '' : `<td style="padding:10px; text-align:center;">${renderStatusBadge(leaveDisplayStatus(d))}</td>`;
                 const tr = document.createElement('tr');
                 tr.style.cursor = 'pointer';
                 tr.innerHTML = `
@@ -515,7 +515,7 @@ function openLeaveHistoryModal(mode) {
 }
 
 function renderStatusBadge(status) {
-    const colors = { "승인": "#007bff", "반려": "#dc3545", "승인취소": "#dc3545", "작성": "#e67e22", "대기": "#2c3e50", "재전송": "#2c3e50" };
+    const colors = { "승인": "#007bff", "결재중": "#1971c2", "반려": "#dc3545", "승인취소": "#dc3545", "작성": "#e67e22", "대기": "#2c3e50", "재전송": "#2c3e50" };
     const c = colors[status] || "#6c757d";
     return `<span style="color:${c}; font-weight:bold;">${status || '-'}</span>`;
 }
@@ -563,7 +563,7 @@ function showLeaveDetail(data, docId, mode) {
             <tr><th>휴가 기간</th><td colspan="3">${periodSummary(data)} (${formatDays(data.totalDays || 0)}일)</td></tr>
             <tr><th>사유</th><td colspan="3">${data.reason || '-'}</td></tr>
             <tr><th>비상연락처</th><td colspan="3">${data.emergencyContact || '-'}</td></tr>
-            ${data.status ? `<tr><th>상태</th><td colspan="3">${renderStatusBadge(data.status)}</td></tr>` : ''}
+            ${data.status ? `<tr><th>상태</th><td colspan="3">${renderStatusBadge(leaveDisplayStatus(data))}</td></tr>` : ''}
             ${data.status ? `<tr><th>결재</th><td colspan="3">${data.imported ? '이전 자료 (종이 결재)' : data.adminApproval ? `관리자 승인 (${data.adminApproval.reason || '대결'})` : Object.keys(SIGN_SLOTS).map(slot =>
                 `${SIGN_SLOTS[slot].replace(' ', '')} ${data.signatures && data.signatures[slot] ? '✅ 서명 완료' : '⬜ 미서명'}`).join('　')}</td></tr>` : ''}
             ${data.rejectReason ? `<tr><th>반려 사유</th><td colspan="3">${data.rejectReason}</td></tr>` : ''}

@@ -93,12 +93,15 @@ function renderSignPage(requests) {
     if (remaining.length === 0) {
         setBanner(`✅ 결재(과장·전무) 서명이 모두 완료된 신청서입니다. (수정할 수 없습니다)`, "done");
     } else if (problem) {
-        const done = Object.keys(SIGN_SLOTS).length > remaining.length ? `<br><small>✅ 이미 승인된 신청서입니다.</small>` : '';
+        const done = leaveIsFinal(data) ? `<br><small>✅ 이미 승인된 신청서입니다.</small>`
+            : Object.keys(SIGN_SLOTS).length > remaining.length ? `<br><small>과장 서명 완료 · 전무 결재 대기 중</small>` : '';
         setBanner(`⚠️ ${problem}${done}`, "error");
     } else {
         const until = new Date(data.signLink.expiresAt);
-        const doneNote = Object.keys(SIGN_SLOTS).length > remaining.length
-            ? `<br><small>✅ ${Object.keys(SIGN_SLOTS).filter(s => !remaining.includes(s)).map(slotLabel).join('·')} 서명 완료 (승인됨) - 추가 서명도 가능합니다.</small>` : '';
+        const signedNames = Object.keys(SIGN_SLOTS).filter(s => !remaining.includes(s)).map(slotLabel).join('·');
+        const doneNote = !signedNames ? ''
+            : leaveIsFinal(data) ? `<br><small>✅ ${signedNames} 서명 완료 (승인됨) - 추가 서명도 가능합니다.</small>`
+            : `<br><small>✅ ${signedNames} 서명 완료 · <b>전무 서명</b>이 있어야 최종 승인됩니다.</small>`;
         setBanner(`<b>${data.employeeName}</b> 님의 휴가신청서입니다.<br>
             오른쪽 위 <b>결재란의 빨간 칸</b>(본인 직위)을 누르거나 아래 <b>[✍ 서명하기]</b> 버튼을 눌러 서명해 주세요.${doneNote}<br>
             <small>링크 유효시간: ${until.getMonth() + 1}/${until.getDate()} ${pad2(until.getHours())}:${pad2(until.getMinutes())}까지</small>`, "action");
@@ -198,15 +201,17 @@ function confirmSignature() {
         if (data.signatures && data.signatures[slot]) throw new Error(`이미 ${slotLabel(slot)} 서명이 완료된 칸입니다.`);
         const problem = getLinkProblem(data);
         if (problem) throw new Error(problem);
-        tx.update(ref, {
-            [`signatures.${slot}`]: { img, signedAt: firebase.firestore.FieldValue.serverTimestamp() },
-            status: "승인",
-            approvedAt: data.approvedAt || firebase.firestore.FieldValue.serverTimestamp()
-        });
+        // 전무(제일 높은 결재자) 서명이어야 최종 승인 · 과장 서명은 기록만 (상태 그대로 → 화면엔 '결재중')
+        const update = { [`signatures.${slot}`]: { img, signedAt: firebase.firestore.FieldValue.serverTimestamp() } };
+        if (slot === 'director') {
+            update.status = "승인";
+            update.approvedAt = data.approvedAt || firebase.firestore.FieldValue.serverTimestamp();
+        }
+        tx.update(ref, update);
     }))
     .then(() => {
         closeSignPad();
-        alert("서명이 완료되었습니다. 감사합니다.");
+        alert(slot === 'director' ? "서명이 완료되어 최종 승인되었습니다. 감사합니다." : "과장 서명이 완료되었습니다.\n전무 서명(또는 관리자 승인)이 있어야 최종 승인됩니다.");
         loadSignRequest();
     })
     .catch(err => {

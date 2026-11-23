@@ -516,8 +516,9 @@ function renderLeaveSummary(year, employees) {
         const mine = leaveAdminRequests.filter(({ data }) => data.employeeName === emp.name && data.employeePhone === emp.phoneLast4);
         mine.forEach(({ data }) => {
             if (data.fiscalYear !== year || !isDeductible(data)) return;
-            if (data.status === "승인") used += data.totalDays || 0;
-            else if (data.status === "대기" || data.status === "재전송") pending += data.totalDays || 0;
+            const st = leaveDisplayStatus(data);   // 최종 승인만 '사용', 과장 서명만 된 결재중은 '결재 대기'
+            if (st === "승인") used += data.totalDays || 0;
+            else if (st === "대기" || st === "재전송" || st === "결재중") pending += data.totalDays || 0;
         });
         const detail = calcLeaveDetail(emp.hireDate, year, mine);   // 오늘까지 발생 + 연말까지 예정
         const entitlement = detail.granted;
@@ -569,10 +570,10 @@ function renderLeaveRequestList(year) {
     if (!tbody) return;
     const pickName = document.getElementById('leave-search-name')?.value || '';
     const pickStatus = document.getElementById('leave-search-status')?.value || '';
-    const statusOk = s => !pickStatus || s === pickStatus || (pickStatus === "대기" && s === "재전송");
+    const statusOk = s => !pickStatus || s === pickStatus || (pickStatus === "대기" && (s === "재전송" || s === "결재중"));
     const list = leaveAdminRequests
         .filter(({ data }) => data.fiscalYear === year && data.status !== "작성") // 회수(작성) 건 제외
-        .filter(({ data }) => (!pickName || data.employeeName === pickName) && statusOk(data.status))
+        .filter(({ data }) => (!pickName || data.employeeName === pickName) && statusOk(leaveDisplayStatus(data)))
         // 제출일 또는 휴가 시작일 순 (▼ 최신순 / ▲ 오래된 순), 같으면 다른 기준도 같은 방향
         // (엑셀로 올린 이전 자료는 같은 신청일이 여러 건)
         .sort((a, b) => {
@@ -590,12 +591,14 @@ function renderLeaveRequestList(year) {
         tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년${cond ? ` ${cond}` : ''} 연차 신청 내역이 없습니다.</td></tr>`;
         return;
     }
-    const statusColors = { "승인": "var(--success-color)", "반려": "var(--danger-color)", "승인취소": "var(--danger-color)", "대기": "#f39c12", "재전송": "#3498db" };
+    const statusColors = { "승인": "var(--success-color)", "반려": "var(--danger-color)", "승인취소": "var(--danger-color)", "대기": "#f39c12", "재전송": "#3498db", "결재중": "#1971c2" };
     const btnStyle = "padding: 5px 8px; font-size: 12px; height: 32px; width: auto;";
     const dangerStyle = `${btnStyle} color: var(--danger-color); border-color: var(--danger-color);`;
     tbody.innerHTML = list.map(({ id, data }) => {
         const submitted = data.submittedAt ? data.submittedAt.toDate().toLocaleDateString() : '-';
-        const canReject = data.status === "대기" || data.status === "재전송";
+        const st = leaveDisplayStatus(data);   // 과장 서명만 → '결재중' (전무 서명·관리자 승인이 있어야 '승인')
+        const canReject = data.status === "대기" || data.status === "재전송" || st === "결재중";
+        const canAdminApprove = ACTIVE_STATUSES.includes(data.status) && !leaveIsFinal(data);
         return `<tr>
             <td>${submitted}</td>
             <td>${data.employeeName}</td>
@@ -603,12 +606,12 @@ function renderLeaveRequestList(year) {
             <td style="font-size: 13px;">${periodSummary(data)}</td>
             <td>${formatDays(data.totalDays || 0)}일</td>
             <td>${leaveSignStatusHtml(data)}</td>
-            <td><span class="status-badge" style="color: ${statusColors[data.status] || '#888'};">${data.status}</span></td>
+            <td><span class="status-badge" style="color: ${statusColors[st] || '#888'};">${st}</span></td>
             <td><div style="display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;">
                 <button onclick="viewLeaveDetail('${id}')" class="btn-batch-delete" style="${btnStyle}">상세보기</button>
-                ${canReject ? `<button onclick="adminApproveLeave('${id}')" class="btn-batch-delete" style="${btnStyle} color: var(--success-color); border-color: var(--success-color);" title="결재자 부재 시 관리자가 대신 승인">관리자 승인</button>` : ''}
+                ${canAdminApprove ? `<button onclick="adminApproveLeave('${id}')" class="btn-batch-delete" style="${btnStyle} color: var(--success-color); border-color: var(--success-color);" title="결재자 부재 시 관리자가 대신 승인">관리자 승인</button>` : ''}
                 ${canReject ? `<button onclick="rejectLeaveRequest('${id}')" class="btn-batch-delete" style="${dangerStyle}">반려</button>` : ''}
-                ${data.status === "승인" ? `<button onclick="cancelLeaveApproval('${id}')" class="btn-batch-delete" style="${dangerStyle}">승인취소</button>` : ''}
+                ${st === "승인" ? `<button onclick="cancelLeaveApproval('${id}')" class="btn-batch-delete" style="${dangerStyle}">승인취소</button>` : ''}
             </div></td>
         </tr>`;
     }).join('');

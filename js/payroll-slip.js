@@ -11,7 +11,7 @@ function leaveSummaryFor(e, year) {
     const mine = P.leaveRequests.filter(d => d.employeeName === e.name && d.employeePhone === e.phoneLast4);
     const entitlement = calcAnnualLeaveEntitlement(e.hireDate, year, mine.map(data => ({ data })));
     const used = mine
-        .filter(d => d.fiscalYear === year && d.status === "승인" && isDeductible(d))
+        .filter(d => d.fiscalYear === year && leaveDisplayStatus(d) === "승인" && isDeductible(d))   // 최종 승인(전무·관리자)만
         .reduce((s, d) => s + (d.totalDays || 0), 0);
     return { entitlement, used, remaining: entitlement - used };
 }

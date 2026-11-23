@@ -25,6 +25,18 @@ const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const SIGN_SLOTS = { director: '전 무', manager: '과 장' };
 const SIGN_LINK_HOURS = 3;
 
+// ✅ 최종 승인: 제일 높은 결재자(전무)가 서명했거나, 관리자가 대신 승인했거나, 엑셀로 올린 이전 자료
+//    과장만 서명한 건은 '결재중' (2026-11-23 사용자 결정 - 예전에 과장 서명만으로 '승인'된 건도 결재중으로 봄)
+function leaveIsFinal(d) {
+    return !!(d.imported || d.adminApproval || (d.signatures && d.signatures.director));
+}
+// 화면 표시용 상태: 대기·재전송·승인 중 최종 승인 전이면서 과장 서명이 있으면(또는 예전 '승인') '결재중'
+function leaveDisplayStatus(d) {
+    if (["대기", "재전송", "승인"].includes(d.status) && !leaveIsFinal(d)
+        && (d.status === "승인" || (d.signatures && d.signatures.manager))) return "결재중";
+    return d.status;
+}
+
 // 휴가 종류가 없는 예전 신청서는 년차로 간주
 function isDeductible(data) {
     const t = LEAVE_TYPES[data.leaveType];
@@ -140,7 +152,7 @@ function computeMonthlyUsage(year, requests) {
     const items = [];
     requests.forEach(({ id, data }) => {
         if (data.fiscalYear !== year || !ACTIVE_STATUSES.includes(data.status) || !isDeductible(data)) return;
-        (data.detailLogs || []).forEach(log => items.push({ ...log, reqId: id, pending: data.status !== "승인" }));
+        (data.detailLogs || []).forEach(log => items.push({ ...log, reqId: id, pending: leaveDisplayStatus(data) !== "승인" }));   // 최종 승인 전(결재중 포함)은 대기 표시
     });
     items.sort((a, b) => a.date.localeCompare(b.date));
 
