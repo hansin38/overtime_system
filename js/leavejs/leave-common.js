@@ -15,7 +15,8 @@ const LEAVE_TYPES = {
     family:  { label: '경조사',   deduct: false },
     etc:     { label: '기타',     deduct: false }
 };
-const HALF_LABELS = { full: '전일', am: '오전반차', pm: '오후반차' };
+// half: 오전/오후 구분 없는 반차 (관리자가 엑셀로 올린 이전 자료에서 반차 'Y')
+const HALF_LABELS = { full: '전일', am: '오전반차', pm: '오후반차', half: '반차' };
 const ACTIVE_STATUSES = ["대기", "승인", "재전송"]; // 사용량·중복 체크에 포함되는 상태
 const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -54,7 +55,7 @@ function formatKoreanDate(ymd) {
 function halfDayNote(d) {
     if (!d.halfDay || d.halfDay === 'full') return '';
     if (d.startDate === d.endDate) return ` ${HALF_LABELS[d.halfDay]}`;
-    return d.halfDay === 'pm' ? ' (첫날 오후반차)' : ' (마지막 날 오전반차)';
+    return d.halfDay === 'pm' ? ' (첫날 오후반차)' : d.halfDay === 'half' ? ' (마지막 날 반차)' : ' (마지막 날 오전반차)';
 }
 function periodSummary(d) {
     if (!d.startDate) return '-';
