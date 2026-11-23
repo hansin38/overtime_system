@@ -621,7 +621,7 @@ function viewLeaveDetail(docId) {
     const sameEmployee = leaveAdminRequests.filter(r => r.data.employeeName === d.employeeName && r.data.employeePhone === d.employeePhone);
     document.getElementById('leave-detail-sheet').innerHTML = renderLeaveSheetHtml(d, sameEmployee);
     const extra = [];
-    if (d.adminApproval) extra.push(`<div><b>관리자 승인(대결):</b> ${d.adminApproval.reason || ''} (${d.adminApproval.at?.toDate ? d.adminApproval.at.toDate().toLocaleString() : ''}${d.adminApproval.by ? ` · ${d.adminApproval.by}` : ''})</div>`);
+    if (d.adminApproval) extra.push(`<div><b>관리자 승인(대결):</b> ${d.adminApproval.reason || ''} (${d.adminApproval.at?.toDate ? d.adminApproval.at.toDate().toLocaleString() : ''})</div>`);   // 관리자 계정은 기록만 하고 화면엔 안 보임
     if (d.rejectReason) extra.push(`<div><b>반려 사유:</b> ${d.rejectReason}</div>`);
     if (d.cancelReason) extra.push(`<div><b>승인취소 사유:</b> ${d.cancelReason} (${d.canceledAt ? d.canceledAt.toDate().toLocaleString() : ''})</div>`);
     document.getElementById('leave-detail-extra').innerHTML = extra.join('');
