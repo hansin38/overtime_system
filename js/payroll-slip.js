@@ -211,11 +211,11 @@ function renderExpenseSlipHtml(rec) {
 
     return `<div class="ps-paper a4 xp">
         <div class="ps-top">
-            <div class="xp-head"><img src="${PAY_LOGO}" alt=""><span class="xp-tag">${y}년 ${mon}월 · 경비</span></div>
+            <div class="xp-head"><img src="${PAY_LOGO}" alt=""><h1 class="xp-title">경비명세서</h1></div>
             <div class="xp-name"><b>${esc(rec.name)}</b> ${esc(rec.position || '')}${rec.department ? ` · ${esc(rec.department)}` : ''}</div>
         </div>
         <div class="ps-body"><div class="ps-body-in">
-            <div class="xp-hl">${mon}월에 <em>${hTxt(totalHours).replace('h', '시간')}</em> 연장근무 하셨어요</div>
+            <div class="xp-hl">${y}년 ${mon}월에<em>${hTxt(totalHours).replace('h', '시간')}</em> 연장근무 하셨어요</div>
             <div class="xp-cal">${cal}</div>
             <div class="xp-sum">
                 <div class="xp-box">고정 연장<b>${fmtH(h.fixed.overtime || 0)}</b></div>

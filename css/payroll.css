@@ -289,7 +289,7 @@ table.pay-hist th { background: #f8f9fa; }
    [가운데] 남는 높이 전부, 내용이 넘치면 fitSlipBodies()가 가운데만 축소  ─ 간격 24px ─
    [아래 고정 210px, 아래쪽 정렬] 인사말 ~ 마지막 줄 (경비명세서는 인사말뿐이라 90px) */
 .ps-paper.a4 { height: 990px; padding: 46px 78px 28px; display: flex; flex-direction: column; }
-.ps-paper.a4 .ps-top { flex: none; height: 76px; margin-bottom: 30px; }
+.ps-paper.a4 .ps-top { flex: none; height: 76px; margin-bottom: 30px; position: relative; }
 .ps-paper.a4 .ps-body { flex: 1; min-height: 0; overflow: hidden; }
 .ps-paper.a4 .ps-body-in { transform-origin: top center; }
 .ps-paper.a4 .ps-body-in > :last-child { margin-bottom: 0; }
@@ -298,8 +298,7 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-paper.exp.a4 .ps-bottom { min-height: 90px; }   /* 경비명세서: 인사말만 있는 아래 칸 */
 /* 위·아래 여백 같게: 종이 맨 위 첫 요소도 아래 여백(28px)과 같은 28px 위치에서 시작
    직원 발송본은 로고가 첫 요소, 관리자용은 '관리자 보관용' 표시, 경비명세서는 주황 선 → 그 아래로 제목을 내림 */
-.ps-paper.adm, .ps-paper.exp.a4 { padding-top: 66px; }
-.ps-paper.a4.adm .ps-logo, .ps-paper.exp.a4 .ps-logo { top: 58px; }
+.ps-paper.adm, .ps-paper.exp.a4 { padding-top: 58px; }
 .ps-paper.adm .ps-admin-mark { top: 28px; }
 .ps-paper.exp.a4 { border-top: none; }
 .ps-paper.exp.a4::before { content: ''; position: absolute; top: 28px; left: 0; right: 0; height: 6px; background: var(--pay-org); }
@@ -311,8 +310,13 @@ table.pay-hist th { background: #f8f9fa; }
 .ps-paper.adm .ps-netlines > div { padding: 1px 0; }
 .ps-paper.adm .ps-big { padding: 8px 20px; }
 .ps-paper.adm .ps-big b { font-size: 19px; }
-.ps-paper.a4 .ps-logo { height: 44px; top: 28px; left: 60px; }
-.ps-paper.a4 .ps-title { margin-bottom: 14px; }
+/* 로고와 제목을 같은 줄에: 로고는 제목 줄 왼쪽 끝(종이 왼쪽 60px), 제목은 로고 높이(44px) 한가운데 */
+.ps-paper.a4 { padding-top: 28px; }
+.ps-paper.a4.adm { padding-top: 58px; }
+.ps-paper.a4 .ps-logo { height: 44px; top: 0; left: -18px; }
+.ps-paper.a4 .ps-title { height: 44px; line-height: 44px; margin-bottom: 14px; }
+/* 수정본 표시: 제목에 붙이지 않고 제목 줄 오른쪽 끝 */
+.ps-paper.a4 .ps-title .ps-rev { line-height: normal; position: absolute; right: 0; top: 22px; transform: translateY(-50%); margin-left: 0; }
 .ps-paper.a4 .ps-sub { margin-bottom: 0; }
 .ps-paper.a4 .ps-info { margin-bottom: 38px; }
 .ps-paper.a4 .ps-info th, .ps-paper.a4 .ps-info td { padding: 4px 9px; }
@@ -367,8 +371,10 @@ table.pay-hist th { background: #f8f9fa; }
 /* 틀은 임금명세서와 통일: 흰 바탕 · 위 28 / 아래 28 / 양옆 78px · 로고 높이 44px */
 .ps-paper.a4.xp { background: #fff; padding: 28px 78px 28px; }
 .ps-paper.a4.xp .ps-top { height: auto; margin-bottom: 0; }
-.xp-head { display: flex; justify-content: space-between; align-items: center; }
-.xp-head img { height: 44px; }
+/* 맨 위 줄은 로고 · 제목(가운데)만 (월은 아래 '2026년 10월에 ~' 문구에 표시) */
+.xp-head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; }
+.xp-head img { height: 44px; justify-self: start; }
+.xp-head .xp-title { margin: 0; font-size: 24px; letter-spacing: 8px; color: #111; }
 .xp-tag { background: #f1f3f5; color: #495057; font-size: 13px; font-weight: bold; padding: 6px 14px; border-radius: 20px; }
 .xp-name { margin-top: 40px; font-size: 14.5px; color: #666; }
 .xp-name b { color: #111; font-size: 17px; }

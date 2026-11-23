@@ -1583,9 +1583,9 @@ function renderOvertimeSheetHtml(data) {
         <div class="ot-sheet">
             <div class="ot-top">
                 <img class="ot-logo" src="${OT_COMPANY_LOGO}" alt="${OT_COMPANY_NAME}">
+                <div class="ot-title">연장근로 신청 확인서</div>
                 <div class="ot-meta">문서번호　-<br>작성일자　${submittedText}</div>
             </div>
-            <div class="ot-title">연장근로 신청 확인서</div>
 
             <div class="ot-name"><span>신청인</span><b>${name}</b><span class="ot-pill">${escapeOtHtml(statusPill)}</span></div>
             <div class="ot-subject">${escapeOtHtml(data.title || '제목 없음')}</div>
