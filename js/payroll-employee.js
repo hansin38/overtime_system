@@ -118,7 +118,7 @@ function openPayEmpModal(empId = null) {
     document.getElementById('pay-emp-modal').style.display = 'flex';
 }
 
-// 👔 직위 목록 (낮은 직위 → 높은 직위) · 목록에 없는 기존 값(예: 과장/차장)도 그대로 고를 수 있게 뒤에 붙임
+// 👔 직위 목록 (낮은 직위 → 높은 직위) · 목록에 없는 기존 값은 그 사람 창에서만 뒤에 붙음 (값이 지워지지 않게)
 const EMP_POSITIONS = ['사원', '주임', '대리', '과장', '차장', '부장', '이사', '상무', '전무', '부사장', '사장', '대표이사'];
 const EMP_PICK_NEW = '__new__';
 
@@ -126,7 +126,8 @@ const EMP_PICK_NEW = '__new__';
 function fillEmpPickOptions(dept, position) {
     const used = (k) => [...new Set((P.employees || []).map(x => x[k]).filter(Boolean))];
     const depts = [...new Set(used('department').concat(dept ? [dept] : []))].sort((a, b) => a.localeCompare(b, 'ko'));
-    const extraPos = [...new Set(used('position').concat(position ? [position] : []))].filter(x => !EMP_POSITIONS.includes(x));
+    // 목록에 없는 직위(예: 예전에 쓴 '과장/차장')는 그 값을 가진 본인 창에서만 보이게 - 다른 사람 목록엔 안 나옴
+    const extraPos = position && !EMP_POSITIONS.includes(position) ? [position] : [];
     const opts = (list, label) => '<option value="">선택</option>' + list.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('') + `<option value="${EMP_PICK_NEW}">＋ ${label}</option>`;
     document.getElementById('pe-dept').innerHTML = opts(depts, '새 부서 입력');
     document.getElementById('pe-position').innerHTML = opts(EMP_POSITIONS.concat(extraPos), '직접 입력');

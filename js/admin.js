@@ -43,7 +43,7 @@ function startAdminSystem() {
 
     // 새로고침 전에 보던 탭으로 (기본은 연장근로 결재)
     const lastTab = recallAdminView('adminTab');
-    if (['leave', 'pay', 'staff'].includes(lastTab)) switchAdminTab(lastTab);
+    if (['leave', 'pay', 'staff', 'assoc'].includes(lastTab)) switchAdminTab(lastTab);
 }
 
 // 🔐 관리자 로그인 (브라우저 탭을 닫으면 로그아웃되도록 SESSION 유지)
@@ -453,12 +453,15 @@ function switchAdminTab(tab) {
     document.getElementById('leave-admin-section').style.display = isLeave ? 'block' : 'none';
     document.getElementById('pay-admin-section').style.display = tab === 'pay' ? 'block' : 'none';
     document.getElementById('staff-admin-section').style.display = tab === 'staff' ? 'block' : 'none';
+    document.getElementById('assoc-admin-section').style.display = tab === 'assoc' ? 'block' : 'none';
     document.getElementById('tab-ot-admin').classList.toggle('active', tab === 'ot');
     document.getElementById('tab-leave-admin').classList.toggle('active', isLeave);
     document.getElementById('tab-pay-admin').classList.toggle('active', tab === 'pay');
     document.getElementById('tab-staff-admin').classList.toggle('active', tab === 'staff');
+    document.getElementById('tab-assoc-admin').classList.toggle('active', tab === 'assoc');
     if (tab === 'pay') openPayrollTab(); // js/payroll-month.js
     if (tab === 'staff') openStaffTab(); // js/staff-admin.js
+    if (tab === 'assoc') openAssocTab(); // js/assoc-admin.js
     if (isLeave && !leaveAdminLoaded) {
         initLeaveYearSelect();
         loadLeaveAdmin();

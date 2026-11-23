@@ -33,5 +33,8 @@ service cloud.firestore {
 
     // 🗑 삭제한 사원 보관함 (직원 관리 > 삭제 내역에서 되돌리기 · 급여정보 포함이라 관리자만)
     match /deleted_employees/{id} { allow read, write: if isAdmin(); }
+
+    // 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 연락처·생년월일 포함이라 관리자만)
+    match /association_members/{id} { allow read, write: if isAdmin(); }
   }
 }

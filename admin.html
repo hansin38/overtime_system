@@ -41,6 +41,7 @@
             <button id="tab-leave-admin" class="tab-btn" onclick="switchAdminTab('leave')">🏖️ 연차 관리</button>
             <button id="tab-pay-admin" class="tab-btn" onclick="switchAdminTab('pay')">💵 급여 관리</button>
             <button id="tab-staff-admin" class="tab-btn" onclick="switchAdminTab('staff')">👥 직원 관리</button>
+            <button id="tab-assoc-admin" class="tab-btn" onclick="switchAdminTab('assoc')">🏛 협회 관리</button>
         </div>
 
         <div id="ot-admin-section">
@@ -251,6 +252,60 @@
                 <tbody id="staff-tbody"><tr><td colspan="11" style="color: #888;">불러오는 중...</td></tr></tbody>
             </table></div>
             <div class="staff-foot">줄을 누르면 사원 정보 수정 창이 열려요 · 이름·전화번호는 연장근로·연차 로그인과 연결돼 있어 수정할 수 없어요 · 퇴사자는 삭제 대신 퇴사일을 입력해 주세요</div>
+        </div>
+
+        <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
+        <div id="assoc-admin-section" style="display: none;">
+            <div id="assoc-kpis"></div>
+            <div class="staff-bar">
+                <input id="assoc-search" class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setAssocFilter('q', this.value)">
+                <select id="assoc-assoc" onchange="setAssocFilter('assoc', this.value)"><option value="">전체 협회</option>
+                    <option value="elec">전기기술인협회</option><option value="ict">정보통신공사협회</option><option value="sig">철도신호협회</option>
+                    <option value="eng">엔지니어링협회</option><option value="erail">전기철도협회</option><option value="drive">철도운전협회</option></select>
+                <select id="assoc-due" onchange="setAssocFilter('due', this.value)"><option value="">교육 전체</option>
+                    <option value="over">기한 지남</option><option value="soon">기한 임박 (90일 이내 · 지남 포함)</option><option value="need">신청 필요</option></select>
+                <span class="sub" id="assoc-count"></span>
+                <div class="staff-actions">
+                    <button class="pay-btn" onclick="openAssocImport()">📤 직원명단 엑셀에서 가져오기</button>
+                    <button class="pay-btn" onclick="downloadAssocExcel()">⬇ 엑셀 받기</button>
+                    <button class="pay-btn blue" onclick="openAssocModal()">＋ 기술자 추가</button>
+                </div>
+            </div>
+            <div class="staff-wrap"><table class="staff-tbl as-tbl">
+                <thead><tr id="assoc-head"></tr></thead>
+                <tbody id="assoc-tbody"><tr><td colspan="9" style="color: #888;">불러오는 중...</td></tr></tbody>
+            </table></div>
+            <div class="staff-foot">줄을 누르면 수정 창이 열려요 · 다음 기한이 지났으면 빨강, 90일 이내면 주황 · 협회 명단은 직원 관리(사원정보)와 별개라 퇴사자·임원도 그대로 관리돼요</div>
+        </div>
+    </div>
+
+    <!-- 🏛 [협회 기술자 수정] -->
+    <div id="assoc-modal" class="pay-modal-bg" onclick="if (event.target === this) closeAssocModal()">
+        <div class="pay-modal wide">
+            <div class="mh"><b id="assoc-modal-title">기술자 정보</b><button class="pay-btn ghost" onclick="closeAssocModal()">✕</button></div>
+            <div id="assoc-modal-body"></div>
+            <div class="pay-modal-foot">
+                <button id="assoc-del-btn" class="pay-btn ghost" style="margin-right: auto; color: var(--danger-color);" onclick="deleteAssocMember()">명단에서 삭제</button>
+                <button class="pay-btn" onclick="closeAssocModal()">취소</button>
+                <button class="pay-btn blue" onclick="saveAssocMember()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🏛 [직원명단 엑셀에서 가져오기] 교육이수현황·교육신청현황 시트의 사람 전원 (주민번호·주소·비밀번호 칸은 안 읽음) -->
+    <div id="assoc-imp-modal" class="pay-modal-bg" onclick="if (event.target === this) closeAssocImport()">
+        <div class="pay-modal wide">
+            <div class="mh"><b>📤 직원명단 엑셀에서 가져오기</b><button class="pay-btn ghost" onclick="closeAssocImport()">✕</button></div>
+            <label class="pay-drop">
+                직원명단.xlsx 를 선택하세요
+                <small>교육이수현황 · 교육신청현황 시트의 사람 전원 · 직위·부서·입사일·연락처는 1기본정보, 등급·분야는 2경력,학력에서 · 주민번호(생년월일만)·주소·비밀번호는 읽지 않아요</small>
+                <input type="file" id="assoc-imp-file" accept=".xls,.xlsx" onchange="onAssocImportFile(this)">
+            </label>
+            <div id="assoc-imp-result"></div>
+            <div class="pay-modal-foot">
+                <button class="pay-btn" onclick="closeAssocImport()">닫기</button>
+                <button id="assoc-imp-save" class="pay-btn blue" onclick="saveAssocImport()" disabled>저장</button>
+            </div>
         </div>
     </div>
 
@@ -555,5 +610,6 @@
     <script src="js/payroll-import.js"></script>
     <script src="js/payroll-slip.js"></script>
     <script src="js/staff-admin.js"></script>
+    <script src="js/assoc-admin.js"></script>
 </body>
 </html>

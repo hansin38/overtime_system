@@ -592,3 +592,28 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .staff-tbl tr.picked td { background: #fff5f5; }
 .staff-seldel:not(:disabled) { color: var(--danger-color); border-color: #ffc9c9; }
 .staff-seldel:disabled { opacity: .45; cursor: default; }
+
+/* 🏛 협회 관리 */
+.as-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 10px; }
+.as-kpi-row.small { grid-template-columns: repeat(4, 1fr); margin-bottom: 18px; }
+.as-kpi-row .staff-kpi { padding: 10px 14px; }
+.as-kpi-row .staff-kpi b { font-size: 19px; }
+.staff-kpi.on { border-color: var(--pay-blue); background: var(--pay-blue-bg); }
+.staff-kpi.bad { border-color: #ffa8a8; background: #fff5f5; } .staff-kpi.bad b { color: #e03131; }
+.as-tbl td { vertical-align: middle; }
+.as-assoc { display: inline-block; font-size: 11.5px; font-weight: bold; border-radius: 10px; padding: 1px 8px; margin: 1px 3px 1px 0; }
+.as-elec { background: #fff4e6; color: #d9480f; } .as-ict { background: #e7f5ff; color: #1971c2; } .as-sig { background: #f3f0ff; color: #6741d9; }
+.as-eng { background: #ebfbee; color: #2b8a3e; } .as-erail { background: #fff9db; color: #e67700; } .as-drive { background: #f1f3f5; color: #495057; }
+.as-edu { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12px; margin: 2px 0; white-space: nowrap; }
+.as-st { font-size: 11px; font-weight: bold; border-radius: 8px; padding: 0 6px; }
+.as-st.ok { background: #ebfbee; color: #2b8a3e; } .as-st.blue { background: #e7f5ff; color: #1971c2; } .as-st.gray { background: #f1f3f5; color: #868e96; } .as-st.bad { background: #fff5f5; color: #e03131; }
+.as-dt { color: #555; }
+.as-next { color: #868e96; } .as-next.soon { color: #e8590c; font-weight: bold; } .as-next.over { color: #e03131; font-weight: bold; }
+.as-due { font-weight: bold; } .as-due.soon { color: #e8590c; } .as-due.over { color: #e03131; } .as-due.ok { color: #333; }
+.as-sub { display: block; color: #999; font-size: 11px; }
+.as-assoc-picks { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.as-edu-tbl { width: 100%; margin: 8px 0 0; table-layout: auto; }
+.as-edu-tbl th, .as-edu-tbl td { border: 0; border-bottom: 1px solid #eee; padding: 4px; font-size: 12.5px; }
+.as-edu-tbl input, .as-edu-tbl select { width: 100%; height: 30px; margin: 0; padding: 0 6px; border: 1px solid #ccc; border-radius: 5px; font-size: 12.5px; box-sizing: border-box; }
+.as-memo { width: 100%; min-height: 60px; margin: 8px 0 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; box-sizing: border-box; font-family: inherit; }
+@media (max-width: 900px) { .as-kpi-row { grid-template-columns: repeat(3, 1fr); } .as-kpi-row.small { grid-template-columns: 1fr 1fr; } }
