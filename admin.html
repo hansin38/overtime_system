@@ -123,13 +123,20 @@
 
         <!-- 🏖️ 연차 관리 (서명은 결재자가 링크로 진행, 관리자는 연차 갯수 관리·사용촉진용) -->
         <div id="leave-admin-section" style="display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-                <h3 style="margin: 0;">📊 전 직원 연차 현황</h3>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-weight: bold; font-size: 14px;">연도:</span>
-                    <select id="leave-year-select" onchange="loadLeaveAdmin()" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; height: 34px;"></select>
-                </div>
+            <!-- 🔍 연도 · 직원명 · 상태 (고르면 바로 적용, 직원명은 위 현황표·아래 신청 내역 둘 다 / 상태는 신청 내역만) -->
+            <div class="lv-filter">
+                <label><span>연도:</span><select id="leave-year-select" onchange="loadLeaveAdmin()"></select></label>
+                <label><span>직원명:</span><select id="leave-search-name" onchange="applyLeaveFilters()"><option value="">전체</option></select></label>
+                <label><span>상태:</span><select id="leave-search-status" onchange="applyLeaveFilters()">
+                    <option value="">전체</option>
+                    <option value="대기">대기 (재전송 포함)</option>
+                    <option value="승인">승인</option>
+                    <option value="반려">반려</option>
+                    <option value="승인취소">승인취소</option>
+                </select></label>
+                <button type="button" class="btn-batch-delete" onclick="resetLeaveFilters()">초기화</button>
             </div>
+            <h3 style="margin: 0 0 10px; text-align: left;">📊 전 직원 연차 현황</h3>
             <small style="color: #888;">년차·월차만 집계합니다 (여름휴가·경조사·기타 제외). 잔여가 많은 순으로 정렬되며, 하반기 사용촉진 대상 확인용입니다.</small>
             <table style="margin-top: 10px;">
                 <thead>

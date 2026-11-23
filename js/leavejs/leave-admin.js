@@ -17,6 +17,10 @@ const LV_IMPORT_COLS = [
 ];
 const LV_TYPE_BY_LABEL = { '년차': 'annual', '연차': 'annual', '월차': 'monthly', '여름휴가': 'summer', '하계휴가': 'summer', '경조사': 'family', '경조': 'family', '기타': 'etc' };
 
+// 연차신청서를 받지 않는 임원 직위 (샘플 양식 '사원 목록'에서 뺌, 부장 이하만 표시)
+const LV_EXEC_POSITIONS = ['회장', '대표', '사장', '부사장', '전무', '상무', '이사', '감사', '고문'];
+function lvIsExec(e) { return LV_EXEC_POSITIONS.some(p => String(e.position || '').includes(p)); }
+
 let lvImport = { employees: [], rows: [] };
 
 function lvEsc(s) { return String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
@@ -26,7 +30,7 @@ function lvEsc(s) { return String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&am
 // ------------------------------------------
 function downloadLeaveImportSample() {
     db.collection("employees").get().then(snap => {
-        const emps = snap.docs.map(d => d.data()).filter(e => e.name)
+        const emps = snap.docs.map(d => d.data()).filter(e => e.name && !e.resignDate && !lvIsExec(e))
             .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
         const wb = XLSX.utils.book_new();
 
@@ -58,9 +62,9 @@ function downloadLeaveImportSample() {
         g['!cols'] = [{ wch: 14 }, { wch: 8 }, { wch: 70 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 12 }];
         XLSX.utils.book_append_sheet(wb, g, '작성 안내');
 
-        const list = XLSX.utils.aoa_to_sheet([['이름', '전화뒷4자리', '소속', '직위', '입사일', '퇴사일'],
-            ...emps.map(e => [e.name, e.phoneLast4 || '', e.department || '', e.position || '', e.hireDate || '', e.resignDate || ''])]);
-        list['!cols'] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
+        const list = XLSX.utils.aoa_to_sheet([['이름', '전화뒷4자리', '소속', '직위', '입사일'],
+            ...emps.map(e => [e.name, e.phoneLast4 || '', e.department || '', e.position || '', e.hireDate || ''])]);
+        list['!cols'] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 12 }];
         XLSX.utils.book_append_sheet(wb, list, '사원 목록');
 
         XLSX.writeFile(wb, '이전연차내역_등록양식.xlsx');

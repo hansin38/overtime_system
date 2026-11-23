@@ -442,6 +442,12 @@ table.pay-hist th { background: #f8f9fa; }
 }
 
 /* 🏖️ 이전 연차 내역 올리기 (검수표 · 올린 묶음) */
+/* 🏖️ 연차 관리 검색 칸 (연장근로 결재 센터 검색 칸과 같은 모양) */
+.lv-filter { background: #fff; padding: 20px; border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 30px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.lv-filter label { display: flex; align-items: center; gap: 10px; margin: 0; }
+.lv-filter label span { font-weight: bold; font-size: 14px; color: #333; }
+.lv-filter select { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 120px; height: 34px; cursor: pointer; background: #fff; margin: 0; }
+.lv-filter .btn-batch-delete { margin: 0 0 0 auto; height: 34px; padding: 0 16px; font-size: 13px; line-height: 32px; width: auto; }
 .lvimp-link { text-align: right; margin-top: 24px; font-size: 12px; }
 .lvimp-link a { color: #999; text-decoration: none; }
 .lvimp-link a:hover { color: #555; text-decoration: underline; }

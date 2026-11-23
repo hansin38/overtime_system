@@ -436,6 +436,7 @@ function calculateOvertimePay(detailLogs, hourlyWage = 10000, limits = FIX_OT_LI
 // ==========================================
 let leaveAdminRequests = []; // 전체 연차 신청 [{ id, data }]
 let leaveAdminLoaded = false;
+let leaveAdminEmployees = []; // 사원정보 (연차 현황표·직원명 목록용)
 
 function switchAdminTab(tab) {
     const isLeave = tab === 'leave';
@@ -463,21 +464,46 @@ function initLeaveYearSelect() {
 }
 
 function loadLeaveAdmin() {
-    const year = Number(document.getElementById('leave-year-select').value);
     Promise.all([db.collection("employees").get(), db.collection("leave_requests").get()])
         .then(([empSnap, reqSnap]) => {
             leaveAdminRequests = reqSnap.docs.map(doc => ({ id: doc.id, data: doc.data() }));
-            renderLeaveSummary(year, empSnap.docs.map(doc => doc.data()));
-            renderLeaveRequestList(year);
+            leaveAdminEmployees = empSnap.docs.map(doc => doc.data());
+            fillLeaveNameOptions();
+            applyLeaveFilters();
         })
         .catch(err => console.error("연차 관리 데이터 로드 실패:", err));
+}
+
+// 🔍 직원명 목록: 사원정보 + 신청 내역에만 있는 이름 (가나다순), 고른 값은 다시 불러와도 유지
+function fillLeaveNameOptions() {
+    const sel = document.getElementById('leave-search-name');
+    if (!sel) return;
+    const keep = sel.value;
+    const names = [...new Set(leaveAdminEmployees.map(e => e.name).concat(leaveAdminRequests.map(r => r.data.employeeName)).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'ko'));
+    sel.innerHTML = `<option value="">전체</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    sel.value = names.includes(keep) ? keep : '';
+}
+
+// 연도·직원명·상태 적용 (다시 불러오지 않고 받아 둔 자료로 다시 그림)
+function applyLeaveFilters() {
+    const year = Number(document.getElementById('leave-year-select').value);
+    renderLeaveSummary(year, leaveAdminEmployees);
+    renderLeaveRequestList(year);
+}
+
+function resetLeaveFilters() {
+    document.getElementById('leave-search-name').value = '';
+    document.getElementById('leave-search-status').value = '';
+    applyLeaveFilters();
 }
 
 // 사원별 발생/사용/대기/잔여 (잔여 많은 순 → 사용촉진 대상이 위로)
 function renderLeaveSummary(year, employees) {
     const tbody = document.getElementById('leave-summary-tbody');
     if (!tbody) return;
-    const rows = employees.map(emp => {
+    const pickName = document.getElementById('leave-search-name')?.value || '';
+    const rows = employees.filter(emp => !pickName || emp.name === pickName).map(emp => {
         let used = 0, pending = 0;
         leaveAdminRequests.forEach(({ data }) => {
             if (data.employeeName !== emp.name || data.employeePhone !== emp.phoneLast4) return;
@@ -491,7 +517,7 @@ function renderLeaveSummary(year, employees) {
     }).sort((a, b) => b.remaining - a.remaining);
 
     if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">등록된 사원이 없습니다.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${pickName ? `${pickName} 님은 사원정보에 없습니다.` : '등록된 사원이 없습니다.'}</td></tr>`;
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -524,12 +550,17 @@ function leaveSignStatusHtml(data) {
 function renderLeaveRequestList(year) {
     const tbody = document.getElementById('leave-admin-tbody');
     if (!tbody) return;
+    const pickName = document.getElementById('leave-search-name')?.value || '';
+    const pickStatus = document.getElementById('leave-search-status')?.value || '';
+    const statusOk = s => !pickStatus || s === pickStatus || (pickStatus === "대기" && s === "재전송");
     const list = leaveAdminRequests
         .filter(({ data }) => data.fiscalYear === year && data.status !== "작성") // 회수(작성) 건 제외
+        .filter(({ data }) => (!pickName || data.employeeName === pickName) && statusOk(data.status))
         .sort((a, b) => (b.data.submittedAt?.toMillis?.() || 0) - (a.data.submittedAt?.toMillis?.() || 0));
 
     if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년 연차 신청 내역이 없습니다.</td></tr>`;
+        const cond = [pickName, pickStatus && `'${pickStatus}'`].filter(Boolean).join(' · ');
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년${cond ? ` ${cond}` : ''} 연차 신청 내역이 없습니다.</td></tr>`;
         return;
     }
     const statusColors = { "승인": "var(--success-color)", "반려": "var(--danger-color)", "승인취소": "var(--danger-color)", "대기": "#f39c12", "재전송": "#3498db" };
