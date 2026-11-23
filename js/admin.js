@@ -550,6 +550,14 @@ function renderLeaveSummary(year, employees) {
 // 결재 칸 표시 (표 머리글 순서: 과장 / 전무)
 function leaveSignStatusHtml(data) {
     if (data.imported) return '<span style="color: #888;">📁 이전 자료</span>';   // 엑셀로 올린 이전 내역 (종이 결재)
+    if (data.adminApproval) {   // 관리자 대결: 서명된 칸은 그대로, 부재 결재자 한 칸(전무 우선)만 '관리자'
+        const adminSlot = adminApprovalSlot(data.signatures);
+        return ['manager', 'director'].map(slot => {
+            const s = data.signatures && data.signatures[slot];
+            if (s) return `✅ ${signatureDateText(s)}`;
+            return slot === adminSlot ? `<span style="color: #2b8a3e;" title="${(data.adminApproval.reason || '').replace(/"/g, '&quot;')}">🛡️ 관리자</span>` : '⬜';
+        }).join(' / ');
+    }
     return ['manager', 'director'].map(slot => {
         const s = data.signatures && data.signatures[slot];
         return s ? `✅ ${signatureDateText(s)}` : '⬜';
@@ -596,11 +604,12 @@ function renderLeaveRequestList(year) {
             <td>${formatDays(data.totalDays || 0)}일</td>
             <td>${leaveSignStatusHtml(data)}</td>
             <td><span class="status-badge" style="color: ${statusColors[data.status] || '#888'};">${data.status}</span></td>
-            <td style="white-space: nowrap;">
+            <td><div style="display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;">
                 <button onclick="viewLeaveDetail('${id}')" class="btn-batch-delete" style="${btnStyle}">상세보기</button>
+                ${canReject ? `<button onclick="adminApproveLeave('${id}')" class="btn-batch-delete" style="${btnStyle} color: var(--success-color); border-color: var(--success-color);" title="결재자 부재 시 관리자가 대신 승인">관리자 승인</button>` : ''}
                 ${canReject ? `<button onclick="rejectLeaveRequest('${id}')" class="btn-batch-delete" style="${dangerStyle}">반려</button>` : ''}
                 ${data.status === "승인" ? `<button onclick="cancelLeaveApproval('${id}')" class="btn-batch-delete" style="${dangerStyle}">승인취소</button>` : ''}
-            </td>
+            </div></td>
         </tr>`;
     }).join('');
 }
@@ -612,6 +621,7 @@ function viewLeaveDetail(docId) {
     const sameEmployee = leaveAdminRequests.filter(r => r.data.employeeName === d.employeeName && r.data.employeePhone === d.employeePhone);
     document.getElementById('leave-detail-sheet').innerHTML = renderLeaveSheetHtml(d, sameEmployee);
     const extra = [];
+    if (d.adminApproval) extra.push(`<div><b>관리자 승인(대결):</b> ${d.adminApproval.reason || ''} (${d.adminApproval.at?.toDate ? d.adminApproval.at.toDate().toLocaleString() : ''}${d.adminApproval.by ? ` · ${d.adminApproval.by}` : ''})</div>`);
     if (d.rejectReason) extra.push(`<div><b>반려 사유:</b> ${d.rejectReason}</div>`);
     if (d.cancelReason) extra.push(`<div><b>승인취소 사유:</b> ${d.cancelReason} (${d.canceledAt ? d.canceledAt.toDate().toLocaleString() : ''})</div>`);
     document.getElementById('leave-detail-extra').innerHTML = extra.join('');
@@ -620,6 +630,27 @@ function viewLeaveDetail(docId) {
 
 function closeLeaveDetail() {
     document.getElementById('leave-detail-modal').style.display = 'none';
+}
+
+// 관리자 승인(대결): 결재자(전무 등) 부재 시 관리자가 사유를 적고 대신 승인 - 본인이 본인 신청서에 서명하지 않도록
+// 결재칸의 빈 칸에는 '관리자 승인'으로 표시, 사유·시각·관리자 계정 기록, 보낸 서명 링크는 무효화
+function adminApproveLeave(docId) {
+    const req = leaveAdminRequests.find(r => r.id === docId);
+    if (!req) return;
+    const d = req.data;
+    const reason = prompt(`${d.employeeName} 님 ${leaveTypeLabel(d)} ${formatDays(d.totalDays || 0)}일 (${periodSummary(d)})\n관리자가 대신 승인합니다. 사유를 입력하세요:`, "결재자 부재로 관리자 승인");
+    if (reason === null) return;
+    db.collection("leave_requests").doc(docId).update({
+        status: "승인",
+        adminApproval: {
+            reason: reason.trim() || "관리자 대결",
+            by: (auth.currentUser && auth.currentUser.email) || "",
+            at: firebase.firestore.FieldValue.serverTimestamp()
+        },
+        approvedAt: d.approvedAt || firebase.firestore.FieldValue.serverTimestamp(),
+        signLink: firebase.firestore.FieldValue.delete()
+    }).then(() => { alert("관리자 승인되었습니다."); loadLeaveAdmin(); })
+      .catch(err => { console.error("관리자 승인 실패:", err); alert("승인 중 오류가 발생했습니다."); });
 }
 
 // 반려: 서명 전(대기·재전송) 신청만 가능 → 사원이 재작성 가능

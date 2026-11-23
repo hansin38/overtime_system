@@ -553,7 +553,7 @@ function showLeaveDetail(data, docId, mode) {
 
     // 제출된 신청서는 결재란(서명 이미지 포함)을 위에 표시
     const approvalHtml = data.status
-        ? `<div class="lp-sheet" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">${renderApprovalTableHtml(data.signatures, false, data.imported)}</div>`
+        ? `<div class="lp-sheet" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">${renderApprovalTableHtml(data.signatures, false, approvalMark(data))}</div>`
         : '';
 
     detailBox.innerHTML = `
@@ -564,7 +564,7 @@ function showLeaveDetail(data, docId, mode) {
             <tr><th>사유</th><td colspan="3">${data.reason || '-'}</td></tr>
             <tr><th>비상연락처</th><td colspan="3">${data.emergencyContact || '-'}</td></tr>
             ${data.status ? `<tr><th>상태</th><td colspan="3">${renderStatusBadge(data.status)}</td></tr>` : ''}
-            ${data.status ? `<tr><th>결재</th><td colspan="3">${data.imported ? '이전 자료 (종이 결재)' : Object.keys(SIGN_SLOTS).map(slot =>
+            ${data.status ? `<tr><th>결재</th><td colspan="3">${data.imported ? '이전 자료 (종이 결재)' : data.adminApproval ? `관리자 승인 (${data.adminApproval.reason || '대결'})` : Object.keys(SIGN_SLOTS).map(slot =>
                 `${SIGN_SLOTS[slot].replace(' ', '')} ${data.signatures && data.signatures[slot] ? '✅ 서명 완료' : '⬜ 미서명'}`).join('　')}</td></tr>` : ''}
             ${data.rejectReason ? `<tr><th>반려 사유</th><td colspan="3">${data.rejectReason}</td></tr>` : ''}
             ${data.cancelReason ? `<tr><th>승인취소 사유</th><td colspan="3">${data.cancelReason}</td></tr>` : ''}
@@ -822,6 +822,7 @@ function copyCheckedSignLink(anchorEl) {
     const d = req.data;
     if (!ACTIVE_STATUSES.includes(d.status)) { alert("대기 중인 신청서만 결재를 요청할 수 있습니다."); return; }
     if (d.imported) { alert("관리자가 등록한 이전 자료는 결재 요청이 필요 없습니다."); return; }
+    if (d.adminApproval) { alert("관리자가 승인한 신청서라 결재 요청이 필요 없습니다."); return; }
     if (Object.keys(SIGN_SLOTS).every(slot => d.signatures && d.signatures[slot])) { alert("결재 서명이 모두 완료된 신청서입니다."); return; }
     copyLinkText(createSignLink(docId, d), anchorEl);
 }

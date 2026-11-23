@@ -186,13 +186,28 @@ function signatureDateText(sign) {
 }
 
 // 결재란 표 (휴가신청서·작성자 화면 공용)
-// imported: 관리자가 엑셀로 올린 이전 자료 → 빈 서명칸에 '이전 자료' 표시
-function renderApprovalTableHtml(signatures, signable, imported = false) {
+// 빈 서명칸 표시: 엑셀로 올린 이전 자료 → '이전 자료' / 관리자 대결 승인 → '관리자 승인'
+function approvalMark(data) {
+    if (!data) return '';
+    if (data.imported) return '이전 자료';
+    if (data.adminApproval) return '관리자<br>승인';
+    return '';
+}
+// 관리자 대결 승인은 부재한 결재자 한 칸에만 표시 (전무 칸 우선, 이미 서명돼 있으면 빈 칸)
+function adminApprovalSlot(signatures) {
     const signs = signatures || {};
+    return Object.keys(SIGN_SLOTS).find(slot => !(signs[slot] && signs[slot].img)) || '';
+}
+// mark: approvalMark(data) 값 (예전 호출처럼 true를 넘기면 '이전 자료')
+function renderApprovalTableHtml(signatures, signable, mark = '') {
+    const signs = signatures || {};
+    if (mark === true) mark = '이전 자료';
+    const adminSlot = mark && mark.startsWith('관리자') ? adminApprovalSlot(signs) : '';
     const signCells = Object.keys(SIGN_SLOTS).map(slot => {
         const sign = signs[slot];
         if (sign && sign.img) return `<td><img src="${sign.img}" alt="서명"></td>`;
-        if (imported) return `<td style="color: #888; font-size: 11px;">이전 자료</td>`;
+        if (mark && (!adminSlot || slot === adminSlot)) return `<td style="color: ${adminSlot ? '#2b8a3e' : '#888'}; font-size: 11px;">${mark}</td>`;
+        if (adminSlot) return `<td></td>`;
         if (signable) return `<td class="lp-sign-target" onclick="openSignPad('${slot}')">👉 여기를 눌러<br>서명하세요</td>`;
         return `<td></td>`;
     }).join('');
@@ -239,7 +254,7 @@ function renderLeaveSheetHtml(data, requests, options = {}) {
 
             <div class="lp-approval-row">
                 <p>아래와 같은 사유로 휴가신청서를 제출합니다.</p>
-                ${renderApprovalTableHtml(data.signatures, options.signable, data.imported)}
+                ${renderApprovalTableHtml(data.signatures, options.signable, approvalMark(data))}
             </div>
 
             <table class="lp-main">
