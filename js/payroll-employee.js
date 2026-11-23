@@ -72,9 +72,10 @@ function renderPayInfoPane() {
                 ])}</div>
             </div>
         </div>
-        <div style="display: flex; gap: 6px; justify-content: flex-end;">
-            <button class="pay-btn" style="color: var(--danger-color);" onclick="deletePayEmployee('${e.id}')">삭제</button>
-            <button class="pay-btn blue" onclick="openPayEmpModal('${e.id}')">정보 수정</button>
+        <!-- 급여 관리는 보기만 · 등록·수정·삭제는 👥 직원 관리 탭에서 (사용자 결정 2026-11-23) -->
+        <div class="pay-view-only">
+            <span>👁 보기 전용 · 사원 정보 등록·수정·삭제는 직원 관리 탭에서 해요</span>
+            <a href="#" onclick="editInStaffTab('${e.id}'); return false;">👥 직원 관리에서 수정 →</a>
         </div>`;
 }
 

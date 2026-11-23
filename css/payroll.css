@@ -558,3 +558,7 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 @media (max-width: 900px) { .staff-kpis { grid-template-columns: 1fr 1fr; } .staff-actions { margin-left: 0; } }
 .staff-tbl th .arr { color: #adb5bd; font-size: 12px; }   /* 정렬 가능 표시 ↕ · 지금 정렬 중인 칸은 ▲▼ 진하게 */
 .staff-tbl th .arr.on { color: #212529; }
+/* 급여 관리 사원 정보: 보기 전용 안내 + 직원 관리로 가는 링크 */
+.pay-view-only { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #f8f9fa; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; color: #868e96; }
+.pay-view-only a { color: var(--pay-blue); font-weight: bold; text-decoration: none; white-space: nowrap; }
+.pay-view-only a:hover { text-decoration: underline; }

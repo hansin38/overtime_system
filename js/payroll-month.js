@@ -158,7 +158,7 @@ function renderPayMain() {
     const box = document.getElementById('pay-main');
     const e = emp(P.selectedId);
     if (!e) {
-        box.innerHTML = `<div class="pay-empty">왼쪽에서 사원을 선택하거나 [＋ 사원등록]으로 사원을 추가해 주세요.</div>`;
+        box.innerHTML = `<div class="pay-empty">왼쪽에서 사원을 선택해 주세요.<br><small>사원 추가는 👥 직원 관리 탭의 [＋ 사원등록]에서 해요.</small></div>`;
         return;
     }
     const profile = profFor(e.id, P.month);

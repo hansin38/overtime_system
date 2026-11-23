@@ -31,6 +31,12 @@ function openStaffTab() {
     loadPayrollData();   // 끝나면 renderStaffTable() 호출됨
 }
 
+// 급여 관리(보기 전용)의 '직원 관리에서 수정' → 직원 관리 탭으로 옮겨서 그 사람 수정 창 열기
+function editInStaffTab(empId) {
+    switchAdminTab('staff');
+    openPayEmpModal(empId);
+}
+
 function setStaffState(v) {
     STAFF.state = v;
     document.querySelectorAll('#staff-state button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
