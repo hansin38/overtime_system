@@ -667,6 +667,30 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .as-more-menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.12); padding: 4px; z-index: 20; min-width: 220px; }
 .as-more-menu button { display: block; width: 100%; margin: 0; text-align: left; background: none; border: 0; color: #333; padding: 8px 10px; font-size: 13px; border-radius: 6px; cursor: pointer; font-weight: normal; }
 .as-more-menu button:hover { background: #f1f3f5; }
+/* 📌 할 일 탭 (문장형 카드) */
+.as-guide { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; margin-bottom: 14px; font-size: 13px; }
+.as-guide-h { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; cursor: pointer; }
+.as-guide-t::after { content: '접기 ▲'; color: #1c64d9; font-size: 12px; }
+.as-guide.closed .as-guide-t::after { content: '펼치기 ▼'; }
+.as-guide-b { padding: 0 16px 12px; line-height: 1.85; color: #333; }
+.as-guide.closed .as-guide-b { display: none; }
+.as-guide-b small { color: #868e96; }
+.as-lg { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; font-size: 12.5px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: #adb5bd; }
+.now .dot { background: #e03131; } .jan .dot { background: #1c64d9; } .any .dot { background: #868e96; } .done .dot { background: #74c0fc; }
+.as-todo-grp { display: flex; align-items: baseline; gap: 8px; font-weight: bold; font-size: 15px; margin: 22px 0 10px; }
+.as-todo-grp .dot { align-self: center; }
+.as-todo-grp b { font-size: 13px; color: #495057; }
+.as-todo-grp small { font-weight: normal; color: #868e96; font-size: 12px; }
+.as-todo { border: 1px solid #e3e6ea; border-left: 4px solid #adb5bd; border-radius: 8px; padding: 11px 16px; margin-bottom: 8px; line-height: 1.75; cursor: pointer; background: #fff; }
+.as-todo:hover { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.as-todo.now { border-left-color: #e03131; background: #fffafa; } .as-todo.jan { border-left-color: #1c64d9; } .as-todo.any { border-left-color: #868e96; }
+.as-todo.done { border-left-color: #74c0fc; background: #f8fbff; color: #495057; }
+.as-todo .who { font-weight: bold; font-size: 14px; }
+.as-todo .who small { font-weight: normal; color: #868e96; font-size: 12px; margin-left: 8px; }
+.as-todo .what { font-size: 13.5px; }
+.as-todo .what b { color: #1c64d9; } .as-todo.now .what b { color: #e03131; } .as-todo.any .what b { color: #333; }
+.as-todo .why { font-size: 12.5px; color: #868e96; }
 /* 협회별 탭: 협회 카드 → 협회 표 */
 .as-agrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 18px; }
 .as-acard2 { border: 1px solid #e3e6ea; border-radius: 10px; padding: 10px 12px; cursor: pointer; background: #fff; }

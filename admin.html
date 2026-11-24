@@ -257,11 +257,11 @@
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
         <div id="assoc-admin-section" style="display: none;">
             <div class="lv-subtabs">
-                <button type="button" id="as-subtab-list" class="on" onclick="switchAssocSubTab('list')">📋 기술자 명단</button>
-                <button type="button" id="as-subtab-byassoc" onclick="switchAssocSubTab('byassoc')">🏛 협회별</button>
-                <button type="button" id="as-subtab-apply" onclick="switchAssocSubTab('apply')">📅 교육 신청 <span id="as-apply-count" class="as-tab-n"></span></button>
+                <button type="button" id="as-subtab-apply" class="on" onclick="switchAssocSubTab('apply')">📌 할 일 <span id="as-apply-count" class="as-tab-n"></span></button>
+                <button type="button" id="as-subtab-byassoc" onclick="switchAssocSubTab('byassoc')">🏛 협회별 현황</button>
+                <button type="button" id="as-subtab-list" onclick="switchAssocSubTab('list')">📋 전체 명단</button>
             </div>
-            <div id="assoc-list-pane">
+            <div id="assoc-list-pane" style="display: none;">
             <div id="assoc-kpis"></div>
             <div class="staff-bar">
                 <input id="assoc-search" class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setAssocFilter('q', this.value)">
@@ -283,16 +283,24 @@
             </div>
             <!-- 🏛 협회별 (협회 카드 → 그 협회 사람·과정 칸만 있는 표) -->
             <div id="assoc-byassoc-pane" style="display: none;"><div id="assoc-byassoc-body"></div></div>
-            <!-- 📅 교육 신청 (협회별 → 과정별 → 신청할 사람) -->
-            <div id="assoc-apply-pane" style="display: none;">
+            <!-- 📌 할 일 (신청해야 할 교육을 문장으로 · 처음 보는 사람도 그대로 정리할 수 있게) -->
+            <div id="assoc-apply-pane">
+                <div id="assoc-guide" class="as-guide">
+                    <div class="as-guide-h" onclick="toggleAssocGuide()"><b>ℹ️ 이 페이지 보는 법</b><span class="as-guide-t"></span></div>
+                    <div class="as-guide-b">
+                        · <b>전기기술인협회 · 정보통신공사협회</b> (설계 · 감리 교육): 매년 <b>1월에 한 번</b> 1년치를 몰아서 신청해요.<br>
+                        · <b>그 외 협회</b> (정기교육): 유효기간이 끝나기 <b>6개월 전까지</b> 아무 때나 신청해요.<br>
+                        · 교육은 끝난 날부터 <b>3년(-1일)</b> 동안 유효해요. 예) 2024년 2월 23일에 끝났으면 2027년 2월 22일까지.<br>
+                        <span class="as-lg now"><i class="dot"></i>지금 바로 신청</span><span class="as-lg jan"><i class="dot"></i>1월 접수 때 신청</span><span class="as-lg any"><i class="dot"></i>날짜 전까지 신청</span><span class="as-lg done"><i class="dot"></i>이미 신청함</span>
+                        <br><small>카드를 누르면 그 사람 정보를 고칠 수 있어요. 교육을 받으면 수정 창에서 날짜를 넣으면 이 목록에서 빠져요.</small>
+                    </div>
+                </div>
                 <div class="staff-bar">
                     <select id="assoc-apply-year" onchange="renderAssocApply()"></select>
-                    <span class="sub">그 해에 신청해야 할 교육만 보여요 · 이름을 누르면 수정 창</span>
-                    <div class="staff-actions"><button class="pay-btn" onclick="downloadAssocApplyExcel()">⬇ 엑셀 받기</button></div>
+                    <span class="sub">고른 해에 신청할 교육 (지금 바로 신청할 건 항상 보여요)</span>
+                    <div class="staff-actions"><button class="pay-btn blue" onclick="downloadAssocApplyExcel()">⬇ 신청 명단 엑셀</button></div>
                 </div>
-                <div id="assoc-apply-sum" class="as-apply-sum"></div>
                 <div id="assoc-apply-cards"></div>
-                <div class="staff-foot">설계 1·2 · 감리 1·2 (전기기술인협회 · 정보통신공사협회) = 유효기간 만료 6개월 전이 속한 해의 1월 일괄 접수, 교육은 그 해 1월 ~ 만료 6개월 전 달(이미 지났으면 1월 ~ 만료 달) · 그 외 협회 = 만료 6개월 전까지 수시 신청 · 빨강 = 무효이거나 접수 시기를 놓침 · 파랑 = 신청완료</div>
             </div>
         </div>
     </div>

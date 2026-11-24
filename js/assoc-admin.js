@@ -201,7 +201,7 @@ function openAssocTab() {
         AS.members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         AS.loaded = true;
         renderAssoc();
-        switchAssocSubTab(AS.subTab || localStorage.getItem('assocSubTab') || 'list');
+        switchAssocSubTab(AS.subTab || localStorage.getItem('assocSubTab') || 'apply');
     }).catch(err => {
         console.error('협회 명단 불러오기 실패:', err);
         document.getElementById('assoc-tbody').innerHTML = `<tr><td colspan="5" style="color: var(--danger-color);">협회 명단을 불러오지 못했어요.${err && err.code === 'permission-denied' ? '<br><small>Firebase 콘솔 > Firestore > 규칙에 association_members 규칙을 게시했는지 확인해 주세요.</small>' : ''}</td></tr>`;
@@ -323,9 +323,9 @@ function assocApplyItems(year) {
     }));
     return items;
 }
-// 작은 탭 3개: 기술자 명단(list) · 협회별(byassoc) · 교육 신청(apply) - 새로고침해도 보던 탭 기억
+// 작은 탭 3개: 📌 할 일(apply) · 🏛 협회별 현황(byassoc) · 📋 전체 명단(list) - 새로고침해도 보던 탭 기억
 function switchAssocSubTab(tab) {
-    if (!['list', 'byassoc', 'apply'].includes(tab)) tab = 'list';
+    if (!['list', 'byassoc', 'apply'].includes(tab)) tab = 'apply';
     AS.subTab = tab;
     localStorage.setItem('assocSubTab', tab);
     ['list', 'byassoc', 'apply'].forEach(t => {
@@ -425,57 +425,91 @@ function downloadAssocViewExcel(k) {
     XLSX.writeFile(wb, `${a.label}_${asToday()}.xlsx`);
 }
 
+// 📌 할 일 탭 (문장형): 한 사람 · 한 교육마다 카드 한 장 - "누가 · 무슨 교육 → 언제 신청 · 언제까지 교육"
+// 묶음 순서: 지금 바로 신청 → 그 해 1월 접수 → 날짜 전까지 신청(수시) → 이미 신청함
+const fullDate = (ymd) => ymd ? `${Number(ymd.slice(0, 4))}년 ${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일` : '';
+const monthDay = (ymd) => ymd ? `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일` : '';
+const windowText = (w) => (w || '').replace(/^1월~(\d+)월$/, '1~$1월');   // '1월~2월' → '1~2월'
+function todoGroupOf(i) {
+    if (i.applied) return 'done';
+    if (isUrgent(i)) return 'now';
+    return i.kind === 'jan' ? 'jan' : 'any';
+}
+function todoCardHtml(i) {
+    const m = i.m, course = `${esc(i.assoc)} ${esc(i.label)}`;
+    let what, why;
+    if (i.applied) {
+        const r = eduRecs(m, i.k)[0] || {};
+        const period = r.from ? `${fullDate(r.from)}${r.to && r.to !== r.from ? `~${monthDay(r.to)}` : ''} 교육` : '';
+        what = `${course} → ${esc(r.status || '신청완료')}${period ? ` (${period})` : ''}`;
+        why = i.exp ? `지금 교육은 ${fullDate(i.exp)}까지 유효` : '';
+    } else if (i.kind === 'now') {
+        what = `${course} → <b>지금 바로 신청</b>`;
+        why = `유효기간이 ${fullDate(i.exp)}에 이미 지났어요`;
+    } else if (i.kind === 'missed') {
+        what = `${course} → <b>지금 바로 협회에 추가 접수 확인</b>`;
+        why = `${fullDate(i.exp)}까지 유효 · 1월 접수로는 끝나기 전에 교육을 받기 어려워요`;
+    } else if (i.kind === 'any' && isUrgent(i)) {
+        what = `${course} → <b>지금 바로 신청</b> (신청 권장일 ${monthDay(i.date)} 지남)`;
+        why = `${fullDate(i.exp)}까지 유효 · 끝나기 6개월 전에 신청해 두는 게 좋아요`;
+    } else if (i.kind === 'jan') {
+        what = `${course} → <b>${i.year}년 1월 접수</b>, ${windowText(i.window)} 중 교육 받기`;
+        why = `지금 교육은 ${fullDate(i.exp)}까지 유효`;
+    } else {
+        what = `${course} → <b>${fullDate(i.date)}까지 신청</b>`;
+        why = `지금 교육은 ${fullDate(i.exp)}까지 유효`;
+    }
+    const g = todoGroupOf(i);
+    return `<div class="as-todo ${g}" onclick="openAssocModal('${m.id}')" title="눌러서 수정">
+        <div class="who">${esc(m.name)}<small>${[m.department, m.position].filter(Boolean).map(esc).join(' · ')}</small></div>
+        <div class="what">${what}</div>${why ? `<div class="why">${why}</div>` : ''}</div>`;
+}
+function toggleAssocGuide() {
+    const box = document.getElementById('assoc-guide');
+    const closed = !box.classList.contains('closed');
+    box.classList.toggle('closed', closed);
+    localStorage.setItem('assocGuideClosed', closed ? '1' : '');
+}
 function renderAssocApply() {
     const sel = document.getElementById('assoc-apply-year');
     if (!sel) return;
+    const guide = document.getElementById('assoc-guide');
+    if (guide && !guide.dataset.init) { guide.dataset.init = '1'; guide.classList.toggle('closed', !!localStorage.getItem('assocGuideClosed')); }
     const years = assocApplyYears();
     if (!sel.options.length) sel.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join('');
     const year = Number(sel.value) || years[0];
     const items = assocApplyItems(year);
-    // 탭 이름 옆 숫자: 올해 신청할 건수 (이미 신청한 건 제외)
     const nThis = assocApplyItems(years[0]).filter(i => !i.applied).length;
     document.getElementById('as-apply-count').innerText = nThis ? nThis : '';
-    const urgent = items.filter(isUrgent);
-    const jan = items.filter(i => i.kind === 'jan'), any = items.filter(i => i.kind === 'any' && !isUrgent(i));
-    document.getElementById('assoc-apply-sum').innerHTML = `
-        <div class="bad">지금 바로 신청<b>${urgent.length}건</b></div>
-        <div class="blue">${year}년 1월 일괄 접수<b>${jan.length}건</b></div>
-        <div>수시 신청<b>${any.length}건</b></div>`;
-    // 협회별 → 과정별
-    const byAssoc = {};
-    items.forEach(i => { (byAssoc[i.assoc] = byAssoc[i.assoc] || []).push(i); });
-    const order = ['전기기술인협회', ...ASSOCS.map(a => a.label)];
-    const names = Object.keys(byAssoc).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99) || a.localeCompare(b, 'ko'));
+    const order = { now: 0, missed: 1 };
+    const sortIn = (a, b) => (order[a.kind] ?? 2) - (order[b.kind] ?? 2) || a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko');
+    const groups = [
+        { g: 'now', title: '지금 바로 신청', note: '유효기간이 지났거나 신청 시기를 놓친 교육' },
+        { g: 'jan', title: `${year}년 1월 접수 때 신청`, note: '전기기술인협회 · 정보통신공사협회 (1년치를 1월에 한 번에)' },
+        { g: 'any', title: '날짜 전까지 신청', note: '그 외 협회 정기교육 (유효기간 끝나기 6개월 전까지)' },
+        { g: 'done', title: '이미 신청함', note: '' },
+    ];
     const box = document.getElementById('assoc-apply-cards');
-    if (!names.length) {
-        box.innerHTML = `<div class="pay-empty">${year}년에 신청할 교육이 없어요.</div>`;
-        return;
-    }
-    box.innerHTML = names.map(name => {
-        const list = byAssoc[name];
-        const isJan = list.some(i => JAN_BATCH_SLOTS.includes(i.k));
-        const when = isJan ? `<span class="as-when jan">${year}년 1월 일괄 접수</span>` : `<span class="as-when any">수시 · 만료 6개월 전까지</span>`;
-        const slots = EDU_SLOTS.filter(s => list.some(i => i.k === s.k));
-        return `<div class="as-acard"><div class="as-acard-h">${esc(name)}${when}</div>
-            ${slots.map(s => `<div class="as-course"><span class="k">${courseName(name, s.k)}</span><div class="as-ppl">
-                ${list.filter(i => i.k === s.k).sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko')).map(i => {
-                    const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : '';
-                    const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `${i.window} · ~${asShort(i.exp)}`;
-                    return `<span class="as-p ${cls}" onclick="openAssocModal('${i.m.id}')" title="눌러서 수정">${esc(i.m.name)}<small>${note}</small></span>`;
-                }).join('')}</div></div>`).join('')}
-        </div>`;
+    if (!items.length) { box.innerHTML = `<div class="pay-empty">${year}년에 신청할 교육이 없어요.</div>`; return; }
+    box.innerHTML = groups.map(({ g, title, note }) => {
+        const list = items.filter(i => todoGroupOf(i) === g).sort(sortIn);
+        if (!list.length) return '';
+        return `<div class="as-todo-grp ${g}"><i class="dot"></i>${title}<b>${list.length}건</b>${note ? `<small>${note}</small>` : ''}</div>${list.map(todoCardHtml).join('')}`;
     }).join('');
 }
-// 교육 신청 엑셀 (고른 해)
+// 신청 명단 엑셀 (고른 해) - 화면과 같은 묶음 순서 · 쉬운 칸 이름
 function downloadAssocApplyExcel() {
     const year = Number(document.getElementById('assoc-apply-year').value);
-    const items = assocApplyItems(year).sort((a, b) => a.assoc.localeCompare(b.assoc, 'ko') || EDU_SLOTS.findIndex(s => s.k === a.k) - EDU_SLOTS.findIndex(s => s.k === b.k) || a.m.name.localeCompare(b.m.name, 'ko'));
-    const kindText = { now: '지금 신청 (무효)', missed: '1월 접수 놓침', jan: `${year}년 1월 일괄 접수`, any: '수시' };
-    const rows = items.map(i => [i.assoc, i.label, i.m.name, i.m.department || '', i.m.position || '', kindText[i.kind], i.kind === 'any' ? i.date : (i.window || ''), i.exp, i.applied ? '신청완료' : '']);
-    const ws = XLSX.utils.aoa_to_sheet([['협회', '교육', '이름', '부서', '직위', '신청 시기', '신청 기한 · 교육 기간', '지금 유효기간', '신청 상태'], ...rows]);
+    const gName = { now: '지금 바로 신청', jan: `${year}년 1월 접수 때 신청`, any: '날짜 전까지 신청', done: '이미 신청함' };
+    const gOrder = { now: 0, jan: 1, any: 2, done: 3 };
+    const items = assocApplyItems(year).sort((a, b) => gOrder[todoGroupOf(a)] - gOrder[todoGroupOf(b)] || a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko'));
+    const when = (i) => i.applied ? '신청완료' : i.kind === 'now' ? '지금 바로' : i.kind === 'missed' ? '지금 바로 (협회에 추가 접수 확인)' : i.kind === 'jan' ? `${i.year}년 1월 접수` : isUrgent(i) ? `지금 바로 (권장일 ${i.date} 지남)` : `${i.date}까지`;
+    const until = (i) => i.kind === 'jan' ? `${windowText(i.window)} 중` : i.exp ? `${i.exp} 전` : '';
+    const rows = items.map(i => [gName[todoGroupOf(i)], i.m.name, i.m.department || '', i.m.position || '', i.assoc, i.label, when(i), until(i), i.exp]);
+    const ws = XLSX.utils.aoa_to_sheet([['구분', '이름', '부서', '직위', '협회', '과정', '언제 신청', '언제까지 교육', '지금 유효기간'], ...rows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `${year}년 교육 신청`);
-    XLSX.writeFile(wb, `교육신청_${year}년_${asToday()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, `${year}년 신청 명단`);
+    XLSX.writeFile(wb, `교육신청명단_${year}년_${asToday()}.xlsx`);
 }
 
 // 📋 기술자 명단 (2안): 필터 버튼 한 줄 + 5칸 표(이름 · 부서 · 협회 · 교육 상태 · 다음 신청) + 줄 누르면 아래로 펼쳐보기
