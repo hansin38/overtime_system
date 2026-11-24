@@ -327,10 +327,12 @@ function viewDetails(docId) {
         const empNameKey = data.employeeName ? data.employeeName.trim() : "";
         const wageInfo = wageInfoFor(empNameKey, data);
         const limits = limitMapCache[empNameKey] || FIX_OT_LIMITS;
-        renderPaySummary(data.employeeName || "-", wageInfo, calculateOvertimePay(logs, wageInfo.wage, limits), limits);
+        const payInfo = calculateOvertimePay(logs, wageInfo.wage, limits);
+        renderPaySummary(data.employeeName || "-", wageInfo, payInfo, limits);
+        detailPrintPay = { wageInfo, payInfo, limits };
 
         // 아래 내역: 직원 화면 제출내역조회·인쇄와 같은 확인서 양식 (사유까지 보임)
-        sheet.innerHTML = renderOvertimeSheetHtml(data);
+        sheet.innerHTML = renderOvertimeSheetHtml(data, { pay: detailPrintPay });   // 관리자만: 초과수당 정산 줄 포함
         document.getElementById('detail-modal').style.display = "flex";
         const box = document.querySelector('#detail-modal .modal-content');
         if (box) box.scrollTop = 0;
@@ -343,7 +345,7 @@ function closeModal() {
 
 // 🖨️ 상세보기 인쇄: 따로 만든 인쇄 창(iframe)에 양식만 넣어 인쇄 (관리자 화면·다른 창은 안 찍힘)
 // 연장근로 → 직원 화면과 같은 '연장근로 신청 확인서' (js/ot-sheet.js) · 연차 → 상세보기에 보이는 휴가신청서 그대로
-let detailPrintData = null;
+let detailPrintData = null, detailPrintPay = null;
 function printHtmlInFrame(html, title) {
     const old = document.getElementById('detail-print-frame');
     if (old) old.remove();
@@ -374,7 +376,7 @@ function printHtmlInFrame(html, title) {
 
 function printOvertimeDetail() {
     if (!detailPrintData) return;
-    printOvertimeSheetA4(detailPrintData);   // 직원 화면 인쇄와 같은 함수 (js/ot-sheet.js)
+    printOvertimeSheetA4(detailPrintData, { pay: detailPrintPay });   // 직원 화면 인쇄와 같은 함수 (js/ot-sheet.js)
 }
 
 function printLeaveDetail() {

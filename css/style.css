@@ -367,6 +367,23 @@ th { background-color: #f1f3f5; }
 .ot-status { white-space: nowrap; color: var(--ot-soft); }
 .ot-status.on { color: #000; font-weight: bold; }
 
+/* 초과수당 정산 줄 (관리자 화면만): 요약 칸과 한 줄 띄우고, 같은 선·글자 크기 · 구분선은 요약 칸 첫 세로선과 같은 위치 */
+.ot-pay { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr); margin-top: 18px; border-top: 1px solid var(--ot-hair); border-bottom: 1px solid var(--ot-hair); }
+.ot-pay > div, .ot-pay > dl { padding: 14px 14px 16px; margin: 0; }
+.ot-pay-main { display: grid; gap: 6px; align-content: start; }
+.ot-pay-main small { font-size: var(--ot-sm); color: var(--ot-soft); }
+.ot-pay-main strong { font-size: 20px; color: #c92a2a; }
+.ot-pay.none .ot-pay-main strong { color: #111; }
+.ot-pay-main em { font-style: normal; font-size: var(--ot-sm); font-weight: normal; margin-left: 3px; color: var(--ot-soft); }
+.ot-pay-badge { justify-self: start; border: 1px solid #c92a2a; color: #c92a2a; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+.ot-pay-badge.ok { border-color: #adb5bd; color: var(--ot-soft); }
+.ot-pay-calc { border-left: 1px solid var(--ot-hair); display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; align-content: center; font-size: var(--ot-md); }
+.ot-pay-calc dt { font-size: var(--ot-sm); color: var(--ot-soft); font-weight: normal; }
+.ot-pay-calc dd { margin: 0; }
+.ot-pay-calc b { color: #c92a2a; }
+.ot-pay-calc i { font-style: normal; font-size: var(--ot-sm); color: var(--ot-soft); }
+.ot-a4 .ot-pay { break-inside: avoid; }
+
 /* 제목(내역 표 바로 위) + 내역 표: 위 굵은 줄 + 행마다 옅은 가로줄 */
 .ot-subject { margin-top: calc(var(--ot-gap) * 1.6); font-size: var(--ot-md); font-weight: bold; word-break: break-all; }
 .ot-subject span { font-size: var(--ot-sm); font-weight: normal; color: var(--ot-soft); margin-right: 12px; }

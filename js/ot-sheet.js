@@ -20,6 +20,7 @@ const OT_STATUS_BOXES = [
 ];
 
 // opts.a4 = true → 인쇄용 A4 틀 (위·가운데·아래 3칸)
+// opts.pay = { wageInfo, payInfo, limits } → 요약 칸 아래 「초과수당 정산」 줄 (관리자 화면만 넘김, 직원 화면에는 안 나옴)
 function renderOvertimeSheetHtml(data, opts = {}) {
     const submitted = data.submittedAt?.toDate ? data.submittedAt.toDate() : new Date();
     const pad = n => String(n).padStart(2, '0');
@@ -59,7 +60,7 @@ function renderOvertimeSheetHtml(data, opts = {}) {
                 <div><small>근로 일수</small><strong>${logs.length}<em>건</em></strong></div>
                 <div><small>진행 상태</small><div class="ot-statuses">${statusBoxes}</div></div>
             </div>
-
+${opts.pay ? renderOtPayHtml(opts.pay) : ''}
             <div class="ot-subject"><span>제목</span>${escapeOtHtml(data.title || '제목 없음')}</div>
             <table class="ot-items">
                 <thead>
@@ -81,8 +82,35 @@ function renderOvertimeSheetHtml(data, opts = {}) {
     return `<div class="ot-sheet">${top}${body}${bottom}</div>`;
 }
 
+// 「초과수당 정산」 줄: 왼쪽 금액·배지 / 오른쪽 시급·고정OT 사용·계산 (관리자 결재 화면 위쪽 박스와 같은 값)
+function renderOtPayHtml({ wageInfo, payInfo, limits }) {
+    const labels = { overtime: '연장', holiday: '휴일', night: '야간' };
+    const keys = Object.keys(limits);
+    const overKeys = keys.filter(k => payInfo.used[k] > limits[k]);
+    const won = n => Math.round(n).toLocaleString();
+    const wageText = wageInfo.wage.toLocaleString(undefined, { maximumFractionDigits: wageInfo.ordinary ? 2 : 0 });
+    const usage = keys.map(k => {
+        const t = `${labels[k]} ${payInfo.used[k].toFixed(1)}/${Math.floor(limits[k] * 2) / 2}`;
+        return overKeys.includes(k) ? `<b>${t}</b>` : t;
+    }).join('　');
+    const calc = payInfo.lines.length
+        ? payInfo.lines.map(l => `${labels[l.bucket]} 초과 ${Math.round(l.hours * 100) / 100}h × ${Math.round(l.rate * 100)}% = ${won(l.pay)}원`).join('<br>')
+        : '초과 없음';
+    const paid = payInfo.overtimePay > 0;
+    return `
+            <div class="ot-pay${paid ? '' : ' none'}">
+                <div class="ot-pay-main"><small>초과수당 정산</small><strong>${payInfo.overtimePay.toLocaleString()}<em>원</em></strong>
+                    <span class="ot-pay-badge${paid ? '' : ' ok'}">${paid ? `지급대상 · ${overKeys.map(k => labels[k]).join('·')} 초과` : '고정OT 범위 내'}</span></div>
+                <dl class="ot-pay-calc">
+                    <dt>시급</dt><dd>${wageText}원 <i>(${escapeOtHtml(wageInfo.label)})</i></dd>
+                    <dt>고정OT 사용</dt><dd>${usage}</dd>
+                    <dt>계산</dt><dd>${calc}</dd>
+                </dl>
+            </div>`;
+}
+
 // 🖨️ 인쇄: 따로 만든 인쇄 창(iframe)에서 A4 가로 가운데로 (급여 관리 명세서 인쇄와 같은 방식)
-function printOvertimeSheetA4(data) {
+function printOvertimeSheetA4(data, opts = {}) {
     const old = document.getElementById('ot-print-frame');
     if (old) old.remove();
     const frame = document.createElement('iframe');
@@ -100,7 +128,7 @@ function printOvertimeSheetA4(data) {
             .sheet { width: 210mm; display: flex; justify-content: center; }
             .sheet .ot-a4 { flex: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         </style></head>
-        <body><div class="sheet">${renderOvertimeSheetHtml(data, { a4: true })}</div></body></html>`);
+        <body><div class="sheet">${renderOvertimeSheetHtml(data, { ...opts, a4: true })}</div></body></html>`);
     doc.close();
     const link = doc.querySelector('link');
     const waits = [new Promise(resolve => { if (link.sheet) resolve(); else link.onload = link.onerror = resolve; })]
