@@ -662,7 +662,6 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .as-p:hover { border-color: #adb5bd; }
 .as-p small { color: #868e96; font-size: 11.5px; margin-left: 5px; }
 .as-p.red { border-color: #ffc9c9; background: #fff5f5; color: #c92a2a; } .as-p.red small { color: #e03131; }
-.as-p.tight { border-color: #ffd8a8; background: #fff4e6; color: #d9480f; } .as-p.tight small { color: #e8590c; }
 .as-p.done { border-color: #a5d8ff; background: #e7f5ff; color: #1971c2; } .as-p.done small { color: #1971c2; }
 .as-more { font-size: 11px; color: #868e96; margin-left: 2px; }
 .as-memo { width: 100%; min-height: 60px; margin: 8px 0 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; box-sizing: border-box; font-family: inherit; }

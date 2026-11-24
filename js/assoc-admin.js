@@ -271,14 +271,19 @@ function applyInfoOf(m, k) {
     if (exp < today) return { ...base, kind: 'now', year: thisYear, sortKey: '0', text: '지금 신청 (무효)', cls: 'bad' };
     if (JAN_BATCH_SLOTS.includes(k)) {
         const year = Number(applyBy.slice(0, 4));
-        // 원래 접수할 1월이 이미 지났으면(올해 2월 이후 포함) → 다음 1월 접수로 넘김
-        //   다음 1월 접수가 만료일보다 먼저면 그 접수에 '촉박'(주황), 만료가 그보다 빠르면 '접수 놓침'(빨강)
+        // 교육 받을 기간(window): 그 해 1월(접수 열림) ~ 만료 6개월 전 달
+        // 원래 접수할 1월이 이미 지났으면(올해 2월 이후 포함) → 다음 1월 접수로 넘기고 기간은 1월 ~ 만료되는 달(다음 해면 12월)
+        //   다음 1월 접수가 만료일보다 늦으면 '접수 놓침'(빨강)
         if (year < thisYear || (year === thisYear && Number(today.slice(5, 7)) > 1)) {
             const nextBatch = Number(today.slice(5, 7)) > 1 ? thisYear + 1 : thisYear;
-            if (exp > `${nextBatch}-01-31`) return { ...base, kind: 'jan', tight: true, year: nextBatch, sortKey: `${nextBatch}-01-00`, text: `${String(nextBatch).slice(2)}년 1월 접수 (촉박)`, cls: 'soon' };
+            if (exp > `${nextBatch}-01-31`) {
+                const toM = Number(exp.slice(0, 4)) > nextBatch ? 12 : Number(exp.slice(5, 7));
+                return { ...base, kind: 'jan', tight: true, year: nextBatch, sortKey: `${nextBatch}-01-00`, window: toM > 1 ? `1월~${toM}월` : '1월', text: `${String(nextBatch).slice(2)}년 1월 접수`, cls: 'soon' };
+            }
             return { ...base, kind: 'missed', year: thisYear, sortKey: '1', text: '1월 접수 놓침 · 추가 접수 확인', cls: 'bad' };
         }
-        return { ...base, kind: 'jan', year, sortKey: `${year}-01-01`, text: `${String(year).slice(2)}년 1월 접수`, cls: year === thisYear ? 'soon' : 'ok' };
+        const toM = Number(applyBy.slice(5, 7));
+        return { ...base, kind: 'jan', year, sortKey: `${year}-01-${pad2(toM)}`, window: toM > 1 ? `1월~${toM}월` : '1월', text: `${String(year).slice(2)}년 1월 접수`, cls: year === thisYear ? 'soon' : 'ok' };
     }
     const late = applyBy < today;
     return { ...base, kind: 'any', year: late ? thisYear : Number(applyBy.slice(0, 4)), date: applyBy, sortKey: late ? '2' : applyBy,
@@ -292,7 +297,7 @@ function nextApplyCell(m) {
     const list = applyInfosOf(m);
     if (!list.length) return '<span class="sub">-</span>';
     const a = list[0];
-    return `<span class="as-apply ${a.applied ? 'applied' : a.cls}">${a.applied ? '신청완료' : a.text}</span><small>${a.label}${list.length > 1 ? ` · +${list.length - 1}` : ''}</small>`;
+    return `<span class="as-apply ${a.applied ? 'applied' : a.cls}">${a.applied ? '신청완료' : a.text}</span><small>${a.label}${a.window && !a.applied ? ` · 교육 ${a.window}` : ''}${list.length > 1 ? ` · +${list.length - 1}` : ''}</small>`;
 }
 
 // 교육 신청 탭 (1안: 협회별 → 과정별 → 신청할 사람)
@@ -355,8 +360,8 @@ function renderAssocApply() {
         return `<div class="as-acard"><div class="as-acard-h">${esc(name)}${when}</div>
             ${slots.map(s => `<div class="as-course"><span class="k">${s.label}</span><div class="as-ppl">
                 ${list.filter(i => i.k === s.k).sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko')).map(i => {
-                    const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : i.tight ? 'tight' : '';
-                    const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.tight ? `촉박 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `~${asShort(i.exp)}`;
+                    const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : '';
+                    const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `${i.window} · ~${asShort(i.exp)}`;
                     return `<span class="as-p ${cls}" onclick="openAssocModal('${i.m.id}')" title="눌러서 수정">${esc(i.m.name)}<small>${note}</small></span>`;
                 }).join('')}</div></div>`).join('')}
         </div>`;
@@ -367,8 +372,8 @@ function downloadAssocApplyExcel() {
     const year = Number(document.getElementById('assoc-apply-year').value);
     const items = assocApplyItems(year).sort((a, b) => a.assoc.localeCompare(b.assoc, 'ko') || EDU_SLOTS.findIndex(s => s.k === a.k) - EDU_SLOTS.findIndex(s => s.k === b.k) || a.m.name.localeCompare(b.m.name, 'ko'));
     const kindText = { now: '지금 신청 (무효)', missed: '1월 접수 놓침', jan: `${year}년 1월 일괄 접수`, any: '수시' };
-    const rows = items.map(i => [i.assoc, i.label, i.m.name, i.m.department || '', i.m.position || '', kindText[i.kind], i.kind === 'any' ? i.date : '', i.exp, i.applied ? '신청완료' : '']);
-    const ws = XLSX.utils.aoa_to_sheet([['협회', '교육', '이름', '부서', '직위', '신청 시기', '신청 기한', '지금 유효기간', '신청 상태'], ...rows]);
+    const rows = items.map(i => [i.assoc, i.label, i.m.name, i.m.department || '', i.m.position || '', kindText[i.kind], i.kind === 'any' ? i.date : (i.window || ''), i.exp, i.applied ? '신청완료' : '']);
+    const ws = XLSX.utils.aoa_to_sheet([['협회', '교육', '이름', '부서', '직위', '신청 시기', '신청 기한 · 교육 기간', '지금 유효기간', '신청 상태'], ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `${year}년 교육 신청`);
     XLSX.writeFile(wb, `교육신청_${year}년_${asToday()}.xlsx`);
