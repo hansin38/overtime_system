@@ -35,14 +35,20 @@
             </div>
         </div>
 
-        <!-- 📑 화면 전환 탭 (연장근로 결재 / 연차 관리) -->
-        <div class="tabs" style="margin-bottom: 25px;">
-            <button id="tab-ot-admin" class="tab-btn active" onclick="switchAdminTab('ot')">📝 연장근로 결재</button>
-            <button id="tab-leave-admin" class="tab-btn" onclick="switchAdminTab('leave')">🏖️ 연차 관리</button>
-            <button id="tab-pay-admin" class="tab-btn" onclick="switchAdminTab('pay')">💵 급여 관리</button>
-            <button id="tab-staff-admin" class="tab-btn" onclick="switchAdminTab('staff')">👥 직원 관리</button>
-            <button id="tab-assoc-admin" class="tab-btn" onclick="switchAdminTab('assoc')">🏛 협회 관리</button>
-        </div>
+        <!-- 📑 왼쪽 메뉴 (2026-11-24): 🕒 근태·급여 / 🎓 인사·자격 두 묶음 · 오른쪽에 고른 화면 -->
+        <div class="admin-layout">
+        <nav class="admin-nav">
+            <div class="admin-nav-h">🕒 근태 · 급여</div>
+            <button id="tab-ot-admin" class="admin-nav-item active" onclick="switchAdminTab('ot')">📝 연장근로 결재</button>
+            <button id="tab-leave-admin" class="admin-nav-item" onclick="switchAdminTab('leave')">🏖️ 연차 관리</button>
+            <button id="tab-pay-admin" class="admin-nav-item" onclick="switchAdminTab('pay')">💵 급여 관리</button>
+            <button id="tab-staff-admin" class="admin-nav-item" onclick="switchAdminTab('staff')">👥 직원 관리</button>
+            <div class="admin-nav-h">🎓 인사 · 자격</div>
+            <button class="admin-nav-item soon" disabled title="준비 중 - 직원명단 「1기본정보」">👤 직원정보 관리<small>준비 중</small></button>
+            <button class="admin-nav-item soon" disabled title="준비 중 - 직원명단 「2경력,학력」">📚 직원경력 관리<small>준비 중</small></button>
+            <button id="tab-assoc-admin" class="admin-nav-item" onclick="switchAdminTab('assoc')">🏛 협회 관리</button>
+        </nav>
+        <div class="admin-main">
 
         <div id="ot-admin-section">
         <div style="margin-bottom: 30px;">
@@ -303,6 +309,8 @@
                 <div id="assoc-apply-cards"></div>
             </div>
         </div>
+        </div><!-- /admin-main -->
+        </div><!-- /admin-layout -->
     </div>
 
     <!-- 🏛 [협회 기술자 수정] -->

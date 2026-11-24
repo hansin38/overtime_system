@@ -17,6 +17,26 @@ h2, h3 { text-align: center; color: #222; margin-bottom: 20px; }
 .tab-btn { flex: 1; padding: 12px; cursor: pointer; background: none; border: none; font-size: 16px; font-weight: bold; color: #666; }
 .tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); }
 
+/* 관리자 화면 왼쪽 메뉴 (admin.html) - 메뉴 폭만큼 화면을 넓혀서 표가 좁아지지 않게 */
+#admin-system.container { max-width: 1420px; }
+.admin-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 26px; align-items: start; }
+.admin-nav { position: sticky; top: 16px; border-right: 1px solid #eee; padding-right: 14px; }
+.admin-nav-h { font-size: 12px; font-weight: bold; color: #868e96; margin: 18px 0 6px 6px; }
+.admin-nav-h:first-child { margin-top: 4px; }
+.admin-nav-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 10px 12px; margin: 0 0 2px; font-size: 14.5px; color: #495057; cursor: pointer; font-weight: normal; }
+.admin-nav-item:hover { background: #f1f3f5; color: #212529; opacity: 1; }
+.admin-nav-item.active { background: #eef4ff; color: var(--primary-color); font-weight: bold; }
+.admin-nav-item.soon { color: #adb5bd; cursor: default; }
+.admin-nav-item.soon:hover { background: none; color: #adb5bd; }
+.admin-nav-item small { display: block; font-size: 11px; color: #ced4da; }
+.admin-main { min-width: 0; }
+@media (max-width: 900px) {
+    .admin-layout { grid-template-columns: 1fr; }
+    .admin-nav { position: static; border-right: 0; border-bottom: 1px solid #eee; padding: 0 0 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .admin-nav-h { width: 100%; margin: 6px 0 2px; }
+    .admin-nav-item { width: auto; }
+}
+
 input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
 button { width: 100%; padding: 12px; background: var(--dark-color); color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
 button:hover { opacity: 0.9; }
