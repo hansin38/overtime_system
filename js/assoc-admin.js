@@ -355,25 +355,28 @@ function assocStats(a) {
     const need = members.filter(m => EDU_SLOTS.some(s => slotAssocLabel(m, s.k) === a.label && slotState(m, s.k) === 'need')).length;
     return { members, over, target, need, first };
 }
-function openAssocView(k) { AS.assocView = k; renderAssocByAssoc(); }
+function openAssocView(k) { AS.assocView = k || null; renderAssocByAssoc(); }
 function renderAssocByAssoc() {
     const box = document.getElementById('assoc-byassoc-body');
     if (!box) return;
-    const a = ASSOCS.find(x => x.k === AS.assocView);
-    if (!a) {
-        // 첫 화면: 협회 카드
-        box.innerHTML = `<div class="as-agrid">${ASSOCS.map(x => {
-            const st = assocStats(x), n = st.members.length;
-            const pills = !n ? '<span class="as-pill gray">-</span>' : [
-                st.over && `<span class="as-pill bad">무효 ${st.over}</span>`,
-                st.target && `<span class="as-pill warn">${st.first}년 신청 대상 ${st.target}</span>`,
-                st.need && `<span class="as-pill gray">신청필요 표시 ${st.need}</span>`,
-            ].filter(Boolean).join('') || '<span class="as-pill ok">모두 유효</span>';
-            return `<div class="as-acard2${n ? '' : ' empty'}" ${n ? `onclick="openAssocView('${x.k}')"` : ''}>
-                <div class="t">${x.label}</div><div class="c">${n}<small>명</small></div><div class="s">${pills}</div></div>`;
-        }).join('')}</div>`;
-        return;
-    }
+    const sel = ASSOCS.find(x => x.k === AS.assocView);
+    // 위쪽: 협회 카드 (누르면 그 협회만, 다시 누르면 전체) · 아래: 협회마다 표를 이어서 (기술자가 바로 다 보이게)
+    const cards = `<div class="as-agrid">${ASSOCS.map(x => {
+        const st = assocStats(x), n = st.members.length;
+        const pills = !n ? '<span class="as-pill gray">-</span>' : [
+            st.over && `<span class="as-pill bad">무효 ${st.over}</span>`,
+            st.target && `<span class="as-pill warn">${st.first}년 신청 대상 ${st.target}</span>`,
+            st.need && `<span class="as-pill gray">신청필요 표시 ${st.need}</span>`,
+        ].filter(Boolean).join('') || '<span class="as-pill ok">모두 유효</span>';
+        return `<div class="as-acard2${n ? '' : ' empty'}${sel && sel.k === x.k ? ' on' : ''}" ${n ? `onclick="openAssocView('${sel && sel.k === x.k ? '' : x.k}')"` : ''}>
+            <div class="t">${x.label}<span class="c">${n}<small>명</small></span></div><div class="s">${pills}</div></div>`;
+    }).join('')}</div>`;
+    const shown = (sel ? [sel] : ASSOCS).filter(a => assocMembersOf(a).length);
+    box.innerHTML = cards + (shown.map(assocTableHtml).join('') || '<div class="pay-empty">협회 기술자가 없어요</div>')
+        + `<div class="staff-foot">위쪽 협회 카드를 누르면 그 협회만, 다시 누르면 전체 · 줄을 누르면 수정 창 · 날짜 아래 ~날짜 = 유효기간 끝 · 빨강 = 무효</div>`;
+}
+// 협회 한 개의 표 (그 협회 사람만, 그 협회 과정 칸만)
+function assocTableHtml(a) {
     const st = assocStats(a), slots = assocSlotsOf(a, st.members);
     const members = st.members.slice().sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ko'));
     const cell = (m, k) => {
@@ -390,23 +393,20 @@ function renderAssocByAssoc() {
         if (!x) return '<span class="sub">-</span>';
         return `<span class="as-apply ${x.applied ? 'applied' : x.cls}">${x.applied ? '신청완료' : x.text}</span><small>${x.label}${x.window && !x.applied ? ` · 교육 ${x.window}` : ''}</small>`;
     };
-    box.innerHTML = `
-        <div class="as-vhead"><button type="button" class="as-back" onclick="openAssocView(null)">← 협회 목록</button>
-            <b>${a.label} · ${members.length}명</b>
+    return `<div class="as-asec">
+        <div class="as-vhead"><b>${a.label} · ${members.length}명</b>
             ${st.over ? `<span class="as-pill bad">무효 ${st.over}</span>` : ''}${st.target ? `<span class="as-pill warn">${st.first}년 신청 대상 ${st.target}</span>` : ''}
-            <button type="button" class="pay-btn sm" style="margin-left: auto;" onclick="downloadAssocViewExcel()">⬇ 엑셀 받기</button></div>
+            <button type="button" class="pay-btn sm" style="margin-left: auto;" onclick="downloadAssocViewExcel('${a.k}')">⬇ 엑셀 받기</button></div>
         <div class="staff-wrap"><table class="staff-tbl as-tbl">
             <thead><tr><th>이름</th><th>부서 · 직위</th><th>등급 · 분야</th>${slots.map(s => `<th>${courseName(a.label, s.k)}</th>`).join('')}<th>다음 교육 신청</th></tr></thead>
-            <tbody>${members.length ? members.map(m => `<tr onclick="openAssocModal('${m.id}')" title="눌러서 수정">
+            <tbody>${members.map(m => `<tr onclick="openAssocModal('${m.id}')" title="눌러서 수정">
                 <td><b>${esc(m.name)}</b></td><td>${esc(m.department || '-')}<small>${esc(m.position || '')}</small></td>
                 <td>${esc(m.grade || '-')}<small>${esc(m.field || '')}</small></td>
-                ${slots.map(s => `<td>${cell(m, s.k)}</td>`).join('')}<td>${next(m)}</td></tr>`).join('')
-                : `<tr><td colspan="${slots.length + 4}" style="color: #888;">이 협회 기술자가 없어요</td></tr>`}</tbody>
-        </table></div>
-        <div class="staff-foot">줄을 누르면 수정 창 · 날짜 아래 ~날짜 = 유효기간 끝 · 빨강 = 무효</div>`;
+                ${slots.map(s => `<td>${cell(m, s.k)}</td>`).join('')}<td>${next(m)}</td></tr>`).join('')}</tbody>
+        </table></div></div>`;
 }
-function downloadAssocViewExcel() {
-    const a = ASSOCS.find(x => x.k === AS.assocView);
+function downloadAssocViewExcel(k) {
+    const a = ASSOCS.find(x => x.k === k);
     if (!a) return;
     const st = assocStats(a), slots = assocSlotsOf(a, st.members);
     const head = ['이름', '부서', '직위', '등급', '분야', ...slots.flatMap(s => [`${courseName(a.label, s.k)} 최근 교육`, `${courseName(a.label, s.k)} 유효기간`]), '다음 교육 신청'];
