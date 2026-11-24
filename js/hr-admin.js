@@ -1,6 +1,6 @@
 // ==========================================
 // 🎓 인사 · 자격 - 직원정보 관리 · 직원경력 관리 (관리자 조회 전용, hr-admin.js)
-// - 데이터: 직원명단.xlsx 를 올리면 그 내용으로 통째로 바뀜 (화면에서 하나씩 등록·수정하지 않음)
+// - 데이터: 처음 한 번 직원명단.xlsx 로 올리고, 그다음부터는 이 화면(수정 창)이 원본 · 엑셀을 다시 올리면 통째로 바뀜(경고)
 //     「1기본정보」 → 직원정보 (성명 · 직급 · 부서 · 생년월일 · 전화 · 입사일 · 주소 · 이메일)
 //     「2경력,학력」 → 직원경력 (구분 · 분야 · 자격등급 · 회사등록 · 자격증 · 발급번호 · 합격일 · 학력)
 // - 🔒 주민번호는 저장하지 않고 생년월일만 뽑음 (개인정보보호법 제24조의2 - 주민번호는 암호화 보관 의무)
@@ -65,11 +65,13 @@ function hrAssocChips(text) {
 const HR_GRADES = ['특급', '고급', '중급', '초급'];
 const HR_POS_ORDER = ['대표이사', '부사장', '전무', '상무', '이사', '고문', '부장', '차장', '과장', '대리', '주임', '사원'];
 
+// 이름 칸: 퇴사자는 '퇴사 날짜' · 화면에서 고친 적 있으면 ✏️
+const hrNameCell = (p) => `<b>${esc(p.name)}</b>${p.resigned ? `<small>퇴사 ${esc(p.resigned.date || '')}</small>` : (p.history && p.history.length ? '<small title="화면에서 고친 기록이 있어요">✏️ 수정됨</small>' : '')}`;
 // 표 칸 정의: 정렬 열쇠 · 정렬 값 · 머리 · 칸 모양
 function hrColumns(kind) {
     const v = (x) => esc(x || '') || '<span class="sub">-</span>';
     if (kind === 'info') return [
-        { key: 'name', th: '이름', cls: 'l', w: 84, val: p => p.name, td: p => `<b>${esc(p.name)}</b>` },
+        { key: 'name', th: '이름', cls: 'l', w: 84, val: p => p.name, td: hrNameCell },
         { key: 'pos', th: '직급', w: 70, val: p => { const i = HR_POS_ORDER.indexOf(p.info.position); return i < 0 ? 99 : i; }, td: p => v(p.info.position) },
         { key: 'dept', th: '부서', cls: 'l', w: 110, val: p => p.info.department, td: p => v(p.info.department) },
         { key: 'birth', th: '생년월일', w: 96, val: p => p.info.birth, td: p => v(p.info.birth) },
@@ -79,7 +81,7 @@ function hrColumns(kind) {
         { key: 'addr', th: '주소', cls: 'l hr-addr', td: p => !p.info.address ? v('') : HR.reveal ? `<span title="${esc(p.info.address)}">${esc(p.info.address)}</span>` : esc(hrMaskAddr(p.info.address)) },
     ];
     return [
-        { key: 'name', th: '이름', cls: 'l', w: 84, val: p => p.name, td: p => `<b>${esc(p.name)}</b>` },
+        { key: 'name', th: '이름', cls: 'l', w: 84, val: p => p.name, td: hrNameCell },
         { key: 'dept', th: '부서 · 직급', cls: 'l', w: 112, val: p => p.career.department, td: p => `${v(p.career.department)}<small>${esc(p.career.position || '')}</small>` },
         { key: 'assoc', th: '구분', cls: 'l', w: 120, val: p => assocKeysFrom(p.career.group).join(','), td: p => hrAssocChips(p.career.group) },
         { key: 'field', th: '분야', w: 80, val: p => p.career.field, td: p => v(p.career.field) },
@@ -100,6 +102,7 @@ function hrListOf(kind) {
     const dir = HR.sort[kind].dir;
     return HR.people
         .filter(p => kind === 'info' ? p.info : p.career)
+        .filter(p => HR.showResigned || !p.resigned)
         .filter(p => { const d = kind === 'info' ? p.info : p.career; return !q || [p.name, d.department, d.position].some(x => String(x || '').includes(q)); })
         .filter(p => kind !== 'info' || ((!f.dept || p.info.department === f.dept) && (!f.pos || p.info.position === f.pos)))
         .filter(p => kind !== 'career' || ((!f.grade || p.career.grade === f.grade)
@@ -115,7 +118,10 @@ function hrListOf(kind) {
 
 // 위쪽 요약 + 필터 버튼 (누르면 그것만, 다시 누르면 풀림)
 function hrChipsHtml(kind) {
-    const base = HR.people.filter(p => kind === 'info' ? p.info : p.career);
+    const all = HR.people.filter(p => kind === 'info' ? p.info : p.career);
+    const base = all.filter(p => HR.showResigned || !p.resigned);
+    const nResigned = all.filter(p => p.resigned).length;
+    const resignChip = nResigned ? `<button type="button" class="as-fc${HR.showResigned ? ' on' : ''}" onclick="toggleHrShowResigned()">퇴사자 포함<b>${nResigned}</b></button>` : '';
     const f = HR.filter[kind];
     const chip = (label, n, on, onclick) => `<button type="button" class="as-fc${on ? ' on' : ''}" onclick="${onclick}">${label}<b>${n}</b></button>`;
     const countBy = (arr, fn) => { const m = {}; arr.forEach(p => { const k = fn(p); if (k) m[k] = (m[k] || 0) + 1; }); return m; };
@@ -130,7 +136,7 @@ function hrChipsHtml(kind) {
             ${Object.keys(depts).sort((a, b) => depts[b] - depts[a] || a.localeCompare(b, 'ko')).map(d => chip(esc(d), depts[d], f.dept === d, `setHrFilter('info','dept','${esc(d)}')`)).join('')}
             <span class="as-fsep"></span>
             <select class="hr-sel" onchange="HR.filter.info.pos=this.value; renderHr('info')"><option value="">직급 전체</option>${posOpts.map(p => `<option value="${esc(p)}" ${f.pos === p ? 'selected' : ''}>${esc(p)} (${pos[p]})</option>`).join('')}</select>
-            <span class="hr-stat">평균 근속 <b>${Math.floor(avg / 12)}년 ${Math.round(avg % 12)}개월</b></span></div>`;
+            ${resignChip}<span class="hr-stat">평균 근속 <b>${Math.floor(avg / 12)}년 ${Math.round(avg % 12)}개월</b></span></div>`;
     }
     const grades = countBy(base, p => p.career.grade);
     const regY = base.filter(p => p.career.companyReg === true).length;
@@ -140,7 +146,8 @@ function hrChipsHtml(kind) {
         <span class="as-fsep"></span>
         ${chip('회사등록 Y', regY, f.reg === 'Y', "setHrFilter('career','reg','Y')")}${chip('회사등록 N·없음', base.length - regY, f.reg === 'N', "setHrFilter('career','reg','N')")}
         <span class="as-fsep"></span>
-        ${ASSOCS.filter(a => assocs[a.k]).map(a => chip(a.short, assocs[a.k], f.assoc === a.k, `setHrFilter('career','assoc','${a.k}')`)).join('')}</div>`;
+        ${ASSOCS.filter(a => assocs[a.k]).map(a => chip(a.short, assocs[a.k], f.assoc === a.k, `setHrFilter('career','assoc','${a.k}')`)).join('')}
+        ${resignChip ? `<span class="as-fsep"></span>${resignChip}` : ''}</div>`;
 }
 
 function renderHr(kind) {
@@ -158,7 +165,7 @@ function renderHr(kind) {
         tbody.innerHTML = `<tr><td colspan="${cols.length}" style="color: #888;">${HR.people.length ? '조건에 맞는 사람이 없어요' : '아직 데이터가 없어요. [📤 직원명단 엑셀 올리기]로 넣어 주세요.'}</td></tr>`;
         return;
     }
-    tbody.innerHTML = list.map(p => `<tr>${cols.map(c => `<td class="${c.cls || ''}">${c.td(p)}</td>`).join('')}</tr>`).join('');
+    tbody.innerHTML = list.map(p => `<tr class="${p.resigned ? 'resigned' : ''}" onclick="openHrModal('${p.id}','${kind}')" title="눌러서 수정">${cols.map(c => `<td class="${c.cls || ''}">${c.td(p)}</td>`).join('')}</tr>`).join('');
 }
 
 // ⬇ 지금 거른 결과 그대로 엑셀 (가리기와 상관없이 실제 값)
@@ -174,6 +181,149 @@ function downloadHrExcel(kind) {
     XLSX.utils.book_append_sheet(wb, ws, kind === 'info' ? '직원정보' : '직원경력');
     XLSX.writeFile(wb, `${kind === 'info' ? '직원정보' : '직원경력'}_${asToday()}.xlsx`);
 }
+
+
+// ------------------------------------------
+// ✏️ 수정 창 (1안): 줄을 누르면 그 사람 창 · [👤 기본정보] [📚 경력·자격] · 바꾼 칸은 노랗게 → [저장]
+//   처음 한 번만 엑셀로 올리고, 그다음부터는 이 화면이 원본 · 고칠 때마다 변경 기록(history)을 남김(최근 50건)
+//   퇴사는 지우지 않고 [퇴사 처리] → 기본 목록에서 숨김 (위쪽 [퇴사자] 버튼으로 보기)
+// ------------------------------------------
+const HR_FIELDS = {
+    info: [
+        { k: 'name', label: '이름', root: true }, { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' },
+        { k: 'birth', label: '생년월일', type: 'date' }, { k: 'hireDate', label: '입사일', type: 'date' }, { k: 'phone', label: '전화번호', ph: '010-0000-0000' },
+        { k: 'email', label: '이메일', span: 3 }, { k: 'address', label: '주소', span: 3 },
+    ],
+    career: [
+        { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' }, { k: 'group', label: '구분(협회)', ph: '예: 한국전기기술인협회 / (전기+전기철도)' },
+        { k: 'field', label: '분야', ph: '설계 / 감리 / 설계/감리' }, { k: 'grade', label: '자격등급', options: ['', ...HR_GRADES] }, { k: 'companyReg', label: '회사등록', options: ['', 'Y', 'N'] },
+        { k: 'license', label: '자격증', span: 2 }, { k: 'licenseDate', label: '합격일', type: 'date' },
+        { k: 'licenseNo', label: '자격증 발급번호', span: 3 },
+        { k: 'school', label: '최종학력(학교)' }, { k: 'degree', label: '학위' }, { k: 'major', label: '학과(전공)' },
+        { k: 'gradYear', label: '졸업(YYYY.MM)', ph: '2020.08' },
+    ],
+};
+HR.showResigned = false;
+HR.edit = null;   // { id, tab, orig }
+
+function hrFieldValue(p, tab, f) {
+    if (f.root) return p ? p[f.k] || '' : '';
+    const d = p && p[tab];
+    if (!d) return '';
+    if (f.k === 'companyReg') return d.companyReg === true ? 'Y' : d.companyReg === false ? 'N' : '';
+    return d[f.k] ?? '';
+}
+function openHrModal(id = null, tab = 'info') {
+    const p = id ? HR.people.find(x => x.id === id) : null;
+    if (id && !p) return;
+    HR.edit = { id, tab, orig: p };
+    const depts = [...new Set(HR.people.map(x => (x.info || {}).department || (x.career || {}).department).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const field = (t, f) => {
+        const v = String(hrFieldValue(p, t, f));
+        const id2 = `hrf-${t}-${f.k}`;
+        const input = f.options
+            ? `<select id="${id2}" data-orig="${esc(v)}" onchange="markHrChange(this)">${f.options.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o || '-'}</option>`).join('')}${v && !f.options.includes(v) ? `<option selected>${esc(v)}</option>` : ''}</select>`
+            : `<input id="${id2}" ${f.type ? `type="${f.type}"` : ''} ${f.list ? `list="${f.list}"` : ''} value="${esc(v)}" data-orig="${esc(v)}" placeholder="${esc(f.ph || '')}" oninput="markHrChange(this)">`;
+        return `<div ${f.span ? `style="grid-column: span ${f.span};"` : ''}><label>${f.label}</label>${input}</div>`;
+    };
+    const last = p && Array.isArray(p.history) && p.history.length ? p.history[p.history.length - 1] : null;
+    const hist = p && Array.isArray(p.history) ? p.history.slice().reverse() : [];
+    document.getElementById('hr-modal-title').innerText = p ? `직원 정보 · ${p.name}${p.resigned ? ' (퇴사)' : ''}` : '직원 추가';
+    document.getElementById('hr-modal-body').innerHTML = `
+        <datalist id="hr-pos-list">${HR_POS_ORDER.map(x => `<option value="${x}">`).join('')}</datalist>
+        <datalist id="hr-dept-list">${depts.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+        <div class="lv-subtabs" style="margin-bottom: 12px;">
+            <button type="button" id="hrm-tab-info" onclick="switchHrModalTab('info')">👤 기본정보</button>
+            <button type="button" id="hrm-tab-career" onclick="switchHrModalTab('career')">📚 경력 · 자격${p && !p.career ? ' <small>(없음)</small>' : ''}</button>
+        </div>
+        <div id="hrm-pane-info" class="pay-fg c3">${HR_FIELDS.info.map(f => field('info', f)).join('')}</div>
+        <div id="hrm-pane-career" class="pay-fg c3">${p && !p.career ? '<div class="hr-note" style="grid-column: span 3;">경력 관리를 하지 않는 직원이에요. 칸을 채우고 저장하면 직원경력 관리에 나와요.</div>' : ''}${HR_FIELDS.career.map(f => field('career', f)).join('')}</div>
+        ${p && p.resigned ? `<div class="hr-note warn">🚪 ${esc(p.resigned.date || '')} 퇴사 처리된 직원이에요.</div>` : ''}
+        ${hist.length ? `<details class="hr-hist"><summary>🕘 변경 기록 ${hist.length}건</summary>${hist.map(h => `<div><b>${esc(h.at || '')}</b> ${h.changes.map(c => `${esc(c.label)} <span class="sub">${esc(c.from || '(빈칸)')}</span> → ${esc(c.to || '(빈칸)')}`).join(' · ')}</div>`).join('')}</details>` : ''}`;
+    document.getElementById('hr-modal-last').innerText = last ? `마지막 수정: ${last.at} · ${last.changes.slice(0, 2).map(c => `${c.label} ${c.from || '(빈칸)'} → ${c.to || '(빈칸)'}`).join(' · ')}${last.changes.length > 2 ? ` 외 ${last.changes.length - 2}칸` : ''}` : (p ? '' : '새 직원은 이름만 있어도 저장돼요');
+    const rb = document.getElementById('hr-modal-resign');
+    rb.style.display = p ? '' : 'none';
+    rb.innerText = p && p.resigned ? '퇴사 취소' : '퇴사 처리';
+    switchHrModalTab(tab);
+    document.getElementById('hr-modal').style.display = 'flex';
+}
+function switchHrModalTab(tab) {
+    if (HR.edit) HR.edit.tab = tab;
+    ['info', 'career'].forEach(t => {
+        document.getElementById(`hrm-pane-${t}`).style.display = t === tab ? '' : 'none';
+        document.getElementById(`hrm-tab-${t}`).classList.toggle('on', t === tab);
+    });
+}
+function markHrChange(el) { el.classList.toggle('chg', el.value.trim() !== (el.dataset.orig || '')); }
+function closeHrModal() { document.getElementById('hr-modal').style.display = 'none'; HR.edit = null; }
+const hrNow = () => { const d = new Date(); return `${toYmd(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+
+function saveHrModal() {
+    const e = HR.edit;
+    if (!e) return;
+    const p = e.orig;
+    const val = (t, k) => ((document.getElementById(`hrf-${t}-${k}`) || {}).value || '').trim();
+    const name = val('info', 'name');
+    if (!name) { alert('이름을 입력해 주세요.'); switchHrModalTab('info'); return; }
+    const changes = [];
+    const pick = (t) => {
+        const out = { ...((p && p[t]) || {}) };
+        HR_FIELDS[t].filter(f => !f.root).forEach(f => {
+            const before = String(hrFieldValue(p, t, f)), after = val(t, f.k);
+            if (before !== after) changes.push({ label: `${t === 'career' ? '[경력] ' : ''}${f.label}`, from: before, to: after });
+            out[f.k] = f.k === 'companyReg' ? (after === 'Y' ? true : after === 'N' ? false : null) : (f.k === 'gradYear' ? hrYm(after) : after);
+        });
+        return out;
+    };
+    if (p && p.name !== name) changes.push({ label: '이름', from: p.name, to: name });
+    const info = pick('info');
+    const careerOut = pick('career');
+    const careerHasValue = HR_FIELDS.career.some(f => { const v = careerOut[f.k]; return v !== '' && v !== null && v !== undefined && !['position', 'department'].includes(f.k); });
+    const career = (p && p.career) || careerHasValue ? careerOut : null;
+    if (p && !changes.length) { closeHrModal(); return; }
+    const history = ((p && p.history) || []).concat(p ? [{ at: hrNow(), changes }] : [{ at: hrNow(), changes: [{ label: '직원 추가', from: '', to: name }] }]).slice(-50);
+    const doc = { ...(p || {}), name, info, career, history, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    delete doc.id;
+    const ref = p ? db.collection('hr_staff').doc(p.id) : db.collection('hr_staff').doc();
+    ref.set(doc).then(() => {
+        const saved = { ...doc, id: ref.id, updatedAt: null };
+        HR.people = p ? HR.people.map(x => x.id === p.id ? saved : x) : HR.people.concat([saved]);
+        closeHrModal();
+        renderHr('info'); renderHr('career');
+    }).catch(err => {
+        console.error('직원정보 저장 실패:', err);
+        alert(err && err.code === 'permission-denied' ? '권한이 없어 저장하지 못했어요.\nFirebase 콘솔 > Firestore > 규칙에 hr_ 규칙을 게시해 주세요.' : '저장 중 오류가 발생했어요.');
+    });
+}
+
+function toggleHrResign() {
+    const p = HR.edit && HR.edit.orig;
+    if (!p) return;
+    let resigned = null, change;
+    if (p.resigned) {
+        if (!confirm(`${p.name} 님의 퇴사 처리를 취소할까요?`)) return;
+        change = { label: '퇴사 취소', from: p.resigned.date || '', to: '' };
+    } else {
+        const date = prompt(`${p.name} 님 퇴사일을 입력해 주세요 (YYYY-MM-DD)`, asToday());
+        if (date === null) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) { alert('날짜를 2026-11-24 처럼 입력해 주세요.'); return; }
+        resigned = { date: date.trim() };
+        change = { label: '퇴사 처리', from: '', to: resigned.date };
+    }
+    const history = (p.history || []).concat([{ at: hrNow(), changes: [change] }]).slice(-50);
+    db.collection('hr_staff').doc(p.id).update({ resigned, history, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }).then(() => {
+        HR.people = HR.people.map(x => x.id === p.id ? { ...x, resigned, history } : x);
+        closeHrModal();
+        renderHr('info'); renderHr('career');
+    }).catch(err => { console.error(err); alert('저장 중 오류가 발생했어요.'); });
+}
+function toggleHrMenu(ev, kind) {
+    ev.stopPropagation();
+    const m = document.getElementById(`hr-more-${kind}`);
+    m.style.display = m.style.display === 'block' ? 'none' : 'block';
+}
+document.addEventListener('click', () => ['info', 'career'].forEach(k => { const m = document.getElementById(`hr-more-${k}`); if (m) m.style.display = 'none'; }));
+function toggleHrShowResigned() { HR.showResigned = !HR.showResigned; renderHr('info'); renderHr('career'); }
 
 // ------------------------------------------
 // 📤 직원명단.xlsx 올리기 (1기본정보 + 2경력,학력 → 통째로 바꿈)
@@ -225,7 +375,7 @@ function onHrImportFile(input) {
             const nInfo = HR.importRows.filter(p => p.info).length, nCareer = HR.importRows.filter(p => p.career).length;
             document.getElementById('hr-imp-result').innerHTML = `
                 <div class="lvimp-sum"><span>읽은 사람 <b>${HR.importRows.length}</b>명</span><span class="ok">직원정보 <b>${nInfo}</b>명</span><span class="ok">직원경력 <b>${nCareer}</b>명</span></div>
-                <div class="pay-note" style="margin-top: 10px;">⚠️ 저장하면 지금 사이트의 직원정보·직원경력이 <b>이 엑셀 내용으로 통째로 바뀌어요</b>.<br>
+                <div class="pay-note" style="margin-top: 10px;">⚠️ 저장하면 지금 사이트의 직원정보·직원경력이 <b>이 엑셀 내용으로 통째로 바뀌어요</b>. 화면에서 고친 내용·변경 기록·퇴사 처리도 모두 엑셀 기준으로 돌아가요.<br>
                 🔒 주민번호는 저장하지 않고 생년월일만 뽑았어요.</div>`;
             const btn = document.getElementById('hr-imp-save');
             btn.disabled = !HR.importRows.length;

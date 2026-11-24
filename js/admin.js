@@ -800,6 +800,7 @@ function cancelLeaveApproval(docId) {
 const ADMIN_MODAL_CLOSERS = [
     ['assoc-modal', 'closeAssocModal'],
     ['assoc-imp-modal', 'closeAssocImport'],
+    ['hr-modal', 'closeHrModal'],
     ['hr-imp-modal', 'closeHrImport'],
     ['leave-detail-modal', 'closeLeaveDetail'],
     ['pay-emp-modal', 'closePayEmpModal'],

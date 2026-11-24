@@ -269,14 +269,16 @@
                 <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('info', this.value)">
                 <span class="sub" id="hr-info-count"></span>
                 <div class="staff-actions"><button id="hr-reveal-btn" class="pay-btn" onclick="toggleHrReveal()">🔒 개인정보 보기</button>
+                    <button class="pay-btn blue" onclick="openHrModal(null, 'info')">＋ 직원 추가</button>
                     <button class="pay-btn" onclick="downloadHrExcel('info')">⬇ 엑셀 받기</button>
-                    <button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
+                    <span class="as-more-wrap"><button class="pay-btn" onclick="toggleHrMenu(event, 'info')" title="엑셀로 전체 다시 올리기">⋯</button>
+                        <span id="hr-more-info" class="as-more-menu"><button type="button" onclick="openHrImport()">📤 직원명단 엑셀로 전체 다시 올리기<br><small style="color:#e03131">지금 데이터가 통째로 바뀌어요</small></button></span></span></div>
             </div>
             <div class="staff-wrap hr-wrap"><table class="staff-tbl hr-tbl">
                 <thead><tr id="hr-info-head"></tr></thead>
                 <tbody id="hr-info-tbody"></tbody>
             </table></div>
-            <div class="staff-foot">직원명단 엑셀의 「1기본정보」를 그대로 보여줘요 · 칸 머리를 누르면 정렬 · 위 버튼으로 부서·직급별 보기 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있고 전화·이메일·주소는 [개인정보 보기]를 눌러야 보여요 · 주민번호는 저장하지 않고 생년월일만 보관해요</div>
+            <div class="staff-foot">직원명단 엑셀의 「1기본정보」를 그대로 보여줘요 · 칸 머리를 누르면 정렬 · 위 버튼으로 부서·직급별 보기 · 줄을 누르면 수정 창에서 바로 고쳐요(고칠 때마다 변경 기록이 남아요) · 🔒 관리자만 볼 수 있고 전화·이메일·주소는 [개인정보 보기]를 눌러야 보여요 · 주민번호는 저장하지 않고 생년월일만 보관해요</div>
         </div>
 
         <!-- 📚 직원경력 관리 (직원명단 「2경력,학력」 · 관리자 조회 전용 - js/hr-admin.js) -->
@@ -287,14 +289,16 @@
                 <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('career', this.value)">
                 <span class="sub" id="hr-career-count"></span>
                 <div class="staff-actions">
+                    <button class="pay-btn blue" onclick="openHrModal(null, 'career')">＋ 직원 추가</button>
                     <button class="pay-btn" onclick="downloadHrExcel('career')">⬇ 엑셀 받기</button>
-                    <button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
+                    <span class="as-more-wrap"><button class="pay-btn" onclick="toggleHrMenu(event, 'career')" title="엑셀로 전체 다시 올리기">⋯</button>
+                        <span id="hr-more-career" class="as-more-menu"><button type="button" onclick="openHrImport()">📤 직원명단 엑셀로 전체 다시 올리기<br><small style="color:#e03131">지금 데이터가 통째로 바뀌어요</small></button></span></span></div>
             </div>
             <div class="staff-wrap hr-wrap"><table class="staff-tbl hr-tbl">
                 <thead><tr id="hr-career-head"></tr></thead>
                 <tbody id="hr-career-tbody"></tbody>
             </table></div>
-            <div class="staff-foot">직원명단 엑셀의 「2경력,학력」을 그대로 보여줘요 · 칸 머리를 누르면 정렬 · 위 버튼으로 등급·회사등록·협회별 보기 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있어요</div>
+            <div class="staff-foot">직원명단 엑셀의 「2경력,학력」을 그대로 보여줘요 · 칸 머리를 누르면 정렬 · 위 버튼으로 등급·회사등록·협회별 보기 · 줄을 누르면 수정 창에서 바로 고쳐요(고칠 때마다 변경 기록이 남아요) · 🔒 관리자만 볼 수 있어요</div>
         </div>
 
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
@@ -349,6 +353,20 @@
         </div>
         </div><!-- /admin-main -->
         </div><!-- /admin-layout -->
+    </div>
+
+    <!-- ✏️ [직원정보·경력 수정 창] -->
+    <div id="hr-modal" class="pay-modal-bg" onclick="if (event.target === this) closeHrModal()">
+        <div class="pay-modal wide">
+            <div class="mh"><b id="hr-modal-title">직원 정보</b><button class="pay-btn ghost" onclick="closeHrModal()">✕</button></div>
+            <div id="hr-modal-body"></div>
+            <div class="pay-modal-foot" style="align-items: center;">
+                <span id="hr-modal-last" class="sub" style="margin-right: auto; font-size: 12px;"></span>
+                <button id="hr-modal-resign" class="pay-btn" onclick="toggleHrResign()">퇴사 처리</button>
+                <button class="pay-btn" onclick="closeHrModal()">취소</button>
+                <button class="pay-btn blue" onclick="saveHrModal()">저장</button>
+            </div>
+        </div>
     </div>
 
     <!-- 📤 [직원명단 엑셀 올리기 - 직원정보·직원경력] -->
