@@ -786,3 +786,38 @@ function cancelLeaveApproval(docId) {
     }).then(() => { alert("승인취소 되었습니다."); loadLeaveAdmin(); })
       .catch(err => { console.error("승인취소 실패:", err); alert("승인취소 중 오류가 발생했습니다."); });
 }
+
+// ⌨️ ESC로 창 닫기 (직원 화면과 같은 동작) - 관리자 화면의 모든 탭 창 공통
+// 열린 창이 여러 개면 맨 위(나중에 열린, HTML에서 아래쪽) 창 하나만 닫음 → 한 번 더 누르면 그 아래 창
+// 새 창을 추가하면 여기에 [창 id, 닫는 함수 이름]만 한 줄 넣으면 됨
+const ADMIN_MODAL_CLOSERS = [
+    ['assoc-modal', 'closeAssocModal'],
+    ['assoc-imp-modal', 'closeAssocImport'],
+    ['leave-detail-modal', 'closeLeaveDetail'],
+    ['pay-emp-modal', 'closePayEmpModal'],
+    ['pay-empxl-dl-modal', 'closeEmpXlDownload'],
+    ['staff-resign-modal', 'closeResignDialog'],
+    ['staff-deleted-modal', 'closeDeletedStaff'],
+    ['lvimp-modal', 'closeLeaveImport'],
+    ['pay-empxl-up-modal', 'closeEmpXlUpload'],
+    ['pay-import-modal', 'closePayImport'],
+    ['pay-company-modal', 'closePayCompanyModal'],
+    ['pay-doc-modal', 'closePayDoc'],
+    ['pay-bulk-modal', 'closeBulkSend'],      // 보내는 중에는 closeBulkSend()가 스스로 안 닫음
+    ['pay-log-modal', 'closePaySendLog'],
+    ['detail-modal', 'closeModal']
+];
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || e.isComposing) return;
+    const open = ADMIN_MODAL_CLOSERS
+        .map(([id, fn]) => ({ el: document.getElementById(id), fn }))
+        .filter(m => m.el && getComputedStyle(m.el).display !== 'none');
+    if (!open.length) return;
+    // 급여대장 검수 화면(.audit)은 바깥 클릭처럼 ESC로도 안 닫음 (처리 중인 선택이 사라지지 않게)
+    const top = open.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? 1 : -1)[0];
+    if (top.el.id === 'pay-import-modal' && top.el.querySelector('.audit')) return;
+    if (typeof window[top.fn] === 'function') {
+        e.preventDefault();
+        window[top.fn]();
+    }
+});
