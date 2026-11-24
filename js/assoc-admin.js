@@ -197,7 +197,7 @@ function parseAssocWorkbook(wb) {
 // ------------------------------------------
 // 👤 직원정보 연결: 이름이 같은 사람은 직원정보 관리(hr_staff)의 값을 보여줌 → 정보는 직원명단 엑셀 한 곳에서만 관리
 //   직원정보(1기본정보): 부서 · 직위 · 입사일 · 생년월일 · 전화 · 이메일 / 직원경력(2경력,학력): 분야 · 등급 · 회사등록 · 자격증 · 합격일
-//   직원정보에 없는 사람은 협회 명단에 저장된 값 그대로 · 협회 명단 문서에 저장된 원래 값은 m._raw 에 보관(저장할 때 그대로 둠)
+//   가입 협회(assocs)는 직원경력의 구분(협회)에서 · 직원정보에 없는 사람은 협회 명단에 저장된 값 그대로 · 협회 명단 문서에 저장된 원래 값은 m._raw 에 보관(저장할 때 그대로 둠)
 const HR_INFO_FIELDS = ['department', 'position', 'hireDate', 'birth', 'phone', 'email'];
 const HR_CAREER_FIELDS = ['field', 'grade', 'companyReg', 'license', 'licenseDate'];
 function loadHrForAssoc() {
@@ -209,8 +209,11 @@ function loadHrForAssoc() {
 function linkHr(m, people) {
     const p = people.find(x => (x.name || '').trim() === (m.name || '').trim());
     const raw = {};
-    [...HR_INFO_FIELDS, ...HR_CAREER_FIELDS].forEach(k => { raw[k] = m[k]; });
-    const out = { ...m, _raw: raw, _hrInfo: !!(p && p.info), _hrCareer: !!(p && p.career) };
+    [...HR_INFO_FIELDS, ...HR_CAREER_FIELDS, 'assocs'].forEach(k => { raw[k] = m[k]; });
+    // 가입 협회: 직원경력의 구분(협회)에 고른 협회가 있으면 그것을 씀 (없으면 협회 명단에 체크된 그대로)
+    const hrAssocs = p && p.career ? assocKeysFrom(p.career.group) : [];
+    const out = { ...m, _raw: raw, _hrInfo: !!(p && p.info), _hrCareer: !!(p && p.career), _hrAssoc: hrAssocs.length > 0 };
+    if (hrAssocs.length) out.assocs = ASSOCS.map(a => a.k).filter(k => hrAssocs.includes(k));
     if (p && p.info) HR_INFO_FIELDS.forEach(k => { if (p.info[k]) out[k] = p.info[k]; });
     if (p && p.career) HR_CAREER_FIELDS.forEach(k => { const val = p.career[k]; if (val !== undefined && val !== null && val !== '') out[k] = val; });
     return out;
@@ -745,7 +748,7 @@ function openAssocModal(id = null) {
             <div style="grid-column: span 3;"><label>이메일</label><input id="ae-email" value="${v(m.email)}" ${li}></div>
         </div></div>
         <div class="pay-grp"><div class="gh">협회 · 자격</div>${linkNote(m._hrCareer, '직원경력 관리')}
-            <div class="as-assoc-picks">${ASSOCS.map(a => `<label class="lvimp-emp"><input type="checkbox" id="ae-assoc-${a.k}" ${(m.assocs || []).includes(a.k) ? 'checked' : ''}> ${a.label}</label>`).join('')}</div>
+            ${m._hrAssoc ? '<div class="as-link-note">👤 가입 협회는 직원경력 관리의 구분(협회)에서 가져와요 · 바꾸려면 직원경력 관리에서 고쳐 주세요</div>' : ''}<div class="as-assoc-picks">${ASSOCS.map(a => `<label class="lvimp-emp"><input type="checkbox" id="ae-assoc-${a.k}" ${(m.assocs || []).includes(a.k) ? 'checked' : ''} ${m._hrAssoc ? 'disabled' : ''}> ${a.label}</label>`).join('')}</div>
             <div class="pay-fg c3">
                 <div><label>분야</label><input id="ae-field" value="${v(m.field)}" placeholder="설계/감리" ${lc}></div>
                 <div><label>자격 등급</label><select id="ae-grade" ${lc}><option value="">-</option>${grades.map(gr => `<option ${m.grade === gr ? 'selected' : ''}>${gr}</option>`).join('')}${m.grade && !grades.includes(m.grade) ? `<option selected>${v(m.grade)}</option>` : ''}</select></div>
@@ -779,6 +782,7 @@ function saveAssocMember() {
     };
     if (cur && cur._hrInfo) HR_INFO_FIELDS.forEach(k => { doc[k] = cur._raw[k] ?? ''; });
     if (cur && cur._hrCareer) HR_CAREER_FIELDS.forEach(k => { doc[k] = cur._raw[k] ?? (k === 'companyReg' ? null : ''); });
+    if (cur && cur._hrAssoc) doc.assocs = cur._raw.assocs || [];   // 직원경력에서 가져온 협회는 협회 명단에 덮어쓰지 않음
     const ref = AS.editingId ? db.collection("association_members").doc(AS.editingId) : db.collection("association_members").doc();
     ref.set(doc).then(() => { closeAssocModal(); openAssocTab(); })
         .catch(err => { console.error('협회 정보 저장 실패:', err); alert('저장 중 오류가 발생했어요.'); });

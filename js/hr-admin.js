@@ -68,7 +68,11 @@ const HR_POS_PICK = ['사원', '주임', '대리', '과장', '차장', '부장',
 
 // 이름 칸: 퇴사자는 '퇴사 날짜' · 화면에서 고친 적 있으면 ✏️
 // 직원경력 화면은 경력이 없는 사람도 빈 줄로 보여줌 (경력 미입력 · 줄을 눌러 채우기)
-const hrRowsOf = (kind) => kind === 'info' ? HR.people.filter(p => p.info) : HR.people.map(p => p.career ? p : { ...p, career: { department: (p.info || {}).department || '', position: (p.info || {}).position || '' }, _noCareer: true });
+// 경력 화면의 부서·직급은 늘 기본정보(직원정보) 값 - 한 곳에서만 관리
+const hrRowsOf = (kind) => kind === 'info' ? HR.people.filter(p => p.info) : HR.people.map(p => {
+    const i = p.info || {}, c = p.career || {};
+    return { ...p, career: { ...c, department: i.department || c.department || '', position: i.position || c.position || '' }, _noCareer: !p.career };
+});
 const hrNameCell = (p) => `<b>${esc(p.name)}</b>${p.resigned ? `<small>퇴사 ${esc(p.resigned.date || '')}</small>` : (p._noCareer ? '<small class="hr-empty">경력 미입력</small>' : p.history && p.history.length ? '<small title="화면에서 고친 기록이 있어요">✏️ 수정됨</small>' : '')}`;
 // 표 칸 정의: 정렬 열쇠 · 정렬 값 · 머리 · 칸 모양
 function hrColumns(kind) {
@@ -201,9 +205,9 @@ const HR_FIELDS = {
         { k: 'email', label: '이메일', span: 3 }, { k: 'address', label: '주소', span: 3 },
     ],
     career: [
-        { k: 'position', label: '직급', pick: 'pos' }, { k: 'department', label: '부서', pick: 'dept' }, { k: 'field', label: '분야', options: ['', '설계', '감리', '설계/감리'] },
-        { k: 'grade', label: '자격등급', options: ['', ...HR_GRADES] }, { k: 'companyReg', label: '회사등록', options: ['', 'Y', 'N'] }, { k: 'licenseDate', label: '합격일', type: 'date' },
-        { k: 'group', label: '구분(협회)', hint: '여러 개 고를 수 있어요', assoc: true, span: 3 },
+        { k: 'field', label: '분야', options: ['', '설계', '감리', '설계/감리'] }, { k: 'grade', label: '자격등급', options: ['', ...HR_GRADES] }, { k: 'companyReg', label: '회사등록', options: ['', 'Y', 'N'] },
+        { k: 'licenseDate', label: '합격일', type: 'date' },
+        { k: 'group', label: '구분(협회)', hint: '여러 개 고를 수 있어요 · 협회 관리의 가입 협회에도 그대로 반영돼요', assoc: true, span: 3 },
         { k: 'license', label: '자격증', span: 2 }, { k: 'licenseNo', label: '자격증 발급번호' },
         { k: 'school', label: '최종학력(학교)' }, { k: 'degree', label: '학위', options: ['', ...HR_DEGREES] }, { k: 'major', label: '학과(전공)' },
         { k: 'gradYear', label: '졸업(YYYY.MM)', ph: '2020.08' },
@@ -247,7 +251,7 @@ function openHrModal(id = null, tab = 'info') {
             <button type="button" id="hrm-tab-career" onclick="switchHrModalTab('career')">📚 경력 · 자격${p && !p.career ? ' <small>(없음)</small>' : ''}</button>
         </div>
         <div id="hrm-pane-info" class="pay-fg c3">${HR_FIELDS.info.map(f => field('info', f)).join('')}</div>
-        <div id="hrm-pane-career" class="pay-fg c3">${p && !p.career ? '<div class="hr-note" style="grid-column: span 3;">경력 관리를 하지 않는 직원이에요. 칸을 채우고 저장하면 직원경력 관리에 나와요.</div>' : ''}${HR_FIELDS.career.map(f => field('career', f)).join('')}</div>
+        <div id="hrm-pane-career" class="pay-fg c3"><div class="hr-note" style="grid-column: span 3;">부서 · 직급: <b>${esc([(p && p.info || {}).department, (p && p.info || {}).position].filter(Boolean).join(' · ') || '-')}</b> <span class="sub">(기본정보에서 바꿔요)</span></div>${p && !p.career ? '<div class="hr-note" style="grid-column: span 3;">경력 관리를 하지 않는 직원이에요. 칸을 채우고 저장하면 직원경력 관리에 나와요.</div>' : ''}${HR_FIELDS.career.map(f => field('career', f)).join('')}</div>
         ${p && p.resigned ? `<div class="hr-note warn">🚪 ${esc(p.resigned.date || '')} 퇴사 처리된 직원이에요.</div>` : ''}
         ${hist.length ? `<details class="hr-hist"><summary>🕘 변경 기록 ${hist.length}건</summary>${hist.map(h => `<div><b>${esc(h.at || '')}</b> ${h.changes.map(c => `${esc(c.label)} <span class="sub">${esc(c.from || '(빈칸)')}</span> → ${esc(c.to || '(빈칸)')}`).join(' · ')}</div>`).join('')}</details>` : ''}`;
     document.getElementById('hr-modal-last').innerText = last ? `마지막 수정: ${last.at} · ${last.changes.slice(0, 2).map(c => `${c.label} ${c.from || '(빈칸)'} → ${c.to || '(빈칸)'}`).join(' · ')}${last.changes.length > 2 ? ` 외 ${last.changes.length - 2}칸` : ''}` : (p ? '' : '새 직원은 이름만 있어도 저장돼요');
@@ -299,7 +303,7 @@ function saveHrModal() {
     };
     if (p && p.name !== name) changes.push({ label: '이름', from: p.name, to: name });
     const info = pick('info');
-    const careerOut = pick('career');
+    const careerOut = { ...pick('career'), department: info.department, position: info.position };   // 부서·직급은 기본정보와 같게
     const careerHasValue = HR_FIELDS.career.some(f => { const v = careerOut[f.k]; return v !== '' && v !== null && v !== undefined && !['position', 'department'].includes(f.k); });
     const career = (p && p.career) || careerHasValue ? careerOut : null;
     if (p && !changes.length) { closeHrModal(); return; }
