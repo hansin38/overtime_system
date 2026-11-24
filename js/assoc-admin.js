@@ -240,7 +240,7 @@ const hasNeed = (m) => EDU_SLOTS.some(s => { const r = eduRecs(m, s.k)[0]; retur
 // 📅 다음 교육 신청 (교육 신청 탭 · 명단 맨 오른쪽 칸)
 //  - 전기기술인협회 교육(설계 1·2 · 감리 1·2): 연초 일괄 접수 → 유효기간 만료 6개월 전이 속한 해의 1월 접수
 //  - 기타 교육 · 철도운전: 수시 → 유효기간 만료 6개월 전까지 신청
-//  - 무효(유효기간 지남)면 '지금 신청', 연초 접수 해가 이미 지났으면 '접수 놓침'
+//  - 무효(유효기간 지남)면 '지금 신청' · 원래 1월 접수가 지났으면 다음 1월 접수에 '촉박', 그 전에 만료되면 '접수 놓침'
 // ------------------------------------------
 const EDU_APPLY_MONTHS = 6;
 const JAN_BATCH_SLOTS = ['d1', 'd2', 's1', 's2'];
@@ -271,8 +271,13 @@ function applyInfoOf(m, k) {
     if (exp < today) return { ...base, kind: 'now', year: thisYear, sortKey: '0', text: '지금 신청 (무효)', cls: 'bad' };
     if (JAN_BATCH_SLOTS.includes(k)) {
         const year = Number(applyBy.slice(0, 4));
-        // 그 해 1월 접수가 이미 지났으면(올해 2월 이후 포함) '접수 놓침'
-        if (year < thisYear || (year === thisYear && Number(today.slice(5, 7)) > 1)) return { ...base, kind: 'missed', year: thisYear, sortKey: '1', text: `${String(year).slice(2)}년 1월 접수 놓침`, cls: 'bad' };
+        // 원래 접수할 1월이 이미 지났으면(올해 2월 이후 포함) → 다음 1월 접수로 넘김
+        //   다음 1월 접수가 만료일보다 먼저면 그 접수에 '촉박'(주황), 만료가 그보다 빠르면 '접수 놓침'(빨강)
+        if (year < thisYear || (year === thisYear && Number(today.slice(5, 7)) > 1)) {
+            const nextBatch = Number(today.slice(5, 7)) > 1 ? thisYear + 1 : thisYear;
+            if (exp > `${nextBatch}-01-31`) return { ...base, kind: 'jan', tight: true, year: nextBatch, sortKey: `${nextBatch}-01-00`, text: `${String(nextBatch).slice(2)}년 1월 접수 (촉박)`, cls: 'soon' };
+            return { ...base, kind: 'missed', year: thisYear, sortKey: '1', text: '1월 접수 놓침 · 추가 접수 확인', cls: 'bad' };
+        }
         return { ...base, kind: 'jan', year, sortKey: `${year}-01-01`, text: `${String(year).slice(2)}년 1월 접수`, cls: year === thisYear ? 'soon' : 'ok' };
     }
     const late = applyBy < today;
@@ -350,8 +355,8 @@ function renderAssocApply() {
         return `<div class="as-acard"><div class="as-acard-h">${esc(name)}${when}</div>
             ${slots.map(s => `<div class="as-course"><span class="k">${s.label}</span><div class="as-ppl">
                 ${list.filter(i => i.k === s.k).sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko')).map(i => {
-                    const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : '';
-                    const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `~${asShort(i.exp)}`;
+                    const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : i.tight ? 'tight' : '';
+                    const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.tight ? `촉박 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `~${asShort(i.exp)}`;
                     return `<span class="as-p ${cls}" onclick="openAssocModal('${i.m.id}')" title="눌러서 수정">${esc(i.m.name)}<small>${note}</small></span>`;
                 }).join('')}</div></div>`).join('')}
         </div>`;
