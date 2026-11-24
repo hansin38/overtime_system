@@ -380,7 +380,7 @@ function printHtmlInFrame(html, title) {
 
 function printOvertimeDetail() {
     if (!detailPrintData) return;
-    printHtmlInFrame(renderOvertimeSheetHtml(detailPrintData), `연장근로 신청 확인서 - ${detailPrintData.employeeName || ''}`);
+    printOvertimeSheetA4(detailPrintData);   // 직원 화면 인쇄와 같은 함수 (js/ot-sheet.js)
 }
 
 function printLeaveDetail() {

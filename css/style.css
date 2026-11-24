@@ -355,7 +355,9 @@ th { background-color: #f1f3f5; }
 .ot-name span:first-child { color: var(--ot-soft); font-size: 12px; }
 .ot-name b { font-size: 18px; letter-spacing: 2px; }
 .ot-pill { border: 1px solid #222; border-radius: 999px; padding: 2px 11px; font-size: 12px; font-weight: bold; }
-.ot-subject { margin-top: 8px; color: var(--ot-soft); word-break: break-all; }
+/* 제목: 내역 표 바로 위 (이름 밑에 있으면 어색해서 옮김) */
+.ot-subject { margin-top: calc(var(--ot-gap) * 2); font-size: 14px; font-weight: bold; word-break: break-all; }
+.ot-subject span { font-size: 12px; font-weight: normal; color: var(--ot-soft); margin-right: 12px; }
 
 /* 요약 3칸: 총 연장근로 / 근로 일수 / 진행 상태 */
 .ot-stats { display: grid; grid-template-columns: 1fr 0.7fr 1.8fr; margin-top: calc(var(--ot-gap) * 1.6); border-top: 1px solid var(--ot-hair); border-bottom: 1px solid var(--ot-hair); }
@@ -369,7 +371,7 @@ th { background-color: #f1f3f5; }
 .ot-status.on { color: #000; font-weight: bold; }
 
 /* 내역 표: 위 굵은 줄 + 행마다 옅은 가로줄 */
-.ot-items { margin-top: calc(var(--ot-gap) * 2) !important; font-size: 12px; }
+.ot-items { margin-top: 12px !important; font-size: 12px; }
 /* 행 높이: 위아래 여백으로 넉넉하게 */
 .ot-items th { font-weight: bold; font-size: 11.5px; padding: 12px 4px; text-align: center; border-top: 2px solid #222; border-bottom: 1px solid #222; }
 .ot-items td { padding: 13px 4px; text-align: center; border-bottom: 1px solid var(--ot-hair); }
@@ -384,9 +386,33 @@ th { background-color: #f1f3f5; }
 @media print {
     /* 숨긴 화면도 자리를 차지해 빈 2페이지가 생기므로 인쇄 시 아예 제외 */
     #main-system, #history-modal { display: none !important; }
-    /* 여백: @page 10mm + 종이 안쪽 여백 → 위 약 35mm · 양옆 약 25mm */
-    .ot-sheet { padding: 25mm 12mm 0 12mm; box-sizing: border-box; }
+    /* 여백: @page 10mm + 종이 안쪽 여백 → 위 약 35mm · 양옆 약 25mm (A4 틀 인쇄본은 아래 .ot-a4 여백 사용) */
+    .ot-sheet:not(.ot-a4) { padding: 25mm 12mm 0 12mm; box-sizing: border-box; }
 }
+
+/* 🖨️ 인쇄용 A4 한 장 틀 (js/ot-sheet.js printOvertimeSheetA4) - 급여 관리 경비명세서와 같은 크기·여백·로고 비율
+   [위 고정] 로고·제목·문서정보 / [가운데] 신청인~내역 표 (넘치면 축소) / [아래 고정] 확인 문구·날짜·신청인 */
+.ot-sheet.ot-a4 {
+    --ot-gap: 22px;
+    width: 700px; height: 990px; box-sizing: border-box; padding: 28px 78px 40px;
+    display: flex; flex-direction: column; background: #fff; font-family: 'Malgun Gothic', sans-serif;
+}
+.ot-a4 .ot-top { flex: none; padding-bottom: 16px; }
+.ot-a4 .ot-logo { width: auto; height: 44px; }
+.ot-a4 .ot-title { font-size: 22px; letter-spacing: 3px; }
+.ot-a4 .ot-meta { white-space: nowrap; }
+.ot-a4 .ot-body { flex: 1; min-height: 0; overflow: hidden; }
+/* flow-root: 첫 줄 위 여백이 밖으로 새지 않게 → 축소 비율 계산(높이 측정)이 정확해짐 */
+.ot-a4 .ot-body-in { transform-origin: top center; display: flow-root; }
+.ot-a4 .ot-name { margin-top: 36px; }
+.ot-a4 .ot-stats { margin-top: 28px; }
+.ot-a4 .ot-subject { margin-top: 36px; }
+.ot-a4 .ot-items th { padding: 10px 4px; }
+.ot-a4 .ot-items td { padding: 8px 4px; }
+.ot-a4 .ot-bottom { flex: none; margin-top: 24px; }
+.ot-a4 .ot-lead { margin-top: 0; }
+.ot-a4 .ot-date { margin-top: 14px; }
+.ot-a4 .ot-signer { margin-top: 28px; }
 
 /* 서비스 전환 탭 (연장근무 ↔ 연차신청, 로그인 유지) */
 .service-nav { display: flex; align-items: center; gap: 14px; }

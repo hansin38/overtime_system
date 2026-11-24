@@ -1532,16 +1532,8 @@ function printSelectedHistory() {
         });
 }
 
-// 미리보기 없이 바로 인쇄창 열기 (연차 휴가신청서와 같은 방식, 로고 이미지가 다 불러와진 뒤 인쇄)
-
+// 미리보기 없이 바로 인쇄창 열기 - 관리자 화면 상세보기 인쇄와 같은 A4 양식 (js/ot-sheet.js)
 function printOvertimeSheet(data) {
-    const body = document.getElementById('ot-print-body');
-    if (!body) return;
-    body.innerHTML = renderOvertimeSheetHtml(data);
-
-    const images = Array.from(body.querySelectorAll('img'));
-    Promise.all(images.map(img => img.complete ? Promise.resolve()
-        : new Promise(resolve => { img.onload = img.onerror = resolve; })))
-        .then(() => window.print());
+    printOvertimeSheetA4(data);
 }
 
