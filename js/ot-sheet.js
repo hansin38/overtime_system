@@ -49,10 +49,10 @@ function renderOvertimeSheetHtml(data, opts = {}) {
             <div class="ot-top">
                 <img class="ot-logo" src="${OT_COMPANY_LOGO}" alt="${OT_COMPANY_NAME}">
                 <div class="ot-title">연장근로 신청 확인서</div>
-                <div class="ot-meta">문서번호　-<br>작성일자　${submittedText}</div>
+                <div></div>
             </div>`;
     const body = `
-            <div class="ot-name"><span>신청인</span><b>${name}</b></div>
+            <div class="ot-name"><span>성명</span><b>${name}</b><span class="ot-meta">작성일자　${submittedText}</span></div>
 
             <div class="ot-stats">
                 <div><small>총 연장근로</small><strong>${totalH.toFixed(1)}<em>시간</em></strong></div>
@@ -70,7 +70,7 @@ function renderOvertimeSheetHtml(data, opts = {}) {
     const bottom = `
             <p class="ot-lead">위와 같이 연장근로 내역을 제출합니다.</p>
             <p class="ot-date">${submitted.getFullYear()}년 ${submitted.getMonth() + 1}월 ${submitted.getDate()}일</p>
-            <div class="ot-signer">신청인<br><b>${name}</b>　(서명 생략)</div>`;
+            <div class="ot-signer"><span>성명</span><b>${name}</b>(서명 생략)</div>`;
 
     if (opts.a4) {
         return `<div class="ot-sheet ot-a4">${top}

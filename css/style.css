@@ -340,48 +340,47 @@ th { background-color: #f1f3f5; }
    연장근로 신청 확인서 (화면 상세보기·인쇄 공용) - 세로선 없이 가로줄만 사용
    ========================================== */
 /* --ot-gap: 블록 사이 간격 하나로 통일 → 여백 조정은 이 값만 바꾸면 됨 */
-.ot-sheet { --ot-gap: 30px; --ot-soft: #666a70; --ot-hair: #c9ccd1; font-size: 13px; color: #111; }
+/* 글자 크기는 4단계만: 작은 글씨(이름표·표 머리·단위) 12px / 본문 13px / 강조(성명) 16px / 숫자 20px · 제목 22px */
+.ot-sheet { --ot-gap: 30px; --ot-soft: #666a70; --ot-hair: #c9ccd1; --ot-sm: 12px; --ot-md: 13px; --ot-lg: 16px; font-size: var(--ot-md); color: #111; }
 .ot-sheet table { width: 100%; border-collapse: collapse; margin: 0; }
 .ot-sheet th, .ot-sheet td { border: 0; background: none; }  /* 전역 표 테두리·배경 해제 (필요한 가로줄만 아래에서 지정) */
 
-/* 머리글: 로고 · 제목(가운데) · 문서정보 한 줄 */
-.ot-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ot-hair); }
-.ot-logo { display: block; width: 150px; max-width: 100%; height: auto; justify-self: start; }
-.ot-meta { font-size: 11px; color: var(--ot-soft); text-align: right; line-height: 1.7; justify-self: end; }
-.ot-title { font-size: 19px; font-weight: bold; letter-spacing: 1px; color: #000; white-space: nowrap; text-align: center; }
+/* 머리글: 로고(왼쪽) · 제목(정가운데) - 오른쪽 빈 칸이 로고와 같은 폭이라 제목이 종이 가운데에 옴 */
+.ot-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--ot-hair); }
+.ot-logo { display: block; width: auto; height: 40px; justify-self: start; }
+.ot-title { font-size: 22px; font-weight: bold; letter-spacing: 4px; color: #000; white-space: nowrap; text-align: center; }
 
-/* 신청인 + 상태 표시 + 제목 */
-.ot-name { display: flex; align-items: center; gap: 12px; margin-top: calc(var(--ot-gap) * 1.2); }
-.ot-name span:first-child { color: var(--ot-soft); font-size: 12px; }
-.ot-name b { font-size: 18px; letter-spacing: 2px; }
-.ot-pill { border: 1px solid #222; border-radius: 999px; padding: 2px 11px; font-size: 12px; font-weight: bold; }
-/* 제목: 내역 표 바로 위 (이름 밑에 있으면 어색해서 옮김) */
-.ot-subject { margin-top: calc(var(--ot-gap) * 2); font-size: 14px; font-weight: bold; word-break: break-all; }
-.ot-subject span { font-size: 12px; font-weight: normal; color: var(--ot-soft); margin-right: 12px; }
+/* 성명 + 작성일자(오른쪽) */
+.ot-name { display: flex; align-items: baseline; gap: 12px; margin-top: calc(var(--ot-gap) * 1.2); }
+.ot-name span:first-child { color: var(--ot-soft); font-size: var(--ot-sm); }
+.ot-name b { font-size: var(--ot-lg); letter-spacing: 2px; }
+.ot-meta { margin-left: auto; font-size: var(--ot-sm); color: var(--ot-soft); white-space: nowrap; }
 
 /* 요약 3칸: 총 연장근로 / 근로 일수 / 진행 상태 */
-.ot-stats { display: grid; grid-template-columns: 1fr 0.7fr 1.8fr; margin-top: calc(var(--ot-gap) * 1.6); border-top: 1px solid var(--ot-hair); border-bottom: 1px solid var(--ot-hair); }
-.ot-stats > div { padding: 16px 14px 18px; display: grid; gap: 6px; align-content: start; }
+.ot-stats { display: grid; grid-template-columns: 1fr 0.7fr 1.8fr; margin-top: calc(var(--ot-gap) * 0.8); border-top: 1px solid var(--ot-hair); border-bottom: 1px solid var(--ot-hair); }
+.ot-stats > div { padding: 14px 14px 16px; display: grid; gap: 6px; align-content: start; }
 .ot-stats > div + div { border-left: 1px solid var(--ot-hair); }
-.ot-stats small { font-size: 11px; color: var(--ot-soft); }
-.ot-stats strong { font-size: 21px; }
-.ot-stats em { font-style: normal; font-size: 12px; font-weight: normal; margin-left: 2px; color: var(--ot-soft); }
-.ot-statuses { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; padding-top: 4px; }
+.ot-stats small { font-size: var(--ot-sm); color: var(--ot-soft); }
+.ot-stats strong { font-size: 20px; }
+.ot-stats em { font-style: normal; font-size: var(--ot-sm); font-weight: normal; margin-left: 3px; color: var(--ot-soft); }
+.ot-statuses { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--ot-md); padding-top: 4px; }
 .ot-status { white-space: nowrap; color: var(--ot-soft); }
 .ot-status.on { color: #000; font-weight: bold; }
 
-/* 내역 표: 위 굵은 줄 + 행마다 옅은 가로줄 */
-.ot-items { margin-top: 12px !important; font-size: 12px; }
-/* 행 높이: 위아래 여백으로 넉넉하게 */
-.ot-items th { font-weight: bold; font-size: 11.5px; padding: 12px 4px; text-align: center; border-top: 2px solid #222; border-bottom: 1px solid #222; }
-.ot-items td { padding: 13px 4px; text-align: center; border-bottom: 1px solid var(--ot-hair); }
+/* 제목(내역 표 바로 위) + 내역 표: 위 굵은 줄 + 행마다 옅은 가로줄 */
+.ot-subject { margin-top: calc(var(--ot-gap) * 1.6); font-size: var(--ot-md); font-weight: bold; word-break: break-all; }
+.ot-subject span { font-size: var(--ot-sm); font-weight: normal; color: var(--ot-soft); margin-right: 12px; }
+.ot-items { margin-top: 10px !important; font-size: var(--ot-md); }
+.ot-items th { font-weight: bold; font-size: var(--ot-sm); padding: 11px 4px; text-align: center; border-top: 2px solid #222; border-bottom: 1px solid #222; }
+.ot-items td { padding: 12px 4px; text-align: center; border-bottom: 1px solid var(--ot-hair); }
 .ot-items td.ot-reason { text-align: left; padding-left: 10px; word-break: break-all; }
 
-/* 하단: 확인 문구·날짜 가운데, 그 아래 오른쪽에 선 + 신청인 */
-.ot-lead { text-align: center; color: var(--ot-soft); margin: calc(var(--ot-gap) * 3) 0 0 0; }
-.ot-date { text-align: center; color: var(--ot-soft); margin: var(--ot-gap) 0 0 0; }
-.ot-signer { width: 60%; margin: calc(var(--ot-gap) * 2) 0 0 auto; padding-top: 14px; border-top: 1px solid var(--ot-hair); text-align: right; line-height: 1.9; }
-.ot-signer b { font-size: 15px; letter-spacing: 2px; }
+/* 하단: 확인 문구·날짜 가운데, 그 아래 오른쪽에 선 + 성명 */
+.ot-lead { text-align: center; color: var(--ot-soft); font-size: var(--ot-md); margin: calc(var(--ot-gap) * 2.4) 0 0 0; }
+.ot-date { text-align: center; color: var(--ot-soft); font-size: var(--ot-md); margin: calc(var(--ot-gap) * 0.6) 0 0 0; }
+.ot-signer { width: 50%; margin: calc(var(--ot-gap) * 1.6) 0 0 auto; padding-top: 12px; border-top: 1px solid var(--ot-hair); text-align: right; font-size: var(--ot-md); color: var(--ot-soft); }
+.ot-signer span { font-size: var(--ot-sm); margin-right: 12px; }
+.ot-signer b { font-size: var(--ot-lg); letter-spacing: 2px; color: #111; margin-right: 10px; }
 
 @media print {
     /* 숨긴 화면도 자리를 차지해 빈 2페이지가 생기므로 인쇄 시 아예 제외 */
@@ -397,22 +396,20 @@ th { background-color: #f1f3f5; }
     width: 700px; height: 990px; box-sizing: border-box; padding: 28px 78px 40px;
     display: flex; flex-direction: column; background: #fff; font-family: 'Malgun Gothic', sans-serif;
 }
-.ot-a4 .ot-top { flex: none; padding-bottom: 16px; }
-.ot-a4 .ot-logo { width: auto; height: 44px; }
-.ot-a4 .ot-title { font-size: 22px; letter-spacing: 3px; }
-.ot-a4 .ot-meta { white-space: nowrap; }
+.ot-a4 .ot-top { flex: none; }
+.ot-a4 .ot-logo { height: 44px; }
 .ot-a4 .ot-body { flex: 1; min-height: 0; overflow: hidden; }
 /* flow-root: 첫 줄 위 여백이 밖으로 새지 않게 → 축소 비율 계산(높이 측정)이 정확해짐 */
 .ot-a4 .ot-body-in { transform-origin: top center; display: flow-root; }
-.ot-a4 .ot-name { margin-top: 36px; }
-.ot-a4 .ot-stats { margin-top: 28px; }
-.ot-a4 .ot-subject { margin-top: 36px; }
+.ot-a4 .ot-name { margin-top: 32px; }
+.ot-a4 .ot-stats { margin-top: 16px; }
+.ot-a4 .ot-subject { margin-top: 34px; }
 .ot-a4 .ot-items th { padding: 10px 4px; }
 .ot-a4 .ot-items td { padding: 8px 4px; }
 .ot-a4 .ot-bottom { flex: none; margin-top: 24px; }
 .ot-a4 .ot-lead { margin-top: 0; }
-.ot-a4 .ot-date { margin-top: 14px; }
-.ot-a4 .ot-signer { margin-top: 28px; }
+.ot-a4 .ot-date { margin-top: 12px; }
+.ot-a4 .ot-signer { margin-top: 26px; }
 
 /* 서비스 전환 탭 (연장근무 ↔ 연차신청, 로그인 유지) */
 .service-nav { display: flex; align-items: center; gap: 14px; }
