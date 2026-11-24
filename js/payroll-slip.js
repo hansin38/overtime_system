@@ -315,8 +315,7 @@ function printPayDoc() {
         .concat(Array.from(doc.images).map(img => img.complete ? Promise.resolve()
             : new Promise(resolve => { img.onload = img.onerror = resolve; })));
     Promise.all(waits).then(() => {
-        frame.contentWindow.focus();
-        frame.contentWindow.print();
+        printFrameAndReturnFocus(frame);
     });
 }
 

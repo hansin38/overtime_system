@@ -107,7 +107,21 @@ function printOvertimeSheetA4(data) {
         .concat(Array.from(doc.images).map(img => img.complete ? Promise.resolve()
             : new Promise(resolve => { img.onload = img.onerror = resolve; })));
     Promise.all(waits).then(() => {
-        frame.contentWindow.focus();
-        frame.contentWindow.print();
+        printFrameAndReturnFocus(frame);
     });
+}
+
+// 인쇄 창(iframe)으로 인쇄한 뒤 키보드 포커스를 원래 화면으로 돌려놓음
+// (안 돌려놓으면 인쇄 창을 닫은 뒤 누른 ESC가 iframe 안으로만 가서 상세보기 창이 안 닫힘)
+// 관리자 화면의 모든 인쇄(연장근로 확인서·휴가신청서·급여 명세서)와 직원 화면 인쇄가 함께 씀
+function printFrameAndReturnFocus(frame) {
+    const back = () => { if (document.activeElement === frame) frame.blur(); window.focus(); };
+    frame.contentWindow.addEventListener('afterprint', back);
+    // 혹시 포커스가 iframe에 남아 있어도 ESC는 원래 화면으로 전달
+    frame.contentDocument.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { back(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }
+    });
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    back();   // 인쇄 창이 닫힐 때까지 기다리는 브라우저(크롬·웨일·엣지)는 여기서 바로 돌아옴
 }
