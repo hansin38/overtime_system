@@ -144,7 +144,7 @@ function saveHrImport() {
     batch.commit().then(() => {
         alert('저장했어요.');
         closeHrImport();
-        HR.loaded = false;
+        HR.loaded = false;   // 협회 관리도 다음에 열 때 새 직원정보로 연결됨
         const kind = document.getElementById('hrcareer-admin-section').style.display === 'block' ? 'career' : 'info';
         openHrTab(kind);
     }).catch(err => {

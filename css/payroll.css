@@ -736,3 +736,5 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .hr-tbl td.l { text-align: left; }
 .hr-tbl td small { display: block; color: #868e96; font-size: 11.5px; }
 .hr-tbl td.hr-addr { max-width: 320px; word-break: keep-all; }
+.as-link-note { background: #eef4ff; color: #24447a; border-radius: 6px; padding: 6px 10px; font-size: 12px; margin: 0 0 8px; }
+#assoc-modal-body input:disabled, #assoc-modal-body select:disabled { background: #f8f9fa; color: #495057; cursor: not-allowed; }

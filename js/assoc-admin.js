@@ -195,10 +195,30 @@ function parseAssocWorkbook(wb) {
 // ------------------------------------------
 // 탭 열기 · 불러오기
 // ------------------------------------------
+// 👤 직원정보 연결: 이름이 같은 사람은 직원정보 관리(hr_staff)의 값을 보여줌 → 정보는 직원명단 엑셀 한 곳에서만 관리
+//   직원정보(1기본정보): 부서 · 직위 · 입사일 · 생년월일 · 전화 · 이메일 / 직원경력(2경력,학력): 분야 · 등급 · 회사등록 · 자격증 · 합격일
+//   직원정보에 없는 사람은 협회 명단에 저장된 값 그대로 · 협회 명단 문서에 저장된 원래 값은 m._raw 에 보관(저장할 때 그대로 둠)
+const HR_INFO_FIELDS = ['department', 'position', 'hireDate', 'birth', 'phone', 'email'];
+const HR_CAREER_FIELDS = ['field', 'grade', 'companyReg', 'license', 'licenseDate'];
+function loadHrForAssoc() {
+    if (typeof HR !== 'undefined' && HR.loaded) return Promise.resolve(HR.people);
+    return db.collection('hr_staff').get()
+        .then(snap => { const people = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (typeof HR !== 'undefined') { HR.people = people; HR.loaded = true; } return people; })
+        .catch(err => { console.warn('직원정보 연결 안 됨 (규칙 게시 전이거나 데이터 없음):', err && err.code); return []; });
+}
+function linkHr(m, people) {
+    const p = people.find(x => (x.name || '').trim() === (m.name || '').trim());
+    const raw = {};
+    [...HR_INFO_FIELDS, ...HR_CAREER_FIELDS].forEach(k => { raw[k] = m[k]; });
+    const out = { ...m, _raw: raw, _hrInfo: !!(p && p.info), _hrCareer: !!(p && p.career) };
+    if (p && p.info) HR_INFO_FIELDS.forEach(k => { if (p.info[k]) out[k] = p.info[k]; });
+    if (p && p.career) HR_CAREER_FIELDS.forEach(k => { const val = p.career[k]; if (val !== undefined && val !== null && val !== '') out[k] = val; });
+    return out;
+}
 function openAssocTab() {
     document.getElementById('assoc-tbody').innerHTML = `<tr><td colspan="5" style="color: #888;">불러오는 중...</td></tr>`;
-    db.collection("association_members").get().then(snap => {
-        AS.members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    Promise.all([db.collection("association_members").get(), loadHrForAssoc()]).then(([snap, people]) => {
+        AS.members = snap.docs.map(d => linkHr({ id: d.id, ...d.data() }, people));
         AS.loaded = true;
         renderAssoc();
         switchAssocSubTab(AS.subTab || localStorage.getItem('assocSubTab') || 'apply');
@@ -711,25 +731,27 @@ function openAssocModal(id = null) {
     if (!m) return;
     const v = (x) => esc(x || '');
     const grades = ['초급', '중급', '고급', '특급'];
+    const li = m._hrInfo ? 'disabled title="직원정보 관리에서 가져온 값"' : '', lc = m._hrCareer ? 'disabled title="직원경력 관리에서 가져온 값"' : '';
+    const linkNote = (on, where) => on ? `<div class="as-link-note">👤 ${where}에서 가져온 값이에요 · 바꾸려면 직원명단 엑셀을 고쳐서 다시 올려 주세요</div>` : '';
     document.getElementById('assoc-modal-title').innerText = id ? `기술자 정보 · ${m.name}` : '기술자 추가';
     document.getElementById('assoc-modal-body').innerHTML = `
-        <div class="pay-grp"><div class="gh">기본 정보</div><div class="pay-fg c3">
+        <div class="pay-grp"><div class="gh">기본 정보</div>${linkNote(m._hrInfo, '직원정보 관리')}<div class="pay-fg c3">
             <div><label>이름</label><input id="ae-name" value="${v(m.name)}"></div>
-            <div><label>부서</label><input id="ae-department" value="${v(m.department)}"></div>
-            <div><label>직위</label><input id="ae-position" value="${v(m.position)}"></div>
-            <div><label>입사일</label><input type="date" id="ae-hireDate" value="${v(m.hireDate)}"></div>
-            <div><label>생년월일</label><input type="date" id="ae-birth" value="${v(m.birth)}"></div>
-            <div><label>전화번호</label><input id="ae-phone" value="${v(m.phone)}"></div>
-            <div style="grid-column: span 3;"><label>이메일</label><input id="ae-email" value="${v(m.email)}"></div>
+            <div><label>부서</label><input id="ae-department" value="${v(m.department)}" ${li}></div>
+            <div><label>직위</label><input id="ae-position" value="${v(m.position)}" ${li}></div>
+            <div><label>입사일</label><input type="date" id="ae-hireDate" value="${v(m.hireDate)}" ${li}></div>
+            <div><label>생년월일</label><input type="date" id="ae-birth" value="${v(m.birth)}" ${li}></div>
+            <div><label>전화번호</label><input id="ae-phone" value="${v(m.phone)}" ${li}></div>
+            <div style="grid-column: span 3;"><label>이메일</label><input id="ae-email" value="${v(m.email)}" ${li}></div>
         </div></div>
-        <div class="pay-grp"><div class="gh">협회 · 자격</div>
+        <div class="pay-grp"><div class="gh">협회 · 자격</div>${linkNote(m._hrCareer, '직원경력 관리')}
             <div class="as-assoc-picks">${ASSOCS.map(a => `<label class="lvimp-emp"><input type="checkbox" id="ae-assoc-${a.k}" ${(m.assocs || []).includes(a.k) ? 'checked' : ''}> ${a.label}</label>`).join('')}</div>
             <div class="pay-fg c3">
-                <div><label>분야</label><input id="ae-field" value="${v(m.field)}" placeholder="설계/감리"></div>
-                <div><label>자격 등급</label><select id="ae-grade"><option value="">-</option>${grades.map(gr => `<option ${m.grade === gr ? 'selected' : ''}>${gr}</option>`).join('')}${m.grade && !grades.includes(m.grade) ? `<option selected>${v(m.grade)}</option>` : ''}</select></div>
-                <div><label>회사 등록</label><select id="ae-companyReg"><option value="">-</option><option value="Y" ${m.companyReg === true ? 'selected' : ''}>Y</option><option value="N" ${m.companyReg === false ? 'selected' : ''}>N</option></select></div>
-                <div style="grid-column: span 2;"><label>자격증</label><input id="ae-license" value="${v(m.license)}"></div>
-                <div><label>합격일</label><input id="ae-licenseDate" value="${v(m.licenseDate)}" placeholder="2021-06-02"></div>
+                <div><label>분야</label><input id="ae-field" value="${v(m.field)}" placeholder="설계/감리" ${lc}></div>
+                <div><label>자격 등급</label><select id="ae-grade" ${lc}><option value="">-</option>${grades.map(gr => `<option ${m.grade === gr ? 'selected' : ''}>${gr}</option>`).join('')}${m.grade && !grades.includes(m.grade) ? `<option selected>${v(m.grade)}</option>` : ''}</select></div>
+                <div><label>회사 등록</label><select id="ae-companyReg" ${lc}><option value="">-</option><option value="Y" ${m.companyReg === true ? 'selected' : ''}>Y</option><option value="N" ${m.companyReg === false ? 'selected' : ''}>N</option></select></div>
+                <div style="grid-column: span 2;"><label>자격증</label><input id="ae-license" value="${v(m.license)}" ${lc}></div>
+                <div><label>합격일</label><input id="ae-licenseDate" value="${v(m.licenseDate)}" placeholder="2021-06-02" ${lc}></div>
             </div></div>
         <div class="pay-grp"><div class="gh">교육</div>
             <div class="as-rule">✅ 교육 <b>종료일부터 3년 - 1일</b>까지 유효, 하루라도 지나면 <b>무효</b> (예: 23.11.14 종료 → 26.11.13까지) · 기록은 종료일부터 <b>10년</b> 보관
@@ -747,6 +769,7 @@ function saveAssocMember() {
     if (!name) { alert('이름을 입력해 주세요.'); return; }
     const edu = collectEduFromModal();
     const reg = g('companyReg');
+    const cur = AS.editingId ? AS.members.find(x => x.id === AS.editingId) : null;
     const doc = {
         name, department: g('department'), position: g('position'), hireDate: g('hireDate'), birth: g('birth'), phone: g('phone'), email: g('email'),
         assocs: ASSOCS.map(a => a.k).filter(k => document.getElementById('ae-assoc-' + k).checked),
@@ -754,6 +777,8 @@ function saveAssocMember() {
         license: g('license'), licenseDate: g('licenseDate'), edu, memo: g('memo'),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
+    if (cur && cur._hrInfo) HR_INFO_FIELDS.forEach(k => { doc[k] = cur._raw[k] ?? ''; });
+    if (cur && cur._hrCareer) HR_CAREER_FIELDS.forEach(k => { doc[k] = cur._raw[k] ?? (k === 'companyReg' ? null : ''); });
     const ref = AS.editingId ? db.collection("association_members").doc(AS.editingId) : db.collection("association_members").doc();
     ref.set(doc).then(() => { closeAssocModal(); openAssocTab(); })
         .catch(err => { console.error('협회 정보 저장 실패:', err); alert('저장 중 오류가 발생했어요.'); });
