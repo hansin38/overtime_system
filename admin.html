@@ -264,23 +264,21 @@
             <div id="assoc-kpis"></div>
             <div class="staff-bar">
                 <input id="assoc-search" class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setAssocFilter('q', this.value)">
-                <select id="assoc-assoc" onchange="setAssocFilter('assoc', this.value)"><option value="">전체 협회</option>
-                    <option value="elec">전기기술인협회</option><option value="ict">정보통신공사협회</option><option value="sig">철도신호협회</option>
-                    <option value="eng">엔지니어링협회</option><option value="erail">전기철도협회</option><option value="drive">철도운전협회</option></select>
-                <select id="assoc-due" onchange="setAssocFilter('due', this.value)"><option value="">교육 전체</option>
-                    <option value="over">무효 (유효기간 지남)</option><option value="soon">다가오는 교육 신청 대상</option><option value="need">신청 필요 표시</option></select>
                 <span class="sub" id="assoc-count"></span>
                 <div class="staff-actions">
-                    <button class="pay-btn" onclick="openAssocImport()">📤 직원명단 엑셀에서 가져오기</button>
-                    <button class="pay-btn" onclick="downloadAssocExcel()">⬇ 엑셀 받기</button>
                     <button class="pay-btn blue" onclick="openAssocModal()">＋ 기술자 추가</button>
+                    <span class="as-more-wrap"><button class="pay-btn" onclick="toggleAssocMenu(event)" title="엑셀 가져오기 · 받기">⋯</button>
+                        <span id="assoc-more-menu" class="as-more-menu">
+                            <button type="button" onclick="openAssocImport()">📤 직원명단 엑셀에서 가져오기</button>
+                            <button type="button" onclick="downloadAssocExcel()">⬇ 엑셀 받기</button>
+                        </span></span>
                 </div>
             </div>
             <div class="staff-wrap"><table class="staff-tbl as-tbl">
                 <thead><tr id="assoc-head"></tr></thead>
-                <tbody id="assoc-tbody"><tr><td colspan="9" style="color: #888;">불러오는 중...</td></tr></tbody>
+                <tbody id="assoc-tbody"><tr><td colspan="5" style="color: #888;">불러오는 중...</td></tr></tbody>
             </table></div>
-            <div class="staff-foot">줄을 누르면 수정 창이 열려요 · 교육 기간이 빨강이면 무효(유효기간 지남) · 다음 교육 신청: 설계·감리(전기기술인 · 정보통신공사협회)는 만료 6개월 전이 속한 해의 1월 일괄 접수, 그 외는 만료 6개월 전까지 · 협회 명단은 직원 관리(사원정보)와 별개라 퇴사자·임원도 그대로 관리돼요</div>
+            <div class="staff-foot">줄을 누르면 교육이 아래로 펼쳐지고 [✏️ 수정]으로 고쳐요 · 위쪽 버튼을 누르면 그 협회·상태만 보이고 다시 누르면 풀려요 · 다음 교육 신청: 설계·감리(전기기술인 · 정보통신공사협회)는 만료 6개월 전이 속한 해의 1월 일괄 접수, 그 외는 만료 6개월 전까지 · 협회 명단은 직원 관리(사원정보)와 별개라 퇴사자·임원도 그대로 관리돼요</div>
             </div>
             <!-- 📅 교육 신청 (협회별 → 과정별 → 신청할 사람) -->
             <div id="assoc-apply-pane" style="display: none;">
