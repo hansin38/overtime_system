@@ -293,7 +293,8 @@ function applyInfoOf(m, k) {
         text: late ? `${asShort(applyBy)}까지 (지남)` : `${asShort(applyBy)}까지 신청`, cls: late ? 'bad' : asDaysTo(applyBy) <= ASSOC_SOON_DAYS ? 'soon' : 'ok' };
 }
 function applyInfosOf(m) {
-    return EDU_SLOTS.map(s => applyInfoOf(m, s.k)).filter(Boolean).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    // 아직 신청 안 한 것 먼저 (신청완료·대기는 뒤로), 그 안에서 급한 순
+    return EDU_SLOTS.map(s => applyInfoOf(m, s.k)).filter(Boolean).sort((a, b) => (a.applied - b.applied) || a.sortKey.localeCompare(b.sortKey));
 }
 // 명단 맨 오른쪽 칸: 가장 급한 것 하나 (+ 나머지 수)
 function nextApplyCell(m) {
@@ -320,15 +321,108 @@ function assocApplyItems(year) {
     }));
     return items;
 }
+// 작은 탭 3개: 기술자 명단(list) · 협회별(byassoc) · 교육 신청(apply) - 새로고침해도 보던 탭 기억
 function switchAssocSubTab(tab) {
+    if (!['list', 'byassoc', 'apply'].includes(tab)) tab = 'list';
     AS.subTab = tab;
     localStorage.setItem('assocSubTab', tab);
-    document.getElementById('assoc-list-pane').style.display = tab === 'list' ? '' : 'none';
-    document.getElementById('assoc-apply-pane').style.display = tab === 'apply' ? '' : 'none';
-    document.getElementById('as-subtab-list').classList.toggle('on', tab === 'list');
-    document.getElementById('as-subtab-apply').classList.toggle('on', tab === 'apply');
+    ['list', 'byassoc', 'apply'].forEach(t => {
+        document.getElementById(`assoc-${t}-pane`).style.display = tab === t ? '' : 'none';
+        document.getElementById(`as-subtab-${t}`).classList.toggle('on', tab === t);
+    });
     if (tab === 'apply') renderAssocApply();
+    if (tab === 'byassoc') renderAssocByAssoc();
 }
+// ------------------------------------------
+// 🏛 협회별 탭: 협회 카드 → 누르면 그 협회 사람만, 그 협회 과정 칸만 있는 표
+// ------------------------------------------
+const ASSOC_DEFAULT_SLOTS = { elec: ['d1', 'd2', 's1', 's2'], ict: ['d1', 'd2'] };
+// 그 협회에 속한 사람 (협회 체크 또는 그 협회 교육 기록이 있는 사람)
+function assocMembersOf(a) {
+    return AS.members.filter(m => (m.assocs || []).includes(a.k) || EDU_SLOTS.some(s => eduRecs(m, s.k).length && slotAssocLabel(m, s.k) === a.label));
+}
+// 그 협회 표에 보일 과정 칸 (기본 칸 + 실제로 그 협회 기록이 있는 칸)
+function assocSlotsOf(a, members) {
+    const keys = new Set(ASSOC_DEFAULT_SLOTS[a.k] || []);
+    members.forEach(m => EDU_SLOTS.forEach(s => { if (eduRecs(m, s.k).length && slotAssocLabel(m, s.k) === a.label) keys.add(s.k); }));
+    return EDU_SLOTS.filter(s => keys.has(s.k));
+}
+function assocStats(a) {
+    const members = assocMembersOf(a), first = assocApplyYears()[0];
+    const mine = (m) => applyInfosOf(m).filter(x => x.assoc === a.label);
+    const over = members.filter(m => mine(m).some(x => x.kind === 'now')).length;
+    const target = members.filter(m => mine(m).some(x => !x.applied && (isUrgent(x) || x.year === first || (x.kind === 'any' && x.year < first)))).length;
+    const need = members.filter(m => EDU_SLOTS.some(s => slotAssocLabel(m, s.k) === a.label && slotState(m, s.k) === 'need')).length;
+    return { members, over, target, need, first };
+}
+function openAssocView(k) { AS.assocView = k; renderAssocByAssoc(); }
+function renderAssocByAssoc() {
+    const box = document.getElementById('assoc-byassoc-body');
+    if (!box) return;
+    const a = ASSOCS.find(x => x.k === AS.assocView);
+    if (!a) {
+        // 첫 화면: 협회 카드
+        box.innerHTML = `<div class="as-agrid">${ASSOCS.map(x => {
+            const st = assocStats(x), n = st.members.length;
+            const pills = !n ? '<span class="as-pill gray">-</span>' : [
+                st.over && `<span class="as-pill bad">무효 ${st.over}</span>`,
+                st.target && `<span class="as-pill warn">${st.first}년 신청 대상 ${st.target}</span>`,
+                st.need && `<span class="as-pill gray">신청필요 표시 ${st.need}</span>`,
+            ].filter(Boolean).join('') || '<span class="as-pill ok">모두 유효</span>';
+            return `<div class="as-acard2${n ? '' : ' empty'}" ${n ? `onclick="openAssocView('${x.k}')"` : ''}>
+                <div class="t">${x.label}</div><div class="c">${n}<small>명</small></div><div class="s">${pills}</div></div>`;
+        }).join('')}</div>`;
+        return;
+    }
+    const st = assocStats(a), slots = assocSlotsOf(a, st.members);
+    const members = st.members.slice().sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ko'));
+    const cell = (m, k) => {
+        const recs = eduRecs(m, k);
+        if (!recs.length || slotAssocLabel(m, k) !== a.label) return '<span class="sub">-</span>';
+        const r = recs[0], state = slotState(m, k), exp = slotExpiry(m, k);
+        const period = r.from ? `${asShort(r.from)}${r.to && r.to !== r.from ? '~' + asShort(r.to).slice(3) : ''}` : '';
+        if (state === 'need') return '<span class="as-pill bad">신청필요</span>';
+        if (state === 'applied') return `<span class="as-pill blue">${r.status}</span>${period ? `<small>${period}</small>` : ''}`;
+        return `<span class="${state === 'over' ? 'as-red' : ''}">${period || r.status || '-'}</span>${exp ? `<small class="${state === 'over' ? 'as-red' : ''}">${state === 'over' ? '무효 · ' : '~'}${asShort(exp)}</small>` : ''}`;
+    };
+    const next = (m) => {
+        const x = applyInfosOf(m).find(i => i.assoc === a.label);
+        if (!x) return '<span class="sub">-</span>';
+        return `<span class="as-apply ${x.applied ? 'applied' : x.cls}">${x.applied ? '신청완료' : x.text}</span><small>${x.label}${x.window && !x.applied ? ` · 교육 ${x.window}` : ''}</small>`;
+    };
+    box.innerHTML = `
+        <div class="as-vhead"><button type="button" class="as-back" onclick="openAssocView(null)">← 협회 목록</button>
+            <b>${a.label} · ${members.length}명</b>
+            ${st.over ? `<span class="as-pill bad">무효 ${st.over}</span>` : ''}${st.target ? `<span class="as-pill warn">${st.first}년 신청 대상 ${st.target}</span>` : ''}
+            <button type="button" class="pay-btn sm" style="margin-left: auto;" onclick="downloadAssocViewExcel()">⬇ 엑셀 받기</button></div>
+        <div class="staff-wrap"><table class="staff-tbl as-tbl">
+            <thead><tr><th>이름</th><th>부서 · 직위</th><th>등급 · 분야</th>${slots.map(s => `<th>${courseName(a.label, s.k)}</th>`).join('')}<th>다음 교육 신청</th></tr></thead>
+            <tbody>${members.length ? members.map(m => `<tr onclick="openAssocModal('${m.id}')" title="눌러서 수정">
+                <td><b>${esc(m.name)}</b></td><td>${esc(m.department || '-')}<small>${esc(m.position || '')}</small></td>
+                <td>${esc(m.grade || '-')}<small>${esc(m.field || '')}</small></td>
+                ${slots.map(s => `<td>${cell(m, s.k)}</td>`).join('')}<td>${next(m)}</td></tr>`).join('')
+                : `<tr><td colspan="${slots.length + 4}" style="color: #888;">이 협회 기술자가 없어요</td></tr>`}</tbody>
+        </table></div>
+        <div class="staff-foot">줄을 누르면 수정 창 · 날짜 아래 ~날짜 = 유효기간 끝 · 빨강 = 무효</div>`;
+}
+function downloadAssocViewExcel() {
+    const a = ASSOCS.find(x => x.k === AS.assocView);
+    if (!a) return;
+    const st = assocStats(a), slots = assocSlotsOf(a, st.members);
+    const head = ['이름', '부서', '직위', '등급', '분야', ...slots.flatMap(s => [`${courseName(a.label, s.k)} 최근 교육`, `${courseName(a.label, s.k)} 유효기간`]), '다음 교육 신청'];
+    const rows = st.members.slice().sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ko')).map(m => {
+        const x = applyInfosOf(m).find(i => i.assoc === a.label);
+        return [m.name, m.department || '', m.position || '', m.grade || '', m.field || '',
+            ...slots.flatMap(s => { const own = slotAssocLabel(m, s.k) === a.label, r = own ? eduRecs(m, s.k)[0] : null;
+                return r ? [`${r.from || ''}~${r.to || ''} ${r.status || ''}`.trim(), slotExpiry(m, s.k)] : ['', '']; }),
+            x ? `${x.label} · ${x.applied ? '신청완료' : x.text}${x.window ? ` (${x.window})` : ''}` : ''];
+    });
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, a.short);
+    XLSX.writeFile(wb, `${a.label}_${asToday()}.xlsx`);
+}
+
 function renderAssocApply() {
     const sel = document.getElementById('assoc-apply-year');
     if (!sel) return;
