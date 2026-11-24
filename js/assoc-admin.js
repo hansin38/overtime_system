@@ -386,7 +386,8 @@ function courseName(assocLabel, k) {
 // 📌 필수 과정: 직원경력의 협회 · 분야로 정해짐 → 이수 기록이 없으면 '신청필요(미이수)'
 //   전기기술인협회: 분야에 '설계' → 설계기본·설계심화 / '감리' → 감리기본·감리심화 (설계/감리면 넷 다)
 //   정보통신공사협회: 분야에 '설계' → 설계 (1)·(2) / '감리' → 감리 (1)·(2)
-//   (협회에 기술자로 등록됐으면 그 분야 교육 2개는 무조건 이수 - 2026-11-24 확인)
+//   철도신호 · 전기철도 · 철도운전협회: 정기교육 1회 (3년마다 1번)
+//   (협회에 기술자로 등록됐으면 그 분야 교육은 무조건 이수 - 2026-11-24 확인)
 function requiredSlotsOf(m) {
     const out = {}, field = String(m.field || ''), assocs = m.assocs || [];
     const design = /설계/.test(field), supervise = /감리/.test(field);
@@ -398,6 +399,10 @@ function requiredSlotsOf(m) {
         if (design) { out.d1 = out.d1 || '정보통신공사협회'; out.d2 = out.d2 || '정보통신공사협회'; }
         if (supervise) { out.s1 = out.s1 || '정보통신공사협회'; out.s2 = out.s2 || '정보통신공사협회'; }
     }
+    // 철도신호·전기철도협회 → 기타 칸 정기교육 1회, 철도운전협회 → 철도운전 칸 정기교육 1회 (3년마다)
+    if (assocs.includes('sig')) out.etc = '철도신호협회';
+    else if (assocs.includes('erail')) out.etc = '전기철도협회';
+    if (assocs.includes('drive')) out.drive = '철도운전협회';
     return out;
 }
 // 이수 기록이 없는데 필수이거나 '신청필요'로 적힌 칸 → 다가오는 1월 접수 대상 (신청완료·대기면 이미 신청함)
