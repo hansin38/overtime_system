@@ -63,7 +63,8 @@ function hrAssocChips(text) {
     return keys.map(k => { const a = ASSOCS.find(x => x.k === k); return `<span class="as-assoc as-${k}" title="${a.label}">${a.short}</span>`; }).join('');
 }
 const HR_GRADES = ['특급', '고급', '중급', '초급'];
-const HR_POS_ORDER = ['대표이사', '부사장', '전무', '상무', '이사', '고문', '부장', '차장', '과장', '대리', '주임', '사원'];
+const HR_POS_ORDER = ['대표이사', '사장', '부사장', '전무', '상무', '이사', '고문', '부장', '차장', '과장', '대리', '주임', '사원'];   // 정렬용 (높은 직급 먼저)
+const HR_POS_PICK = ['사원', '주임', '대리', '과장', '차장', '부장', '이사', '상무', '전무', '부사장', '사장', '대표이사', '고문'];   // 고르기 목록 (사원부터)
 
 // 이름 칸: 퇴사자는 '퇴사 날짜' · 화면에서 고친 적 있으면 ✏️
 // 직원경력 화면은 경력이 없는 사람도 빈 줄로 보여줌 (경력 미입력 · 줄을 눌러 채우기)
@@ -195,12 +196,12 @@ const HR_DEGREES = ['고졸', '전문대졸', '학사', '석사', '박사'];
 const hrAssocLabels = (text) => assocKeysFrom(text).map(k => ASSOCS.find(a => a.k === k).label).join(', ');
 const HR_FIELDS = {
     info: [
-        { k: 'name', label: '이름', root: true }, { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' },
+        { k: 'name', label: '이름', root: true }, { k: 'position', label: '직급', pick: 'pos' }, { k: 'department', label: '부서', pick: 'dept' },
         { k: 'birth', label: '생년월일', type: 'date' }, { k: 'hireDate', label: '입사일', type: 'date' }, { k: 'phone', label: '전화번호', ph: '010-0000-0000' },
         { k: 'email', label: '이메일', span: 3 }, { k: 'address', label: '주소', span: 3 },
     ],
     career: [
-        { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' }, { k: 'field', label: '분야', options: ['', '설계', '감리', '설계/감리'] },
+        { k: 'position', label: '직급', pick: 'pos' }, { k: 'department', label: '부서', pick: 'dept' }, { k: 'field', label: '분야', options: ['', '설계', '감리', '설계/감리'] },
         { k: 'grade', label: '자격등급', options: ['', ...HR_GRADES] }, { k: 'companyReg', label: '회사등록', options: ['', 'Y', 'N'] }, { k: 'licenseDate', label: '합격일', type: 'date' },
         { k: 'group', label: '구분(협회)', hint: '여러 개 고를 수 있어요', assoc: true, span: 3 },
         { k: 'license', label: '자격증', span: 2 }, { k: 'licenseNo', label: '자격증 발급번호' },
@@ -226,7 +227,11 @@ function openHrModal(id = null, tab = 'info') {
     const field = (t, f) => {
         const v = String(hrFieldValue(p, t, f));
         const id2 = `hrf-${t}-${f.k}`;
-        const input = f.assoc
+        // 직급·부서: 누르면 전체 목록 + 맨 아래 '＋ 직접 입력' (목록에 없는 기존 값도 보여줌)
+        const pickList = f.pick === 'pos' ? HR_POS_PICK : f.pick === 'dept' ? depts : null;
+        const input = pickList
+            ? `<select id="${id2}" data-orig="${esc(v)}" onchange="onHrPick(this, '${f.label}')"><option value="">-</option>${pickList.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}${v && !pickList.includes(v) ? `<option selected>${esc(v)}</option>` : ''}<option value="__new__">＋ 직접 입력</option></select>`
+            : f.assoc
             ? `<div id="${id2}" class="hr-assoc-picks" data-orig="${esc(hrAssocLabels(v))}">${ASSOCS.map(a => `<label class="lvimp-emp"><input type="checkbox" value="${a.k}" ${assocKeysFrom(v).includes(a.k) ? 'checked' : ''} onchange="markHrAssoc('${id2}')"> ${a.label}</label>`).join('')}</div>`
             : f.options
             ? `<select id="${id2}" data-orig="${esc(v)}" onchange="markHrChange(this)">${f.options.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o || '-'}</option>`).join('')}${v && !f.options.includes(v) ? `<option selected>${esc(v)}</option>` : ''}</select>`
@@ -237,8 +242,6 @@ function openHrModal(id = null, tab = 'info') {
     const hist = p && Array.isArray(p.history) ? p.history.slice().reverse() : [];
     document.getElementById('hr-modal-title').innerText = p ? `직원 정보 · ${p.name}${p.resigned ? ' (퇴사)' : ''}` : '직원 추가';
     document.getElementById('hr-modal-body').innerHTML = `
-        <datalist id="hr-pos-list">${HR_POS_ORDER.map(x => `<option value="${x}">`).join('')}</datalist>
-        <datalist id="hr-dept-list">${depts.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
         <div class="lv-subtabs" style="margin-bottom: 12px;">
             <button type="button" id="hrm-tab-info" onclick="switchHrModalTab('info')">👤 기본정보</button>
             <button type="button" id="hrm-tab-career" onclick="switchHrModalTab('career')">📚 경력 · 자격${p && !p.career ? ' <small>(없음)</small>' : ''}</button>
@@ -263,6 +266,14 @@ function switchHrModalTab(tab) {
 }
 function markHrAssoc(id) { const box = document.getElementById(id); box.classList.toggle('chg', hrPickedAssoc(box) !== (box.dataset.orig || '')); }
 const hrPickedAssoc = (box) => Array.from(box.querySelectorAll('input:checked')).map(i => ASSOCS.find(a => a.k === i.value).label).join(', ');
+function onHrPick(sel, label) {
+    if (sel.value === '__new__') {
+        const v = (prompt(`새 ${label}을(를) 입력해 주세요`) || '').trim();
+        if (v) { const opt = document.createElement('option'); opt.textContent = v; sel.insertBefore(opt, sel.lastElementChild); sel.value = v; }
+        else sel.value = sel.dataset.orig || '';
+    }
+    markHrChange(sel);
+}
 function markHrChange(el) { el.classList.toggle('chg', el.value.trim() !== (el.dataset.orig || '')); }
 function closeHrModal() { document.getElementById('hr-modal').style.display = 'none'; HR.edit = null; }
 const hrNow = () => { const d = new Date(); return `${toYmd(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
