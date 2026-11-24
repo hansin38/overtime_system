@@ -766,3 +766,23 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .as-ro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; font-size: 13.5px; }
 .as-ro label { display: block; font-size: 12px; color: #868e96; margin-bottom: 2px; }
 .as-mig-need td { background: #fff5f5; }
+/* 📌 할 일 - 한 줄로 보기 (한 사람 = 한 줄, 과정은 칩) · 묶음 접기 */
+.as-todo-sec > summary { list-style: none; cursor: pointer; }
+.as-todo-sec > summary::-webkit-details-marker { display: none; }
+.as-todo-sec > summary::after { content: '접기 ▲'; margin-left: auto; font-size: 12px; font-weight: normal; color: #1c64d9; }
+.as-todo-sec:not([open]) > summary::after { content: '펼치기 ▼'; }
+.as-todo-rows { border: 1px solid #e3e6ea; border-radius: 10px; overflow: hidden; }
+.as-trow { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: center; padding: 8px 14px; border-top: 1px solid #f1f3f5; cursor: pointer; border-left: 4px solid #adb5bd; }
+.as-trow:first-child { border-top: 0; }
+.as-trow:hover { background: #f8fbff; }
+.as-todo-rows.now .as-trow { border-left-color: #e03131; } .as-todo-rows.jan .as-trow { border-left-color: #1c64d9; }
+.as-todo-rows.any .as-trow { border-left-color: #868e96; } .as-todo-rows.done .as-trow { border-left-color: #74c0fc; }
+.as-trow .who b { font-size: 13.5px; } .as-trow .who small { display: block; font-size: 11.5px; color: #868e96; }
+.as-trow .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.as-tchip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #dee2e6; border-radius: 999px; padding: 2px 10px 2px 4px; font-size: 12.5px; background: #fff; white-space: nowrap; }
+.as-tchip i.as-assoc { font-style: normal; margin: 0; }
+.as-tchip em { font-style: normal; font-size: 11.5px; color: #1c64d9; font-weight: bold; }
+.as-tchip.miss em { color: #e8590c; } .as-tchip.bad { border-color: #ffc9c9; background: #fff5f5; } .as-tchip.bad em { color: #e03131; }
+.as-view-tog { display: inline-flex; border: 1px solid #ced4da; border-radius: 6px; overflow: hidden; }
+.as-view-btn { width: auto; margin: 0; border: 0; background: #fff; color: #495057; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+.as-view-btn.on { background: #222; color: #fff; }

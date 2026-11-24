@@ -347,7 +347,9 @@
                 <div class="staff-bar">
                     <select id="assoc-apply-year" onchange="renderAssocApply()"></select>
                     <span class="sub">고른 해에 신청할 교육 (지금 바로 신청할 건 항상 보여요)</span>
-                    <div class="staff-actions"><button class="pay-btn blue" onclick="downloadAssocApplyExcel()">⬇ 신청 명단 엑셀</button></div>
+                    <div class="staff-actions">
+                        <span class="as-view-tog"><button type="button" class="as-view-btn" data-v="compact" onclick="setAssocTodoView('compact')">한 줄로 보기</button><button type="button" class="as-view-btn" data-v="detail" onclick="setAssocTodoView('detail')">자세히 보기</button></span>
+                        <button class="pay-btn blue" onclick="downloadAssocApplyExcel()">⬇ 신청 명단 엑셀</button></div>
                 </div>
                 <div id="assoc-apply-cards"></div>
             </div>

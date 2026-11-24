@@ -651,11 +651,34 @@ function renderAssocApply() {
     ];
     const box = document.getElementById('assoc-apply-cards');
     if (!items.length) { box.innerHTML = `<div class="pay-empty">${year}년에 신청할 교육이 없어요.</div>`; return; }
+    const compact = (localStorage.getItem('assocTodoView') || 'compact') === 'compact';
+    document.querySelectorAll('.as-view-btn').forEach(b => b.classList.toggle('on', b.dataset.v === (compact ? 'compact' : 'detail')));
     box.innerHTML = groups.map(({ g, title, note }) => {
         const list = items.filter(i => todoGroupOf(i) === g).sort(sortIn);
         if (!list.length) return '';
-        return `<div class="as-todo-grp ${g}"><i class="dot"></i>${title}<b>${list.length}건</b>${note ? `<small>${note}</small>` : ''}</div>${list.map(todoCardHtml).join('')}`;
+        const people = [...new Set(list.map(i => i.m.id))].length;
+        const open = g !== 'done' ? 'open' : '';   // 이미 신청함은 접어 둠
+        const body = compact ? todoRowsHtml(list, g) : list.map(todoCardHtml).join('');
+        return `<details class="as-todo-sec" ${open}><summary class="as-todo-grp ${g}"><i class="dot"></i>${title}<b>${list.length}건 · ${people}명</b>${note ? `<small>${note}</small>` : ''}</summary>${body}</details>`;
     }).join('');
+}
+// 📋 한 줄로 보기: 한 사람 = 한 줄, 신청할 과정은 칩으로 모음 (칩: 협회 · 과정 · 언제)
+function setAssocTodoView(v) { localStorage.setItem('assocTodoView', v); renderAssocApply(); }
+function todoChipText(i) {
+    if (i.applied) return '신청완료';
+    if (i.missing) return '미이수';
+    if (i.kind === 'now') return '무효';
+    if (i.kind === 'missed') return '접수 놓침';
+    if (i.kind === 'jan') return windowText(i.window);
+    return isUrgent(i) ? '권장일 지남' : `${Number(i.date.slice(5, 7))}/${Number(i.date.slice(8, 10))}까지`;
+}
+function todoRowsHtml(list, g) {
+    const byPerson = [];
+    list.forEach(i => { let row = byPerson.find(x => x.m.id === i.m.id); if (!row) byPerson.push(row = { m: i.m, items: [] }); row.items.push(i); });
+    return `<div class="as-todo-rows ${g}">${byPerson.map(({ m, items }) => `<div class="as-trow" onclick="openAssocModal('${m.id}')" title="눌러서 교육 입력">
+        <div class="who"><b>${esc(m.name)}</b><small>${[m.department, m.position].filter(Boolean).map(esc).join(' · ')}</small></div>
+        <div class="chips">${items.map(i => { const a = ASSOCS.find(x => x.label === i.assoc); return `<span class="as-tchip${i.missing ? ' miss' : ''}${isUrgent(i) && !i.missing ? ' bad' : ''}" title="${esc(i.assoc)} ${esc(i.label)}${i.exp ? ` · ${i.exp}까지 유효` : ''}">${a ? `<i class="as-assoc as-${a.k}">${a.short}</i>` : ''}${esc(i.label)}<em>${todoChipText(i)}</em></span>`; }).join('')}</div>
+    </div>`).join('')}</div>`;
 }
 // 신청 명단 엑셀 (고른 해) - 화면과 같은 묶음 순서 · 쉬운 칸 이름
 function downloadAssocApplyExcel() {
