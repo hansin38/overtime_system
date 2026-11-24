@@ -5,10 +5,18 @@
 //     「2경력,학력」 → 직원경력 (구분 · 분야 · 자격등급 · 회사등록 · 자격증 · 발급번호 · 합격일 · 학력)
 // - 🔒 주민번호는 저장하지 않고 생년월일만 뽑음 (개인정보보호법 제24조의2 - 주민번호는 암호화 보관 의무)
 // - 저장: hr_staff 컬렉션 (문서 하나 = 한 사람, firestore.rules 의 hr_ 규칙 → 관리자만)
-// - 날짜·글자 도우미(asYmd · asText · birthFromRrn · asToday)는 js/assoc-admin.js 것을 같이 씀
+// - 날짜·글자 도우미(asYmd · asText · birthFromRrn · asToday · assocKeysFrom · ASSOCS)는 js/assoc-admin.js 것을 같이 씀
+// - 화면: 칸 머리 눌러 정렬 · 필터 버튼(부서·직급 / 등급·회사등록·협회) · 요약 · 머리글 고정 · 지금 결과 엑셀 받기
+//   🔒 전화·이메일·주소는 기본으로 가림 ([개인정보 보기]로 펼침, 펼치면 전화·메일 바로 연결)
 // ==========================================
 
-const HR = { people: [], loaded: false, q: { info: '', career: '' }, importRows: [] };
+const HR = {
+    people: [], loaded: false, importRows: [],
+    q: { info: '', career: '' },
+    sort: { info: { key: 'no', dir: 1 }, career: { key: 'no', dir: 1 } },
+    filter: { info: { dept: '', pos: '' }, career: { grade: '', reg: '', assoc: '' } },
+    reveal: false,   // 🔒 전화·이메일·주소는 기본으로 가림 → [개인정보 보기]를 눌러야 펼쳐짐 (화면 공유·캡처 대비)
+};
 
 function openHrTab(kind) {
     const tbody = document.getElementById(`hr-${kind}-tbody`);
@@ -25,44 +33,146 @@ function openHrTab(kind) {
 }
 
 function setHrSearch(kind, value) { HR.q[kind] = value; renderHr(kind); }
+function setHrFilter(kind, key, value) { HR.filter[kind][key] = HR.filter[kind][key] === value ? '' : value; renderHr(kind); }
+function resetHrFilter(kind) { Object.keys(HR.filter[kind]).forEach(k => { HR.filter[kind][k] = ''; }); renderHr(kind); }
+function sortHr(kind, key) { const s = HR.sort[kind]; HR.sort[kind] = s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }; renderHr(kind); }
+function toggleHrReveal() { HR.reveal = !HR.reveal; renderHr('info'); }
 
-// 입사일 → 근속 'N년 M개월'
-function hrTenure(ymd) {
-    if (!ymd) return '';
+// 입사일 → 근속 개월 수 / 'N년 M개월'
+function hrTenureMonths(ymd) {
+    if (!ymd) return null;
     const a = parseYmd(ymd), b = parseYmd(asToday());
-    let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) - (b.getDate() < a.getDate() ? 1 : 0);
-    if (months < 0) return '';
-    return `${Math.floor(months / 12)}년 ${months % 12}개월`;
+    const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) - (b.getDate() < a.getDate() ? 1 : 0);
+    return months < 0 ? null : months;
+}
+function hrTenure(ymd) { const n = hrTenureMonths(ymd); return n === null ? '' : `${Math.floor(n / 12)}년 ${n % 12}개월`; }
+
+// 🔒 가리기: 010-****-5206 · ks****@naver.com · 서울시 송파구 ***
+const hrMaskPhone = (s) => String(s || '').replace(/^(\d{2,3})[-\s]?(\d{3,4})[-\s]?(\d{4})$/, '$1-****-$3') || '';
+const hrMaskEmail = (s) => String(s || '').replace(/^(.{0,2})[^@]*(@.*)$/, '$1****$2');
+const hrMaskAddr = (s) => { const t = String(s || '').split(/\s+/); return t.length > 2 ? `${t.slice(0, 2).join(' ')} ***` : (s ? '***' : ''); };
+// 졸업년도 'YYYY.MM' 로 통일 (2026.2.25 · 2020.08 · 1999 → 2026.02 · 2020.08 · 1999)
+function hrYm(v) {
+    const m = String(v ?? '').match(/(\d{4})(?:\D+(\d{1,2}))?/);
+    return m ? (m[2] ? `${m[1]}.${pad2(m[2])}` : m[1]) : asText(v);
+}
+// 구분(협회 이름 글자) → 협회 칩 (협회 관리와 같은 모양)
+function hrAssocChips(text) {
+    const keys = assocKeysFrom(text);
+    if (!keys.length) return text ? esc(text) : '<span class="sub">-</span>';
+    return keys.map(k => { const a = ASSOCS.find(x => x.k === k); return `<span class="as-assoc as-${k}" title="${a.label}">${a.short}</span>`; }).join('');
+}
+const HR_GRADES = ['특급', '고급', '중급', '초급'];
+const HR_POS_ORDER = ['대표이사', '부사장', '전무', '상무', '이사', '고문', '부장', '차장', '과장', '대리', '주임', '사원'];
+
+// 표 칸 정의: 정렬 열쇠 · 정렬 값 · 머리 · 칸 모양
+function hrColumns(kind) {
+    const v = (x) => esc(x || '') || '<span class="sub">-</span>';
+    if (kind === 'info') return [
+        { key: 'name', th: '이름', cls: 'l', w: 84, val: p => p.name, td: p => `<b>${esc(p.name)}</b>` },
+        { key: 'pos', th: '직급', w: 70, val: p => { const i = HR_POS_ORDER.indexOf(p.info.position); return i < 0 ? 99 : i; }, td: p => v(p.info.position) },
+        { key: 'dept', th: '부서', cls: 'l', w: 110, val: p => p.info.department, td: p => v(p.info.department) },
+        { key: 'birth', th: '생년월일', w: 96, val: p => p.info.birth, td: p => v(p.info.birth) },
+        { key: 'hire', th: '입사일 · 근속', w: 104, val: p => p.info.hireDate, td: p => p.info.hireDate ? `${p.info.hireDate}<small>${hrTenure(p.info.hireDate)}</small>` : v('') },
+        { key: 'phone', th: '전화번호', w: 118, td: p => !p.info.phone ? v('') : HR.reveal ? `<a href="tel:${esc(p.info.phone)}" onclick="event.stopPropagation()">${esc(p.info.phone)}</a>` : esc(hrMaskPhone(p.info.phone)) },
+        { key: 'email', th: '이메일', cls: 'l', w: 190, td: p => !p.info.email ? v('') : HR.reveal ? `<a href="mailto:${esc(p.info.email)}" onclick="event.stopPropagation()">${esc(p.info.email)}</a>` : esc(hrMaskEmail(p.info.email)) },
+        { key: 'addr', th: '주소', cls: 'l hr-addr', td: p => !p.info.address ? v('') : HR.reveal ? `<span title="${esc(p.info.address)}">${esc(p.info.address)}</span>` : esc(hrMaskAddr(p.info.address)) },
+    ];
+    return [
+        { key: 'name', th: '이름', cls: 'l', w: 84, val: p => p.name, td: p => `<b>${esc(p.name)}</b>` },
+        { key: 'dept', th: '부서 · 직급', cls: 'l', w: 112, val: p => p.career.department, td: p => `${v(p.career.department)}<small>${esc(p.career.position || '')}</small>` },
+        { key: 'assoc', th: '구분', cls: 'l', w: 120, val: p => assocKeysFrom(p.career.group).join(','), td: p => hrAssocChips(p.career.group) },
+        { key: 'field', th: '분야', w: 80, val: p => p.career.field, td: p => v(p.career.field) },
+        { key: 'grade', th: '자격등급', w: 74, val: p => { const i = HR_GRADES.indexOf(p.career.grade); return i < 0 ? 99 : i; }, td: p => p.career.grade ? `<span class="hr-grade g${HR_GRADES.indexOf(p.career.grade)}">${esc(p.career.grade)}</span>` : v('') },
+        { key: 'reg', th: '회사등록', w: 70, val: p => p.career.companyReg === true ? 0 : p.career.companyReg === false ? 1 : 2, td: p => p.career.companyReg === true ? '<span class="staff-chip ok">Y</span>' : p.career.companyReg === false ? '<span class="staff-chip gray">N</span>' : v('') },
+        { key: 'license', th: '자격증 · 발급번호', cls: 'l', w: 150, val: p => p.career.license, td: p => `${v(p.career.license)}${p.career.licenseNo ? `<small>${esc(p.career.licenseNo)}</small>` : ''}` },
+        { key: 'ldate', th: '합격일', w: 92, val: p => p.career.licenseDate, td: p => v(p.career.licenseDate) },
+        { key: 'school', th: '최종학력', cls: 'l', val: p => p.career.school, td: p => `${v(p.career.school)}<small>${esc([p.career.degree, p.career.major].filter(Boolean).join(' · '))}</small>` },
+        { key: 'grad', th: '졸업', w: 70, val: p => hrYm(p.career.gradYear), td: p => v(hrYm(p.career.gradYear)) },
+    ];
+}
+
+// 지금 화면 조건(검색 · 필터 · 정렬)에 맞는 사람
+function hrListOf(kind) {
+    const q = (HR.q[kind] || '').trim(), f = HR.filter[kind];
+    const col = hrColumns(kind).find(c => c.key === HR.sort[kind].key);
+    const val = col && col.val ? col.val : (p => p.no || 999);
+    const dir = HR.sort[kind].dir;
+    return HR.people
+        .filter(p => kind === 'info' ? p.info : p.career)
+        .filter(p => { const d = kind === 'info' ? p.info : p.career; return !q || [p.name, d.department, d.position].some(x => String(x || '').includes(q)); })
+        .filter(p => kind !== 'info' || ((!f.dept || p.info.department === f.dept) && (!f.pos || p.info.position === f.pos)))
+        .filter(p => kind !== 'career' || ((!f.grade || p.career.grade === f.grade)
+            && (!f.reg || (f.reg === 'Y' ? p.career.companyReg === true : p.career.companyReg !== true))
+            && (!f.assoc || assocKeysFrom(p.career.group).includes(f.assoc))))
+        .sort((a, b) => {
+            const x = val(a), y = val(b), byNo = (a.no || 999) - (b.no || 999);
+            const ex = x === '' || x === null || x === undefined, ey = y === '' || y === null || y === undefined;
+            if (ex || ey) return ex === ey ? byNo : (ex ? 1 : -1);   // 빈 값은 늘 맨 아래
+            return dir * (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ko')) || byNo;
+        });
+}
+
+// 위쪽 요약 + 필터 버튼 (누르면 그것만, 다시 누르면 풀림)
+function hrChipsHtml(kind) {
+    const base = HR.people.filter(p => kind === 'info' ? p.info : p.career);
+    const f = HR.filter[kind];
+    const chip = (label, n, on, onclick) => `<button type="button" class="as-fc${on ? ' on' : ''}" onclick="${onclick}">${label}<b>${n}</b></button>`;
+    const countBy = (arr, fn) => { const m = {}; arr.forEach(p => { const k = fn(p); if (k) m[k] = (m[k] || 0) + 1; }); return m; };
+    const allOn = Object.values(f).every(x => !x);
+    if (kind === 'info') {
+        const depts = countBy(base, p => p.info.department);
+        const months = base.map(p => hrTenureMonths(p.info.hireDate)).filter(n => n !== null);
+        const avg = months.length ? months.reduce((s, n) => s + n, 0) / months.length : 0;
+        const pos = countBy(base, p => p.info.position);
+        const posOpts = Object.keys(pos).sort((a, b) => ((HR_POS_ORDER.indexOf(a) + 1) || 99) - ((HR_POS_ORDER.indexOf(b) + 1) || 99));
+        return `<div class="as-fchips">${chip('전체', base.length, allOn, "resetHrFilter('info')")}
+            ${Object.keys(depts).sort((a, b) => depts[b] - depts[a] || a.localeCompare(b, 'ko')).map(d => chip(esc(d), depts[d], f.dept === d, `setHrFilter('info','dept','${esc(d)}')`)).join('')}
+            <span class="as-fsep"></span>
+            <select class="hr-sel" onchange="HR.filter.info.pos=this.value; renderHr('info')"><option value="">직급 전체</option>${posOpts.map(p => `<option value="${esc(p)}" ${f.pos === p ? 'selected' : ''}>${esc(p)} (${pos[p]})</option>`).join('')}</select>
+            <span class="hr-stat">평균 근속 <b>${Math.floor(avg / 12)}년 ${Math.round(avg % 12)}개월</b></span></div>`;
+    }
+    const grades = countBy(base, p => p.career.grade);
+    const regY = base.filter(p => p.career.companyReg === true).length;
+    const assocs = countBy(base.flatMap(p => assocKeysFrom(p.career.group).map(k => ({ k }))), x => x.k);
+    return `<div class="as-fchips">${chip('전체', base.length, allOn, "resetHrFilter('career')")}
+        ${HR_GRADES.filter(g => grades[g]).map(g => chip(g, grades[g], f.grade === g, `setHrFilter('career','grade','${g}')`)).join('')}
+        <span class="as-fsep"></span>
+        ${chip('회사등록 Y', regY, f.reg === 'Y', "setHrFilter('career','reg','Y')")}${chip('회사등록 N·없음', base.length - regY, f.reg === 'N', "setHrFilter('career','reg','N')")}
+        <span class="as-fsep"></span>
+        ${ASSOCS.filter(a => assocs[a.k]).map(a => chip(a.short, assocs[a.k], f.assoc === a.k, `setHrFilter('career','assoc','${a.k}')`)).join('')}</div>`;
 }
 
 function renderHr(kind) {
     const tbody = document.getElementById(`hr-${kind}-tbody`);
     if (!tbody) return;
-    const q = (HR.q[kind] || '').trim();
-    const list = HR.people
-        .filter(p => kind === 'info' ? p.info : p.career)
-        .filter(p => !q || [p.name, p.department, p.position].some(v => String(v || '').includes(q)))
-        .sort((a, b) => (a.no || 999) - (b.no || 999) || (a.name || '').localeCompare(b.name || '', 'ko'));
+    const cols = hrColumns(kind), list = hrListOf(kind), s = HR.sort[kind];
+    document.getElementById(`hr-${kind}-chips`).innerHTML = HR.people.length ? hrChipsHtml(kind) : '';
     document.getElementById(`hr-${kind}-count`).innerText = `${list.length}명`;
-    const v = (x) => esc(x || '') || '<span class="sub">-</span>';
+    const rv = document.getElementById('hr-reveal-btn');
+    if (rv) rv.innerText = HR.reveal ? '🙈 개인정보 가리기' : '🔒 개인정보 보기';
+    document.getElementById(`hr-${kind}-head`).innerHTML = cols.map(c => c.val
+        ? `<th class="sortable${c.cls && c.cls.startsWith('l') ? ' l' : ''}" style="${c.w ? `width:${c.w}px;` : ''}" onclick="sortHr('${kind}','${c.key}')">${c.th} <span class="arr${s.key === c.key ? ' on' : ''}">${s.key === c.key ? (s.dir > 0 ? '▲' : '▼') : '↕'}</span></th>`
+        : `<th class="${c.cls && c.cls.startsWith('l') ? 'l' : ''}" style="${c.w ? `width:${c.w}px;` : ''}">${c.th}</th>`).join('');
     if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="14" style="color: #888;">${HR.people.length ? '찾는 사람이 없어요' : '아직 데이터가 없어요. [📤 직원명단 엑셀 올리기]로 넣어 주세요.'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${cols.length}" style="color: #888;">${HR.people.length ? '조건에 맞는 사람이 없어요' : '아직 데이터가 없어요. [📤 직원명단 엑셀 올리기]로 넣어 주세요.'}</td></tr>`;
         return;
     }
-    if (kind === 'info') {
-        tbody.innerHTML = list.map(p => { const i = p.info; return `<tr>
-            <td><b>${esc(p.name)}</b></td><td>${v(i.position)}</td><td>${v(i.department)}</td>
-            <td>${v(i.birth)}</td><td>${v(i.phone)}</td>
-            <td>${v(i.hireDate)}${i.hireDate ? `<small>${hrTenure(i.hireDate)}</small>` : ''}</td>
-            <td class="l">${v(i.email)}</td><td class="l hr-addr">${v(i.address)}</td></tr>`; }).join('');
-    } else {
-        tbody.innerHTML = list.map(p => { const c = p.career; return `<tr>
-            <td><b>${esc(p.name)}</b></td><td>${v(c.department)}<small>${esc(c.position || '')}</small></td>
-            <td>${v(c.group)}</td><td>${v(c.field)}</td><td>${v(c.grade)}</td>
-            <td>${c.companyReg === true ? '<span class="staff-chip ok">Y</span>' : c.companyReg === false ? '<span class="staff-chip gray">N</span>' : '<span class="sub">-</span>'}</td>
-            <td class="l">${v(c.license)}${c.licenseNo ? `<small>${esc(c.licenseNo)}</small>` : ''}</td><td>${v(c.licenseDate)}</td>
-            <td>${v(c.school)}<small>${esc([c.degree, c.major].filter(Boolean).join(' · '))}</small></td><td>${v(c.gradYear)}</td></tr>`; }).join('');
-    }
+    tbody.innerHTML = list.map(p => `<tr>${cols.map(c => `<td class="${c.cls || ''}">${c.td(p)}</td>`).join('')}</tr>`).join('');
+}
+
+// ⬇ 지금 거른 결과 그대로 엑셀 (가리기와 상관없이 실제 값)
+function downloadHrExcel(kind) {
+    const list = hrListOf(kind);
+    const rows = kind === 'info'
+        ? [['이름', '직급', '부서', '생년월일', '입사일', '근속', '전화번호', '이메일', '주소'],
+           ...list.map(p => [p.name, p.info.position, p.info.department, p.info.birth, p.info.hireDate, hrTenure(p.info.hireDate), p.info.phone, p.info.email, p.info.address])]
+        : [['이름', '부서', '직급', '구분', '분야', '자격등급', '회사등록', '자격증', '자격증발급번호', '합격일', '최종학력', '학위', '학과', '졸업'],
+           ...list.map(p => { const c = p.career; return [p.name, c.department, c.position, c.group, c.field, c.grade, c.companyReg === true ? 'Y' : c.companyReg === false ? 'N' : '', c.license, c.licenseNo, c.licenseDate, c.school, c.degree, c.major, hrYm(c.gradYear)]; })];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, kind === 'info' ? '직원정보' : '직원경력');
+    XLSX.writeFile(wb, `${kind === 'info' ? '직원정보' : '직원경력'}_${asToday()}.xlsx`);
 }
 
 // ------------------------------------------

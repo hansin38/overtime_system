@@ -264,31 +264,37 @@
         <!-- 👤 직원정보 관리 (직원명단 「1기본정보」 · 관리자 조회 전용 - js/hr-admin.js) -->
         <div id="hrinfo-admin-section" style="display: none;">
             <h2 class="admin-page-title">👤 직원정보 관리</h2>
+            <div id="hr-info-chips"></div>
             <div class="staff-bar">
                 <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('info', this.value)">
                 <span class="sub" id="hr-info-count"></span>
-                <div class="staff-actions"><button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
+                <div class="staff-actions"><button id="hr-reveal-btn" class="pay-btn" onclick="toggleHrReveal()">🔒 개인정보 보기</button>
+                    <button class="pay-btn" onclick="downloadHrExcel('info')">⬇ 엑셀 받기</button>
+                    <button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
             </div>
-            <div class="staff-wrap"><table class="staff-tbl hr-tbl">
-                <thead><tr><th>이름</th><th>직급</th><th>부서</th><th>생년월일</th><th>전화번호</th><th>입사일 · 근속</th><th>이메일</th><th>주소</th></tr></thead>
+            <div class="staff-wrap hr-wrap"><table class="staff-tbl hr-tbl">
+                <thead><tr id="hr-info-head"></tr></thead>
                 <tbody id="hr-info-tbody"></tbody>
             </table></div>
-            <div class="staff-foot">직원명단 엑셀의 「1기본정보」를 그대로 보여줘요 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있고, 주민번호는 저장하지 않고 생년월일만 보관해요</div>
+            <div class="staff-foot">직원명단 엑셀의 「1기본정보」를 그대로 보여줘요 · 칸 머리를 누르면 정렬 · 위 버튼으로 부서·직급별 보기 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있고 전화·이메일·주소는 [개인정보 보기]를 눌러야 보여요 · 주민번호는 저장하지 않고 생년월일만 보관해요</div>
         </div>
 
         <!-- 📚 직원경력 관리 (직원명단 「2경력,학력」 · 관리자 조회 전용 - js/hr-admin.js) -->
         <div id="hrcareer-admin-section" style="display: none;">
             <h2 class="admin-page-title">📚 직원경력 관리</h2>
+            <div id="hr-career-chips"></div>
             <div class="staff-bar">
                 <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('career', this.value)">
                 <span class="sub" id="hr-career-count"></span>
-                <div class="staff-actions"><button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
+                <div class="staff-actions">
+                    <button class="pay-btn" onclick="downloadHrExcel('career')">⬇ 엑셀 받기</button>
+                    <button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
             </div>
-            <div class="staff-wrap"><table class="staff-tbl hr-tbl">
-                <thead><tr><th>이름</th><th>부서 · 직급</th><th>구분</th><th>분야</th><th>자격등급</th><th>회사등록</th><th>자격증 · 발급번호</th><th>합격일</th><th>최종학력</th><th>졸업년도</th></tr></thead>
+            <div class="staff-wrap hr-wrap"><table class="staff-tbl hr-tbl">
+                <thead><tr id="hr-career-head"></tr></thead>
                 <tbody id="hr-career-tbody"></tbody>
             </table></div>
-            <div class="staff-foot">직원명단 엑셀의 「2경력,학력」을 그대로 보여줘요 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있어요</div>
+            <div class="staff-foot">직원명단 엑셀의 「2경력,학력」을 그대로 보여줘요 · 칸 머리를 누르면 정렬 · 위 버튼으로 등급·회사등록·협회별 보기 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있어요</div>
         </div>
 
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
