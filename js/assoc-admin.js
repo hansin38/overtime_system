@@ -238,7 +238,7 @@ const hasNeed = (m) => EDU_SLOTS.some(s => { const r = eduRecs(m, s.k)[0]; retur
 
 // ------------------------------------------
 // 📅 다음 교육 신청 (교육 신청 탭 · 명단 맨 오른쪽 칸)
-//  - 전기기술인협회 교육(설계 1·2 · 감리 1·2): 연초 일괄 접수 → 유효기간 만료 6개월 전이 속한 해의 1월 접수
+//  - 설계 1·2 · 감리 1·2 (전기기술인협회 · 정보통신공사협회): 연초 일괄 접수 → 유효기간 만료 6개월 전이 속한 해의 1월 접수
 //  - 기타 교육 · 철도운전: 수시 → 유효기간 만료 6개월 전까지 신청
 //  - 무효(유효기간 지남)면 '지금 신청' · 원래 1월 접수가 지났으면 다음 1월 접수에 '촉박', 그 전에 만료되면 '접수 놓침'
 // ------------------------------------------
@@ -252,7 +252,12 @@ function addMonthsYmd(ymd, months) {
 }
 // 교육 칸이 어느 협회 것인지 (설계·감리 = 전기기술인협회, 기타·철도운전 = 기록에 적힌 협회)
 function slotAssocLabel(m, k) {
-    if (JAN_BATCH_SLOTS.includes(k)) return '전기기술인협회';
+    // 설계·감리: 기록에 적힌 협회 (통신이면 정보통신공사협회, 없으면 전기기술인협회) - 둘 다 1월 일괄 접수
+    if (JAN_BATCH_SLOTS.includes(k)) {
+        const recs = eduRecs(m, k);
+        const text = (recs.find(x => x.assoc) || {}).assoc || '';
+        return assocKeysFrom(text).includes('ict') ? '정보통신공사협회' : '전기기술인협회';
+    }
     const text = (eduRecs(m, k)[0] || {}).assoc || '';
     const key = assocKeysFrom(text)[0] || (k === 'drive' ? 'drive' : '');
     const a = ASSOCS.find(x => x.k === key);
@@ -276,7 +281,7 @@ function applyInfoOf(m, k) {
         //   다음 1월 접수가 만료일보다 늦으면 '접수 놓침'(빨강)
         if (year < thisYear || (year === thisYear && Number(today.slice(5, 7)) > 1)) {
             const nextBatch = Number(today.slice(5, 7)) > 1 ? thisYear + 1 : thisYear;
-            if (exp > `${nextBatch}-01-31`) {
+            if (exp >= `${nextBatch}-01-01`) {
                 const toM = Number(exp.slice(0, 4)) > nextBatch ? 12 : Number(exp.slice(5, 7));
                 return { ...base, kind: 'jan', tight: true, year: nextBatch, sortKey: `${nextBatch}-01-00`, window: toM > 1 ? `1월~${toM}월` : '1월', text: `${String(nextBatch).slice(2)}년 1월 접수`, cls: 'soon' };
             }
@@ -354,7 +359,7 @@ function renderAssocApply() {
     }
     box.innerHTML = names.map(name => {
         const list = byAssoc[name];
-        const isJan = name === '전기기술인협회';
+        const isJan = list.some(i => JAN_BATCH_SLOTS.includes(i.k));
         const when = isJan ? `<span class="as-when jan">${year}년 1월 일괄 접수</span>` : `<span class="as-when any">수시 · 만료 6개월 전까지</span>`;
         const slots = EDU_SLOTS.filter(s => list.some(i => i.k === s.k));
         return `<div class="as-acard"><div class="as-acard-h">${esc(name)}${when}</div>
