@@ -190,6 +190,9 @@ function downloadHrExcel(kind) {
 //   처음 한 번만 엑셀로 올리고, 그다음부터는 이 화면이 원본 · 고칠 때마다 변경 기록(history)을 남김(최근 50건)
 //   퇴사는 지우지 않고 [퇴사 처리] → 기본 목록에서 숨김 (위쪽 [퇴사자] 버튼으로 보기)
 // ------------------------------------------
+const HR_DEGREES = ['고졸', '전문대졸', '학사', '석사', '박사'];
+// 구분(협회) 글자 → 협회 이름 목록 (협회 관리와 같은 6개 · 저장은 '전기기술인협회, 전기철도협회' 처럼)
+const hrAssocLabels = (text) => assocKeysFrom(text).map(k => ASSOCS.find(a => a.k === k).label).join(', ');
 const HR_FIELDS = {
     info: [
         { k: 'name', label: '이름', root: true }, { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' },
@@ -197,11 +200,11 @@ const HR_FIELDS = {
         { k: 'email', label: '이메일', span: 3 }, { k: 'address', label: '주소', span: 3 },
     ],
     career: [
-        { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' }, { k: 'group', label: '구분(협회)', ph: '예: 한국전기기술인협회 / (전기+전기철도)' },
-        { k: 'field', label: '분야', ph: '설계 / 감리 / 설계/감리' }, { k: 'grade', label: '자격등급', options: ['', ...HR_GRADES] }, { k: 'companyReg', label: '회사등록', options: ['', 'Y', 'N'] },
-        { k: 'license', label: '자격증', span: 2 }, { k: 'licenseDate', label: '합격일', type: 'date' },
-        { k: 'licenseNo', label: '자격증 발급번호', span: 3 },
-        { k: 'school', label: '최종학력(학교)' }, { k: 'degree', label: '학위' }, { k: 'major', label: '학과(전공)' },
+        { k: 'position', label: '직급', list: 'hr-pos-list' }, { k: 'department', label: '부서', list: 'hr-dept-list' }, { k: 'field', label: '분야', options: ['', '설계', '감리', '설계/감리'] },
+        { k: 'grade', label: '자격등급', options: ['', ...HR_GRADES] }, { k: 'companyReg', label: '회사등록', options: ['', 'Y', 'N'] }, { k: 'licenseDate', label: '합격일', type: 'date' },
+        { k: 'group', label: '구분(협회)', hint: '여러 개 고를 수 있어요', assoc: true, span: 3 },
+        { k: 'license', label: '자격증', span: 2 }, { k: 'licenseNo', label: '자격증 발급번호' },
+        { k: 'school', label: '최종학력(학교)' }, { k: 'degree', label: '학위', options: ['', ...HR_DEGREES] }, { k: 'major', label: '학과(전공)' },
         { k: 'gradYear', label: '졸업(YYYY.MM)', ph: '2020.08' },
     ],
 };
@@ -223,10 +226,12 @@ function openHrModal(id = null, tab = 'info') {
     const field = (t, f) => {
         const v = String(hrFieldValue(p, t, f));
         const id2 = `hrf-${t}-${f.k}`;
-        const input = f.options
+        const input = f.assoc
+            ? `<div id="${id2}" class="hr-assoc-picks" data-orig="${esc(hrAssocLabels(v))}">${ASSOCS.map(a => `<label class="lvimp-emp"><input type="checkbox" value="${a.k}" ${assocKeysFrom(v).includes(a.k) ? 'checked' : ''} onchange="markHrAssoc('${id2}')"> ${a.label}</label>`).join('')}</div>`
+            : f.options
             ? `<select id="${id2}" data-orig="${esc(v)}" onchange="markHrChange(this)">${f.options.map(o => `<option value="${o}" ${o === v ? 'selected' : ''}>${o || '-'}</option>`).join('')}${v && !f.options.includes(v) ? `<option selected>${esc(v)}</option>` : ''}</select>`
             : `<input id="${id2}" ${f.type ? `type="${f.type}"` : ''} ${f.list ? `list="${f.list}"` : ''} value="${esc(v)}" data-orig="${esc(v)}" placeholder="${esc(f.ph || '')}" oninput="markHrChange(this)">`;
-        return `<div ${f.span ? `style="grid-column: span ${f.span};"` : ''}><label>${f.label}</label>${input}</div>`;
+        return `<div ${f.span ? `style="grid-column: span ${f.span};"` : ''}><label>${f.label}${f.hint ? ` <small class="sub">· ${f.hint}</small>` : ''}</label>${input}</div>`;
     };
     const last = p && Array.isArray(p.history) && p.history.length ? p.history[p.history.length - 1] : null;
     const hist = p && Array.isArray(p.history) ? p.history.slice().reverse() : [];
@@ -256,6 +261,8 @@ function switchHrModalTab(tab) {
         document.getElementById(`hrm-tab-${t}`).classList.toggle('on', t === tab);
     });
 }
+function markHrAssoc(id) { const box = document.getElementById(id); box.classList.toggle('chg', hrPickedAssoc(box) !== (box.dataset.orig || '')); }
+const hrPickedAssoc = (box) => Array.from(box.querySelectorAll('input:checked')).map(i => ASSOCS.find(a => a.k === i.value).label).join(', ');
 function markHrChange(el) { el.classList.toggle('chg', el.value.trim() !== (el.dataset.orig || '')); }
 function closeHrModal() { document.getElementById('hr-modal').style.display = 'none'; HR.edit = null; }
 const hrNow = () => { const d = new Date(); return `${toYmd(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
@@ -264,14 +271,16 @@ function saveHrModal() {
     const e = HR.edit;
     if (!e) return;
     const p = e.orig;
-    const val = (t, k) => ((document.getElementById(`hrf-${t}-${k}`) || {}).value || '').trim();
+    const val = (t, k) => { const el = document.getElementById(`hrf-${t}-${k}`); if (!el) return ''; return el.classList.contains('hr-assoc-picks') ? hrPickedAssoc(el) : (el.value || '').trim(); };
     const name = val('info', 'name');
     if (!name) { alert('이름을 입력해 주세요.'); switchHrModalTab('info'); return; }
     const changes = [];
     const pick = (t) => {
         const out = { ...((p && p[t]) || {}) };
         HR_FIELDS[t].filter(f => !f.root).forEach(f => {
-            const before = String(hrFieldValue(p, t, f)), after = val(t, f.k);
+            const raw = String(hrFieldValue(p, t, f)), after = val(t, f.k);
+            if (f.assoc && hrAssocLabels(raw) === after) { out[f.k] = raw; return; }   // 고른 협회가 같으면 원래 글자 그대로 (바뀐 것 아님)
+            const before = raw;
             if (before !== after) changes.push({ label: `${t === 'career' ? '[경력] ' : ''}${f.label}`, from: before, to: after });
             out[f.k] = f.k === 'companyReg' ? (after === 'Y' ? true : after === 'N' ? false : null) : (f.k === 'gradYear' ? hrYm(after) : after);
         });

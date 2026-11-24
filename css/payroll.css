@@ -759,3 +759,6 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .hr-hist summary { cursor: pointer; color: #1c64d9; }
 .hr-hist div { padding: 4px 0; border-bottom: 1px dashed #eee; }
 .hr-tbl td small.hr-empty { color: #e8590c; }
+.hr-assoc-picks { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border-radius: 8px; }
+.hr-assoc-picks.chg { background: #fff9db; outline: 1px solid #f08c00; }
+#hr-modal-body .hr-assoc-picks input { width: auto; height: auto; }
