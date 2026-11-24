@@ -73,6 +73,7 @@ function assocKeysFrom(text) {
 // 교육 기록: 칸마다 여러 건(이력) 보관 - edu[칸] = { records: [{ assoc, status, from, to, next }] }
 // (예전 저장 모양 edu[칸] = { assoc, status, from, to, next } 한 건도 그대로 읽음)
 // ------------------------------------------
+const validYmd = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? v : '';
 const recEnd = (r) => r.to || r.from || '';
 function addYearsYmd(ymd, years, days = 0) {
     const d = parseYmd(ymd);
@@ -88,7 +89,8 @@ function eduRecs(m, k) {
     if (!e) return [];
     const list = Array.isArray(e.records) ? e.records : [e];
     return list
-        .map(r => ({ assoc: r.assoc || '', status: r.status || '', from: r.from || '', to: r.to || '', next: r.next || '' }))
+        // 날짜 칸은 'YYYY-MM-DD' 글자만 인정 (엑셀의 0·1006 같은 값이 들어와도 화면이 멈추지 않게)
+        .map(r => ({ assoc: asText(r.assoc), status: asStatus(r.status), from: validYmd(r.from), to: validYmd(r.to), next: validYmd(r.next) }))
         .filter(r => !recEmpty(r) && (!recEnd(r) || recEnd(r) >= eduKeepFrom()))
         .sort((a, b) => (recEnd(b) || b.next || '9999').localeCompare(recEnd(a) || a.next || '9999'));
 }
