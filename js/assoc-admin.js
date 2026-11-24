@@ -385,7 +385,8 @@ function courseName(assocLabel, k) {
 // 칸 하나의 다음 신청 정보: { k, kind: now|missed|jan|any, year, date, applied, sortKey, text, cls }
 // 📌 필수 과정: 직원경력의 협회 · 분야로 정해짐 → 이수 기록이 없으면 '신청필요(미이수)'
 //   전기기술인협회: 분야에 '설계' → 설계기본·설계심화 / '감리' → 감리기본·감리심화 (설계/감리면 넷 다)
-//   정보통신공사협회: 분야에 '설계' → 설계 (1)·(2)
+//   정보통신공사협회: 분야에 '설계' → 설계 (1)·(2) / '감리' → 감리 (1)·(2)
+//   (협회에 기술자로 등록됐으면 그 분야 교육 2개는 무조건 이수 - 2026-11-24 확인)
 function requiredSlotsOf(m) {
     const out = {}, field = String(m.field || ''), assocs = m.assocs || [];
     const design = /설계/.test(field), supervise = /감리/.test(field);
@@ -393,7 +394,10 @@ function requiredSlotsOf(m) {
         if (design) { out.d1 = '전기기술인협회'; out.d2 = '전기기술인협회'; }
         if (supervise) { out.s1 = '전기기술인협회'; out.s2 = '전기기술인협회'; }
     }
-    if (assocs.includes('ict') && design) { out.d1 = out.d1 || '정보통신공사협회'; out.d2 = out.d2 || '정보통신공사협회'; }
+    if (assocs.includes('ict')) {
+        if (design) { out.d1 = out.d1 || '정보통신공사협회'; out.d2 = out.d2 || '정보통신공사협회'; }
+        if (supervise) { out.s1 = out.s1 || '정보통신공사협회'; out.s2 = out.s2 || '정보통신공사협회'; }
+    }
     return out;
 }
 // 이수 기록이 없는데 필수이거나 '신청필요'로 적힌 칸 → 다가오는 1월 접수 대상 (신청완료·대기면 이미 신청함)
