@@ -199,6 +199,7 @@ function openAssocTab() {
         AS.members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         AS.loaded = true;
         renderAssoc();
+        switchAssocSubTab(AS.subTab || localStorage.getItem('assocSubTab') || 'list');
     }).catch(err => {
         console.error('협회 명단 불러오기 실패:', err);
         document.getElementById('assoc-tbody').innerHTML = `<tr><td colspan="9" style="color: var(--danger-color);">협회 명단을 불러오지 못했어요.${err && err.code === 'permission-denied' ? '<br><small>Firebase 콘솔 > Firestore > 규칙에 association_members 규칙을 게시했는지 확인해 주세요.</small>' : ''}</td></tr>`;
@@ -218,7 +219,7 @@ function resetAssocFilter() {
 }
 function sortAssoc(key) { AS.sort = AS.sort.key === key ? { key, dir: -AS.sort.dir } : { key, dir: 1 }; renderAssoc(); }
 
-// 교육 칸 한 개 (목록용): 최근 기록의 상태 칩 + 기간 + 유효 기한(→ 날짜, 지나면 빨강) + 이전 기록 수
+// 교육 칸 한 개 (목록용): 최근 기록의 상태 칩 + 기간 + 이전 기록 수 (무효면 기간 빨강) - 신청 시기는 맨 오른쪽 칸
 function eduChip(m, k) {
     const recs = eduRecs(m, k);
     if (!recs.length) return '<span class="sub">-</span>';
@@ -226,30 +227,170 @@ function eduChip(m, k) {
     const st = e.status || (e.from ? '이수' : '');
     const cls = { '이수': 'ok', '신청완료': 'blue', '신청대기': 'gray', '신청필요': 'bad' }[st] || 'gray';
     const period = e.from ? `${asShort(e.from)}${e.to && e.to !== e.from ? '~' + asShort(e.to).slice(3) : ''}` : '';
-    const exp = slotExpiry(m, k), lv = dueLevel(exp);
+    const lv = dueLevel(slotExpiry(m, k));
     const more = recs.length > 1 ? `<span class="as-more" title="이전 기록 ${recs.length - 1}건">+${recs.length - 1}</span>` : '';
-    return `<div class="as-edu">${st ? `<span class="as-st ${cls}">${st}</span>` : ''}${period ? `<span class="as-dt">${period}</span>` : ''}${exp ? `<span class="as-next ${lv}" title="${lv === 'over' ? '무효 (유효 기한 지남)' : '이 날까지 유효'}">→ ${asShort(exp)}</span>` : ''}${more}</div>`;
+    return `<div class="as-edu${lv === 'over' ? ' over' : ''}" title="${lv === 'over' ? '무효 (유효기간 지남)' : ''}">${st ? `<span class="as-st ${cls}">${st}</span>` : ''}${period ? `<span class="as-dt">${period}</span>` : ''}${more}</div>`;
 }
 // (1)·(2) 두 칸: 둘 다 비면 '-' 하나만
 const eduEmpty = (m, k) => !eduRecs(m, k).length;
 function eduPair(m, a, b) { return eduEmpty(m, a) && eduEmpty(m, b) ? '<span class="sub">-</span>' : (eduEmpty(m, a) ? '' : eduChip(m, a)) + (eduEmpty(m, b) ? '' : eduChip(m, b)); }
 const hasNeed = (m) => EDU_SLOTS.some(s => { const r = eduRecs(m, s.k)[0]; return r && r.status === '신청필요'; });
 
+// ------------------------------------------
+// 📅 다음 교육 신청 (교육 신청 탭 · 명단 맨 오른쪽 칸)
+//  - 전기기술인협회 교육(설계 1·2 · 감리 1·2): 연초 일괄 접수 → 유효기간 만료 6개월 전이 속한 해의 1월 접수
+//  - 기타 교육 · 철도운전: 수시 → 유효기간 만료 6개월 전까지 신청
+//  - 무효(유효기간 지남)면 '지금 신청', 연초 접수 해가 이미 지났으면 '접수 놓침'
+// ------------------------------------------
+const EDU_APPLY_MONTHS = 6;
+const JAN_BATCH_SLOTS = ['d1', 'd2', 's1', 's2'];
+function addMonthsYmd(ymd, months) {
+    const d = parseYmd(ymd), day = d.getDate();
+    d.setDate(1); d.setMonth(d.getMonth() + months);
+    d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    return toYmd(d);
+}
+// 교육 칸이 어느 협회 것인지 (설계·감리 = 전기기술인협회, 기타·철도운전 = 기록에 적힌 협회)
+function slotAssocLabel(m, k) {
+    if (JAN_BATCH_SLOTS.includes(k)) return '전기기술인협회';
+    const text = (eduRecs(m, k)[0] || {}).assoc || '';
+    const key = assocKeysFrom(text)[0] || (k === 'drive' ? 'drive' : '');
+    const a = ASSOCS.find(x => x.k === key);
+    return a ? a.label : (asText(text).replace(/^\(사\)/, '') || (k === 'drive' ? '철도운전협회' : '기타 협회'));
+}
+// 칸 하나의 다음 신청 정보: { k, kind: now|missed|jan|any, year, date, applied, sortKey, text, cls }
+function applyInfoOf(m, k) {
+    const exp = slotExpiry(m, k);
+    if (!exp) return null;
+    const recs = eduRecs(m, k);
+    const latest = recs[0] || {};
+    const applied = !isDone(latest) && ['신청완료', '신청대기'].includes(latest.status);
+    const today = asToday(), thisYear = Number(today.slice(0, 4));
+    const applyBy = addMonthsYmd(exp, -EDU_APPLY_MONTHS);
+    const base = { k, exp, applied, assoc: slotAssocLabel(m, k), label: EDU_SLOTS.find(s => s.k === k).label };
+    if (exp < today) return { ...base, kind: 'now', year: thisYear, sortKey: '0', text: '지금 신청 (무효)', cls: 'bad' };
+    if (JAN_BATCH_SLOTS.includes(k)) {
+        const year = Number(applyBy.slice(0, 4));
+        // 그 해 1월 접수가 이미 지났으면(올해 2월 이후 포함) '접수 놓침'
+        if (year < thisYear || (year === thisYear && Number(today.slice(5, 7)) > 1)) return { ...base, kind: 'missed', year: thisYear, sortKey: '1', text: `${String(year).slice(2)}년 1월 접수 놓침`, cls: 'bad' };
+        return { ...base, kind: 'jan', year, sortKey: `${year}-01-01`, text: `${String(year).slice(2)}년 1월 접수`, cls: year === thisYear ? 'soon' : 'ok' };
+    }
+    const late = applyBy < today;
+    return { ...base, kind: 'any', year: late ? thisYear : Number(applyBy.slice(0, 4)), date: applyBy, sortKey: late ? '2' : applyBy,
+        text: late ? `${asShort(applyBy)}까지 (지남)` : `${asShort(applyBy)}까지 신청`, cls: late ? 'bad' : asDaysTo(applyBy) <= ASSOC_SOON_DAYS ? 'soon' : 'ok' };
+}
+function applyInfosOf(m) {
+    return EDU_SLOTS.map(s => applyInfoOf(m, s.k)).filter(Boolean).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+}
+// 명단 맨 오른쪽 칸: 가장 급한 것 하나 (+ 나머지 수)
+function nextApplyCell(m) {
+    const list = applyInfosOf(m);
+    if (!list.length) return '<span class="sub">-</span>';
+    const a = list[0];
+    return `<span class="as-apply ${a.applied ? 'applied' : a.cls}">${a.applied ? '신청완료' : a.text}</span><small>${a.label}${list.length > 1 ? ` · +${list.length - 1}` : ''}</small>`;
+}
+
+// 교육 신청 탭 (1안: 협회별 → 과정별 → 신청할 사람)
+// 고를 수 있는 해: 1월이면 올해부터, 2월 이후면 다가오는 내년 접수부터 (4년치)
+function assocApplyYears() {
+    const t = asToday(), y = Number(t.slice(0, 4)) + (Number(t.slice(5, 7)) > 1 ? 1 : 0);
+    return [y, y + 1, y + 2, y + 3];
+}
+const isUrgent = (a) => ['now', 'missed'].includes(a.kind) || (a.kind === 'any' && a.sortKey === '2');
+// 그 해 신청할 것: 지금 바로(무효·놓침·수시 기한 지남)는 어느 해를 골라도 항상 + 그 해 1월 접수 + 그 해 수시(첫 해는 그 전 것까지)
+function assocApplyItems(year) {
+    const first = assocApplyYears()[0];
+    const items = [];
+    AS.members.forEach(m => applyInfosOf(m).forEach(a => {
+        const show = isUrgent(a) || a.year === year || (year === first && a.kind === 'any' && a.year < year);
+        if (show) items.push({ m, ...a });
+    }));
+    return items;
+}
+function switchAssocSubTab(tab) {
+    AS.subTab = tab;
+    localStorage.setItem('assocSubTab', tab);
+    document.getElementById('assoc-list-pane').style.display = tab === 'list' ? '' : 'none';
+    document.getElementById('assoc-apply-pane').style.display = tab === 'apply' ? '' : 'none';
+    document.getElementById('as-subtab-list').classList.toggle('on', tab === 'list');
+    document.getElementById('as-subtab-apply').classList.toggle('on', tab === 'apply');
+    if (tab === 'apply') renderAssocApply();
+}
+function renderAssocApply() {
+    const sel = document.getElementById('assoc-apply-year');
+    if (!sel) return;
+    const years = assocApplyYears();
+    if (!sel.options.length) sel.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join('');
+    const year = Number(sel.value) || years[0];
+    const items = assocApplyItems(year);
+    // 탭 이름 옆 숫자: 올해 신청할 건수 (이미 신청한 건 제외)
+    const nThis = assocApplyItems(years[0]).filter(i => !i.applied).length;
+    document.getElementById('as-apply-count').innerText = nThis ? nThis : '';
+    const urgent = items.filter(isUrgent);
+    const jan = items.filter(i => i.kind === 'jan'), any = items.filter(i => i.kind === 'any' && !isUrgent(i));
+    document.getElementById('assoc-apply-sum').innerHTML = `
+        <div class="bad">지금 바로 신청<b>${urgent.length}건</b></div>
+        <div class="blue">${year}년 1월 일괄 접수<b>${jan.length}건</b></div>
+        <div>수시 신청<b>${any.length}건</b></div>`;
+    // 협회별 → 과정별
+    const byAssoc = {};
+    items.forEach(i => { (byAssoc[i.assoc] = byAssoc[i.assoc] || []).push(i); });
+    const order = ['전기기술인협회', ...ASSOCS.map(a => a.label)];
+    const names = Object.keys(byAssoc).sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99) || a.localeCompare(b, 'ko'));
+    const box = document.getElementById('assoc-apply-cards');
+    if (!names.length) {
+        box.innerHTML = `<div class="pay-empty">${year}년에 신청할 교육이 없어요.</div>`;
+        return;
+    }
+    box.innerHTML = names.map(name => {
+        const list = byAssoc[name];
+        const isJan = name === '전기기술인협회';
+        const when = isJan ? `<span class="as-when jan">${year}년 1월 일괄 접수</span>` : `<span class="as-when any">수시 · 만료 6개월 전까지</span>`;
+        const slots = EDU_SLOTS.filter(s => list.some(i => i.k === s.k));
+        return `<div class="as-acard"><div class="as-acard-h">${esc(name)}${when}</div>
+            ${slots.map(s => `<div class="as-course"><span class="k">${s.label}</span><div class="as-ppl">
+                ${list.filter(i => i.k === s.k).sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko')).map(i => {
+                    const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : '';
+                    const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `~${asShort(i.exp)}`;
+                    return `<span class="as-p ${cls}" onclick="openAssocModal('${i.m.id}')" title="눌러서 수정">${esc(i.m.name)}<small>${note}</small></span>`;
+                }).join('')}</div></div>`).join('')}
+        </div>`;
+    }).join('');
+}
+// 교육 신청 엑셀 (고른 해)
+function downloadAssocApplyExcel() {
+    const year = Number(document.getElementById('assoc-apply-year').value);
+    const items = assocApplyItems(year).sort((a, b) => a.assoc.localeCompare(b.assoc, 'ko') || EDU_SLOTS.findIndex(s => s.k === a.k) - EDU_SLOTS.findIndex(s => s.k === b.k) || a.m.name.localeCompare(b.m.name, 'ko'));
+    const kindText = { now: '지금 신청 (무효)', missed: '1월 접수 놓침', jan: `${year}년 1월 일괄 접수`, any: '수시' };
+    const rows = items.map(i => [i.assoc, i.label, i.m.name, i.m.department || '', i.m.position || '', kindText[i.kind], i.kind === 'any' ? i.date : '', i.exp, i.applied ? '신청완료' : '']);
+    const ws = XLSX.utils.aoa_to_sheet([['협회', '교육', '이름', '부서', '직위', '신청 시기', '신청 기한', '지금 유효기간', '신청 상태'], ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `${year}년 교육 신청`);
+    XLSX.writeFile(wb, `교육신청_${year}년_${asToday()}.xlsx`);
+}
+
 function renderAssoc() {
     const tbody = document.getElementById('assoc-tbody');
     if (!tbody) return;
-    const all = AS.members.map(m => ({ m, due: nextDueOf(m) }));
+    // '신청 대상' 카드 = 교육 신청 탭 첫 해(다가오는 1월 접수)에 신청할 사람 (이미 신청한 건 제외)
+    const thisYear = assocApplyYears()[0];
+    const all = AS.members.map(m => ({ m, ap: applyInfosOf(m) }));
+    const isOver = (r) => r.ap.some(a => a.kind === 'now');
+    const isThisYear = (r) => r.ap.some(a => !a.applied && (isUrgent(a) || a.year === thisYear || (a.kind === 'any' && a.year < thisYear)));
 
-    // 위쪽 요약: 협회별 인원(누르면 그 협회만) · 교육 기한 지남/임박 · 신청 필요
+    // 위쪽 요약: 협회별 인원(누르면 그 협회만) · 무효 · 올해 신청 대상 · 신청 필요
     const cnt = (k) => all.filter(r => (r.m.assocs || []).includes(k)).length;
-    const over = all.filter(r => dueLevel(r.due) === 'over').length, soon = all.filter(r => dueLevel(r.due) === 'soon').length;
+    const over = all.filter(isOver).length, soon = all.filter(isThisYear).length;
+    // 「교육 신청」 탭 이름 옆 숫자 (명단 탭에 있어도 보이게)
+    const badge = document.getElementById('as-apply-count');
+    if (badge) { const n = assocApplyItems(thisYear).filter(i => !i.applied).length; badge.innerText = n || ''; }
     const need = all.filter(r => hasNeed(r.m)).length;
     const kpi = (label, val, onclick, cls = '') => `<div class="staff-kpi click ${cls}" onclick="${onclick}"><small>${label}</small><b>${val}</b></div>`;
     document.getElementById('assoc-kpis').innerHTML =
         `<div class="as-kpi-row">${ASSOCS.map(a => kpi(a.label, `${cnt(a.k)}명`, `setAssocFilter('assoc','${AS.filter.assoc === a.k ? '' : a.k}')`, AS.filter.assoc === a.k ? 'on' : '')).join('')}</div>
          <div class="as-kpi-row small">${kpi('전체 기술자', `${all.length}명`, 'resetAssocFilter()')}
-            ${kpi('교육 기한 지남', `${over}명`, "setAssocFilter('due','over')", over ? 'bad' : '')}
-            ${kpi(`기한 ${ASSOC_SOON_DAYS}일 이내`, `${soon}명`, "setAssocFilter('due','soon')", soon ? 'warn' : '')}
+            ${kpi('무효 (유효기간 지남)', `${over}명`, "setAssocFilter('due','over')", over ? 'bad' : '')}
+            ${kpi(`${thisYear}년 교육 신청 대상`, `${soon}명`, "setAssocFilter('due','soon')", soon ? 'warn' : '')}
             ${kpi('교육 신청 필요', `${need}명`, "setAssocFilter('due','need')", need ? 'warn' : '')}</div>`;
 
     // 거르기
@@ -259,26 +400,25 @@ function renderAssoc() {
         && (!q || [r.m.name, r.m.department, r.m.position].some(v => String(v || '').includes(q)))
         && (!AS.filter.due
             || (AS.filter.due === 'need' ? hasNeed(r.m)
-                : AS.filter.due === 'soon' ? ['over', 'soon'].includes(dueLevel(r.due)) : dueLevel(r.due) === AS.filter.due)));
+                : AS.filter.due === 'soon' ? isThisYear(r) : isOver(r))));
 
     // 정렬 (빈 값은 맨 아래)
-    const keyOf = { name: r => r.m.name || null, dept: r => r.m.department || null, grade: r => r.m.grade || null, due: r => r.due || null }[AS.sort.key];
+    const keyOf = { name: r => r.m.name || null, dept: r => r.m.department || null, grade: r => r.m.grade || null, due: r => (r.ap[0] && r.ap[0].sortKey) || null }[AS.sort.key];
     list.sort((a, b) => {
         const x = keyOf(a), y = keyOf(b), byName = (a.m.name || '').localeCompare(b.m.name || '', 'ko');
         if (x === null || y === null) return x === y ? byName : (x === null ? 1 : -1);
         return AS.sort.dir * String(x).localeCompare(String(y), 'ko') || byName;
     });
     const th = (k, label) => `<th class="sortable" onclick="sortAssoc('${k}')">${label} <span class="arr${AS.sort.key === k ? ' on' : ''}">${AS.sort.key === k ? (AS.sort.dir > 0 ? '▲' : '▼') : '↕'}</span></th>`;
-    document.getElementById('assoc-head').innerHTML = `${th('name', '이름')}${th('dept', '부서 · 직위')}<th>협회</th>${th('grade', '등급 · 분야')}<th>회사등록</th><th>설계 교육 (1) / (2)</th><th>감리 교육 (1) / (2)</th><th>기타 교육</th>${th('due', '가장 가까운 기한')}`;
+    document.getElementById('assoc-head').innerHTML = `${th('name', '이름')}${th('dept', '부서 · 직위')}<th>협회</th>${th('grade', '등급 · 분야')}<th>회사등록</th><th>설계 교육 (1) / (2)</th><th>감리 교육 (1) / (2)</th><th>기타 교육</th>${th('due', '다음 교육 신청')}`;
     document.getElementById('assoc-count').innerText = `${list.length}명`;
 
     if (!list.length) {
         tbody.innerHTML = `<tr><td colspan="9" style="color: #888;">${AS.members.length ? '조건에 맞는 기술자가 없어요' : '아직 명단이 없어요. [📤 직원명단 엑셀에서 가져오기]로 한 번에 넣을 수 있어요.'}</td></tr>`;
         return;
     }
-    tbody.innerHTML = list.map(({ m, due }) => {
+    tbody.innerHTML = list.map(({ m }) => {
         const chips = (m.assocs || []).map(k => { const a = ASSOCS.find(x => x.k === k); return a ? `<span class="as-assoc as-${k}" title="${a.label}">${a.short}</span>` : ''; }).join('');
-        const lv = dueLevel(due);
         const etc = ['etc', 'drive'].filter(k => !eduEmpty(m, k))
             .map(k => { const a = eduRecs(m, k)[0].assoc; return `${a ? `<small class="as-sub">${esc(a.replace(/^\(사\)/, ''))}</small>` : ''}${eduChip(m, k)}`; }).join('') || '<span class="sub">-</span>';
         return `<tr onclick="openAssocModal('${m.id}')" title="눌러서 수정">
@@ -290,7 +430,7 @@ function renderAssoc() {
             <td class="l">${eduPair(m, 'd1', 'd2')}</td>
             <td class="l">${eduPair(m, 's1', 's2')}</td>
             <td class="l">${etc}</td>
-            <td>${due ? `<span class="as-due ${lv}">${asShort(due)}</span><small>${lv === 'over' ? '기한 지남' : `${asDaysTo(due)}일 남음`}</small>` : '<span class="sub">-</span>'}</td>
+            <td>${nextApplyCell(m)}</td>
         </tr>`;
     }).join('');
 }
@@ -503,13 +643,13 @@ function saveAssocImport() {
 // ⬇ 협회 명단 엑셀로 받기
 function downloadAssocExcel() {
     const head = ['이름', '부서', '직위', '입사일', '협회', '분야', '등급', '회사등록', '자격증',
-        ...EDU_SLOTS.flatMap(s => [`${s.label} 상태`, `${s.label} 시작`, `${s.label} 종료`, `${s.label} 유효 기한`, `${s.label} 이전 기록`]), '가장 가까운 기한', '메모'];
+        ...EDU_SLOTS.flatMap(s => [`${s.label} 상태`, `${s.label} 시작`, `${s.label} 종료`, `${s.label} 유효 기한`, `${s.label} 이전 기록`]), '가장 가까운 유효기간', '다음 교육 신청', '메모'];
     const rows = AS.members.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(m => [
         m.name, m.department || '', m.position || '', m.hireDate || '',
         (m.assocs || []).map(k => (ASSOCS.find(a => a.k === k) || {}).label).join(', '), m.field || '', m.grade || '',
         m.companyReg === true ? 'Y' : m.companyReg === false ? 'N' : '', m.license || '',
         ...EDU_SLOTS.flatMap(s => { const recs = eduRecs(m, s.k), e = recs[0] || {}; return [e.status || '', e.from || '', e.to || '', slotExpiry(m, s.k), recs.slice(1).map(r => `${r.from || ''}~${r.to || ''} ${r.assoc || ''} ${r.status || ''}`.trim()).join(' / ')]; }),
-        nextDueOf(m), m.memo || '']);
+        nextDueOf(m), (() => { const a = applyInfosOf(m)[0]; return a ? `${a.label} · ${a.applied ? '신청완료' : a.text}` : ''; })(), m.memo || '']);
     const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '협회 명단');

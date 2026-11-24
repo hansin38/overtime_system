@@ -256,6 +256,11 @@
 
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
         <div id="assoc-admin-section" style="display: none;">
+            <div class="lv-subtabs">
+                <button type="button" id="as-subtab-list" class="on" onclick="switchAssocSubTab('list')">📋 기술자 명단</button>
+                <button type="button" id="as-subtab-apply" onclick="switchAssocSubTab('apply')">📅 교육 신청 <span id="as-apply-count" class="as-tab-n"></span></button>
+            </div>
+            <div id="assoc-list-pane">
             <div id="assoc-kpis"></div>
             <div class="staff-bar">
                 <input id="assoc-search" class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setAssocFilter('q', this.value)">
@@ -263,7 +268,7 @@
                     <option value="elec">전기기술인협회</option><option value="ict">정보통신공사협회</option><option value="sig">철도신호협회</option>
                     <option value="eng">엔지니어링협회</option><option value="erail">전기철도협회</option><option value="drive">철도운전협회</option></select>
                 <select id="assoc-due" onchange="setAssocFilter('due', this.value)"><option value="">교육 전체</option>
-                    <option value="over">기한 지남</option><option value="soon">기한 임박 (90일 이내 · 지남 포함)</option><option value="need">신청 필요</option></select>
+                    <option value="over">무효 (유효기간 지남)</option><option value="soon">다가오는 교육 신청 대상</option><option value="need">신청 필요 표시</option></select>
                 <span class="sub" id="assoc-count"></span>
                 <div class="staff-actions">
                     <button class="pay-btn" onclick="openAssocImport()">📤 직원명단 엑셀에서 가져오기</button>
@@ -275,7 +280,19 @@
                 <thead><tr id="assoc-head"></tr></thead>
                 <tbody id="assoc-tbody"><tr><td colspan="9" style="color: #888;">불러오는 중...</td></tr></tbody>
             </table></div>
-            <div class="staff-foot">줄을 누르면 수정 창이 열려요 · 다음 기한이 지났으면 빨강, 90일 이내면 주황 · 협회 명단은 직원 관리(사원정보)와 별개라 퇴사자·임원도 그대로 관리돼요</div>
+            <div class="staff-foot">줄을 누르면 수정 창이 열려요 · 교육 기간이 빨강이면 무효(유효기간 지남) · 다음 교육 신청: 전기기술인협회는 만료 6개월 전이 속한 해의 1월 일괄 접수, 그 외는 만료 6개월 전까지 · 협회 명단은 직원 관리(사원정보)와 별개라 퇴사자·임원도 그대로 관리돼요</div>
+            </div>
+            <!-- 📅 교육 신청 (협회별 → 과정별 → 신청할 사람) -->
+            <div id="assoc-apply-pane" style="display: none;">
+                <div class="staff-bar">
+                    <select id="assoc-apply-year" onchange="renderAssocApply()"></select>
+                    <span class="sub">그 해에 신청해야 할 교육만 보여요 · 이름을 누르면 수정 창</span>
+                    <div class="staff-actions"><button class="pay-btn" onclick="downloadAssocApplyExcel()">⬇ 엑셀 받기</button></div>
+                </div>
+                <div id="assoc-apply-sum" class="as-apply-sum"></div>
+                <div id="assoc-apply-cards"></div>
+                <div class="staff-foot">전기기술인협회(설계 1·2 · 감리 1·2) = 유효기간 만료 6개월 전이 속한 해의 1월 일괄 접수 · 그 외 협회 = 만료 6개월 전까지 수시 신청 · 빨강 = 무효이거나 접수 시기를 놓침 · 파랑 = 신청완료</div>
+            </div>
         </div>
     </div>
 
