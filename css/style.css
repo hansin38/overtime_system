@@ -367,6 +367,10 @@ th { background-color: #f1f3f5; }
 .ot-status { white-space: nowrap; color: var(--ot-soft); }
 .ot-status.on { color: #000; font-weight: bold; }
 
+/* 관리자 확인용 표시 (급여 관리 .ps-admin-mark와 같은 모양) - 맨 위 가운데 */
+.ot-admin-mark { display: table; margin: 0 auto 14px; border: 1.5px solid #adb5bd; color: #868e96; background: #f8f9fa; font-size: 11px; font-weight: bold; padding: 2px 10px; border-radius: 4px; letter-spacing: 1px; white-space: nowrap; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.ot-a4 .ot-admin-mark { flex: none; margin-top: -8px; }
+
 /* 초과수당 정산 줄 (관리자 화면만): 요약 칸과 한 줄 띄우고, 같은 선·글자 크기 · 구분선은 요약 칸 첫 세로선과 같은 위치 */
 .ot-pay { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr); margin-top: 18px; border-top: 1px solid var(--ot-hair); border-bottom: 1px solid var(--ot-hair); }
 .ot-pay > div, .ot-pay > dl { padding: 14px 14px 16px; margin: 0; }

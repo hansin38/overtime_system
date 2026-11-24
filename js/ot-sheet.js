@@ -46,7 +46,9 @@ function renderOvertimeSheetHtml(data, opts = {}) {
         `<span class="ot-status${box.statuses.includes(status) ? ' on' : ''}">${box.statuses.includes(status) ? '■' : '□'} ${box.label}</span>`
     ).join('');
 
-    const top = `
+    // 관리자 화면(초과수당 정산 줄 포함)일 때만 맨 위 가운데 '관리자 확인용' 표시 (급여 관리 관리자용 명세서와 같은 모양)
+    const adminMark = opts.pay ? `<div class="ot-admin-mark">관리자 확인용 · 직원 화면에는 안 보임</div>` : '';
+    const top = `${adminMark}
             <div class="ot-top">
                 <img class="ot-logo" src="${OT_COMPANY_LOGO}" alt="${OT_COMPANY_NAME}">
                 <div class="ot-title">연장근로 신청 확인서</div>
