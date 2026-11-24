@@ -304,6 +304,7 @@
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
         <div id="assoc-admin-section" style="display: none;">
             <h2 class="admin-page-title">🏛 협회 관리</h2>
+            <div id="assoc-migrate" style="display: none;"></div>
             <div class="lv-subtabs">
                 <button type="button" id="as-subtab-apply" class="on" onclick="switchAssocSubTab('apply')">📌 할 일 <span id="as-apply-count" class="as-tab-n"></span></button>
                 <button type="button" id="as-subtab-byassoc" onclick="switchAssocSubTab('byassoc')">🏛 협회별 현황</button>
@@ -315,10 +316,9 @@
                 <input id="assoc-search" class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setAssocFilter('q', this.value)">
                 <span class="sub" id="assoc-count"></span>
                 <div class="staff-actions">
-                    <button class="pay-btn blue" onclick="openAssocModal()">＋ 기술자 추가</button>
                     <span class="as-more-wrap"><button class="pay-btn" onclick="toggleAssocMenu(event)" title="엑셀 가져오기 · 받기">⋯</button>
                         <span id="assoc-more-menu" class="as-more-menu">
-                            <button type="button" onclick="openAssocImport()">📤 직원명단 엑셀에서 가져오기</button>
+                            <button type="button" onclick="openAssocImport()">📤 직원명단 엑셀에서 교육 기록 가져오기</button>
                             <button type="button" onclick="downloadAssocExcel()">⬇ 엑셀 받기</button>
                         </span></span>
                 </div>
@@ -327,7 +327,7 @@
                 <thead><tr id="assoc-head"></tr></thead>
                 <tbody id="assoc-tbody"><tr><td colspan="5" style="color: #888;">불러오는 중...</td></tr></tbody>
             </table></div>
-            <div class="staff-foot">줄을 누르면 교육이 아래로 펼쳐지고 [✏️ 수정]으로 고쳐요 · 위쪽 버튼을 누르면 그 협회·상태만 보이고 다시 누르면 풀려요 · 다음 교육 신청: 설계·감리(전기기술인 · 정보통신공사협회)는 만료 6개월 전이 속한 해의 1월 일괄 접수, 그 외는 만료 6개월 전까지 · 협회 명단은 직원 관리(사원정보)와 별개라 퇴사자·임원도 그대로 관리돼요</div>
+            <div class="staff-foot">줄을 누르면 교육이 아래로 펼쳐지고 [✏️ 수정]으로 고쳐요 · 위쪽 버튼을 누르면 그 협회·상태만 보이고 다시 누르면 풀려요 · 다음 교육 신청: 설계·감리(전기기술인 · 정보통신공사협회)는 만료 6개월 전이 속한 해의 1월 일괄 접수, 그 외는 만료 6개월 전까지 · 사람·부서·협회는 직원정보·직원경력 관리에서 가져와요 (사람 추가·퇴사도 거기서) · 여기서는 교육 기록만 입력해요</div>
             </div>
             <!-- 🏛 협회별 (협회 카드 → 그 협회 사람·과정 칸만 있는 표) -->
             <div id="assoc-byassoc-pane" style="display: none;"><div id="assoc-byassoc-body"></div></div>

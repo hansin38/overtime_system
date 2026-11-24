@@ -280,6 +280,7 @@ function onHrPick(sel, label) {
 }
 function markHrChange(el) { el.classList.toggle('chg', el.value.trim() !== (el.dataset.orig || '')); }
 function closeHrModal() { document.getElementById('hr-modal').style.display = 'none'; HR.edit = null; }
+// 협회 관리 수정 창에서 [직원정보에서 고치기]로 왔다가 취소해도 협회 관리 창으로 돌아가지 않음 (저장했을 때만 새로 그림)
 const hrNow = () => { const d = new Date(); return `${toYmd(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 
 function saveHrModal() {
@@ -316,6 +317,7 @@ function saveHrModal() {
         HR.people = p ? HR.people.map(x => x.id === p.id ? saved : x) : HR.people.concat([saved]);
         closeHrModal();
         renderHr('info'); renderHr('career');
+        if (HR.afterSave) { const f = HR.afterSave; HR.afterSave = null; f(); }   // 협회 관리에서 열었으면 협회 관리도 새로
     }).catch(err => {
         console.error('직원정보 저장 실패:', err);
         alert(err && err.code === 'permission-denied' ? '권한이 없어 저장하지 못했어요.\nFirebase 콘솔 > Firestore > 규칙에 hr_ 규칙을 게시해 주세요.' : '저장 중 오류가 발생했어요.');

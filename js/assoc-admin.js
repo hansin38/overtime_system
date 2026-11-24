@@ -1,7 +1,7 @@
 // ==========================================
 // 🏛 협회 관리 (assoc-admin.js)
-// 기술자 협회 가입·교육 현황 (전 직원 대상 · 사원정보와 별도 명단)
-// 저장: association_members (관리자만 - firestore.rules)
+// 기술자 협회 가입·교육 현황 - 사람은 직원정보 명단(hr_staff), 교육 기록·메모만 hr_edu 에 저장 (2026-11-24 구조 변경)
+// 저장: hr_edu (교육 기록·메모, 문서 ID = 직원정보 ID · 관리자만 - firestore.rules 의 hr_ 규칙) · 예전 association_members 는 보관만
 // 처음 데이터: 직원명단.xlsx 의 '교육이수현황'·'교육신청현황' 두 시트에 있는 사람 전원
 //   + '1기본정보'(직위·부서·입사일·전화·이메일·생년월일) + '2경력,학력'(분야·등급·회사등록·자격증)
 //   ⚠️ 주민번호 전체·주소·비밀번호 칸은 읽지 않음 (생년월일만 주민번호 앞 6자리로)
@@ -195,40 +195,137 @@ function parseAssocWorkbook(wb) {
 // ------------------------------------------
 // 탭 열기 · 불러오기
 // ------------------------------------------
-// 👤 직원정보 연결: 이름이 같은 사람은 직원정보 관리(hr_staff)의 값을 보여줌 → 정보는 직원명단 엑셀 한 곳에서만 관리
-//   직원정보(1기본정보): 부서 · 직위 · 입사일 · 생년월일 · 전화 · 이메일 / 직원경력(2경력,학력): 분야 · 등급 · 회사등록 · 자격증 · 합격일
-//   가입 협회(assocs)는 직원경력의 구분(협회)에서 · 직원정보에 없는 사람은 협회 명단에 저장된 값 그대로 · 협회 명단 문서에 저장된 원래 값은 m._raw 에 보관(저장할 때 그대로 둠)
-const HR_INFO_FIELDS = ['department', 'position', 'hireDate', 'birth', 'phone', 'email'];
-const HR_CAREER_FIELDS = ['field', 'grade', 'companyReg', 'license', 'licenseDate'];
+// 👤 협회 관리 = 직원정보 명단 기반 (2026-11-24 구조 변경)
+//   사람 · 이름 · 부서 · 직급 · 연락처 ← 직원정보(hr_staff.info) / 가입 협회 · 분야 · 등급 · 회사등록 · 자격증 ← 직원경력(hr_staff.career)
+//   여기서 저장하는 것은 교육 기록 · 메모뿐 → hr_edu 컬렉션 (문서 ID = 직원정보 문서 ID, 이름을 고쳐도 그대로 연결)
+//   보이는 사람: 퇴사 안 했고, 직원경력에 협회가 있거나 교육 기록이 있는 사람
+//   예전 협회 명단(association_members)은 지우지 않고 보관 · 처음 한 번 「교육 기록 옮기기」로 hr_edu 에 옮김(hr_meta/assoc 에 표시)
 function loadHrForAssoc() {
     if (typeof HR !== 'undefined' && HR.loaded) return Promise.resolve(HR.people);
     return db.collection('hr_staff').get()
-        .then(snap => { const people = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (typeof HR !== 'undefined') { HR.people = people; HR.loaded = true; } return people; })
-        .catch(err => { console.warn('직원정보 연결 안 됨 (규칙 게시 전이거나 데이터 없음):', err && err.code); return []; });
+        .then(snap => { const people = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (typeof HR !== 'undefined') { HR.people = people; HR.loaded = true; } return people; });
 }
-function linkHr(m, people) {
-    const p = people.find(x => (x.name || '').trim() === (m.name || '').trim());
-    const raw = {};
-    [...HR_INFO_FIELDS, ...HR_CAREER_FIELDS, 'assocs'].forEach(k => { raw[k] = m[k]; });
-    // 가입 협회: 직원경력의 구분(협회)에 고른 협회가 있으면 그것을 씀 (없으면 협회 명단에 체크된 그대로)
-    const hrAssocs = p && p.career ? assocKeysFrom(p.career.group) : [];
-    const out = { ...m, _raw: raw, _hrInfo: !!(p && p.info), _hrCareer: !!(p && p.career), _hrAssoc: hrAssocs.length > 0 };
-    if (hrAssocs.length) out.assocs = ASSOCS.map(a => a.k).filter(k => hrAssocs.includes(k));
-    if (p && p.info) HR_INFO_FIELDS.forEach(k => { if (p.info[k]) out[k] = p.info[k]; });
-    if (p && p.career) HR_CAREER_FIELDS.forEach(k => { const val = p.career[k]; if (val !== undefined && val !== null && val !== '') out[k] = val; });
-    return out;
+function buildAssocMembers(people, eduById) {
+    return people.filter(p => !p.resigned).map(p => {
+        const i = p.info || {}, c = p.career || {}, e = eduById[p.id] || {};
+        const keys = assocKeysFrom(c.group);
+        return {
+            id: p.id, name: p.name, department: i.department || c.department || '', position: i.position || c.position || '',
+            hireDate: i.hireDate || '', birth: i.birth || '', phone: i.phone || '', email: i.email || '',
+            assocs: ASSOCS.map(a => a.k).filter(k => keys.includes(k)),
+            field: c.field || '', grade: c.grade || '', companyReg: c.companyReg ?? null, license: c.license || '', licenseDate: c.licenseDate || '',
+            edu: e.edu || {}, memo: e.memo || '',
+        };
+    }).filter(m => m.assocs.length || EDU_SLOTS.some(s => eduRecs(m, s.k).length));
+}
+function assocLoadError(err) {
+    console.error('협회 관리 불러오기 실패:', err);
+    document.getElementById('assoc-tbody').innerHTML = `<tr><td colspan="5" style="color: var(--danger-color);">협회 관리를 불러오지 못했어요.${err && err.code === 'permission-denied' ? '<br><small>Firebase 콘솔 > Firestore > 규칙에 hr_ 규칙(관리자만)을 게시했는지 확인해 주세요.</small>' : ''}</td></tr>`;
 }
 function openAssocTab() {
     document.getElementById('assoc-tbody').innerHTML = `<tr><td colspan="5" style="color: #888;">불러오는 중...</td></tr>`;
-    Promise.all([db.collection("association_members").get(), loadHrForAssoc()]).then(([snap, people]) => {
-        AS.members = snap.docs.map(d => linkHr({ id: d.id, ...d.data() }, people));
-        AS.loaded = true;
-        renderAssoc();
-        switchAssocSubTab(AS.subTab || localStorage.getItem('assocSubTab') || 'apply');
-    }).catch(err => {
-        console.error('협회 명단 불러오기 실패:', err);
-        document.getElementById('assoc-tbody').innerHTML = `<tr><td colspan="5" style="color: var(--danger-color);">협회 명단을 불러오지 못했어요.${err && err.code === 'permission-denied' ? '<br><small>Firebase 콘솔 > Firestore > 규칙에 association_members 규칙을 게시했는지 확인해 주세요.</small>' : ''}</td></tr>`;
+    Promise.all([loadHrForAssoc(), db.collection('hr_edu').get(), db.collection('hr_meta').doc('assoc').get()]).then(([people, eduSnap, meta]) => {
+        AS.people = people;
+        AS.eduById = {};
+        eduSnap.docs.forEach(d => { AS.eduById[d.id] = d.data(); });
+        const migrated = meta.exists;
+        if (!migrated) {
+            // 처음: 예전 협회 명단이 있으면 옮기기 화면부터
+            return db.collection('association_members').get().then(old => {
+                if (old.empty) { showAssocMain(people); return; }
+                AS.oldMembers = old.docs.map(d => ({ id: d.id, ...d.data() }));
+                renderAssocMigration();
+            }).catch(() => showAssocMain(people));
+        }
+        showAssocMain(people);
+    }).catch(assocLoadError);
+}
+function showAssocMain(people) {
+    document.getElementById('assoc-migrate').style.display = 'none';
+    document.querySelector('#assoc-admin-section .lv-subtabs').style.display = '';
+    AS.members = buildAssocMembers(people, AS.eduById || {});
+    AS.loaded = true;
+    renderAssoc();
+    switchAssocSubTab(AS.subTab || localStorage.getItem('assocSubTab') || 'apply');
+}
+
+// ------------------------------------------
+// 🔁 처음 한 번: 예전 협회 명단의 교육 기록 → 직원정보의 사람에게 옮기기 (이름이 같으면 자동, 다르면 골라서)
+// ------------------------------------------
+function renderAssocMigration() {
+    ['list', 'byassoc', 'apply'].forEach(t => { document.getElementById(`assoc-${t}-pane`).style.display = 'none'; });
+    document.querySelector('#assoc-admin-section .lv-subtabs').style.display = 'none';
+    const box = document.getElementById('assoc-migrate');
+    box.style.display = '';
+    const people = AS.people.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+    const rows = AS.oldMembers.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko')).map(o => {
+        const match = people.find(p => (p.name || '').trim() === (o.name || '').trim());
+        const nEdu = EDU_SLOTS.reduce((n, s) => n + eduRecs(o, s.k).length, 0);
+        return { o, match, nEdu };
     });
+    const auto = rows.filter(r => r.match).length;
+    box.innerHTML = `
+        <div class="as-guide" style="background: #fff9db; border-color: #ffe066;"><div class="as-guide-b" style="padding-top: 12px;">
+            <b>🔁 협회 관리가 직원정보 명단을 쓰도록 바뀌었어요 — 처음 한 번만 교육 기록을 옮겨 주세요</b><br>
+            예전 협회 명단 <b>${rows.length}명</b> 중 <b>${auto}명</b>은 직원정보에 같은 이름이 있어 자동으로 연결했어요.
+            ${rows.length - auto ? `<b class="red">${rows.length - auto}명</b>은 누구인지 골라 주세요(직원정보에 없으면 「옮기지 않음」).` : ''}<br>
+            <small>옮기는 것: 교육 기록 · 메모 · (직원경력에 협회가 비어 있는 사람은) 가입 협회 · 예전 협회 명단은 지우지 않고 그대로 보관해요.</small>
+        </div></div>
+        <div class="staff-wrap hr-wrap" style="max-height: 60vh;"><table class="staff-tbl hr-tbl">
+            <thead><tr><th class="l" style="width: 140px;">예전 협회 명단</th><th style="width: 90px;">교육 기록</th><th class="l">연결할 직원 (직원정보)</th></tr></thead>
+            <tbody>${rows.map(({ o, match, nEdu }) => `<tr class="${match ? '' : 'as-mig-need'}">
+                <td class="l"><b>${esc(o.name)}</b><small>${esc([o.department, o.position].filter(Boolean).join(' · '))}</small></td>
+                <td>${nEdu}건</td>
+                <td class="l"><select class="hr-sel as-mig-sel" data-old="${o.id}" style="min-width: 240px;">
+                    <option value="">— 옮기지 않음 —</option>
+                    ${people.map(p => `<option value="${p.id}" ${match && match.id === p.id ? 'selected' : ''}>${esc(p.name)} · ${esc(((p.info || {}).department) || '')}${p.resigned ? ' (퇴사)' : ''}</option>`).join('')}
+                </select>${match ? ' <span class="as-pill ok">자동 연결</span>' : ' <span class="as-pill bad">골라 주세요</span>'}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;">
+            <button class="pay-btn blue" onclick="runAssocMigration()">교육 기록 옮기기</button>
+        </div>`;
+}
+function mergeEduDocs(list) {
+    const edu = {};
+    EDU_SLOTS.forEach(s => {
+        const seen = new Set(), records = [];
+        list.forEach(m => eduRecs(m, s.k).forEach(r => {
+            const key = `${r.from}|${r.to}|${r.status}|${r.next}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            const o = { ...r }; Object.keys(o).forEach(x => { if (!o[x]) delete o[x]; });
+            records.push(o);
+        }));
+        if (records.length) edu[s.k] = { records };
+    });
+    return edu;
+}
+function runAssocMigration() {
+    const picks = Array.from(document.querySelectorAll('.as-mig-sel')).map(sel => ({ old: AS.oldMembers.find(o => o.id === sel.dataset.old), to: sel.value }));
+    const skipped = picks.filter(x => !x.to).length;
+    if (!confirm(`교육 기록을 옮길까요?\n연결 ${picks.length - skipped}명 · 옮기지 않음 ${skipped}명\n(예전 협회 명단은 지우지 않고 보관해요)`)) return;
+    const byTo = {};
+    picks.filter(x => x.to).forEach(x => { (byTo[x.to] = byTo[x.to] || []).push(x.old); });
+    const batch = db.batch();
+    Object.entries(byTo).forEach(([hrId, olds]) => {
+        const cur = AS.eduById[hrId] || {};
+        const edu = mergeEduDocs([cur, ...olds]);
+        const memo = [cur.memo, ...olds.map(o => o.memo)].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join('\n');
+        batch.set(db.collection('hr_edu').doc(hrId), { edu, memo, migratedFrom: olds.map(o => o.id), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        // 직원경력에 협회가 비어 있으면 예전 협회 명단의 가입 협회를 채워 둠 (협회 관리에서 빠지지 않게)
+        const p = AS.people.find(x => x.id === hrId);
+        const oldAssocs = [...new Set(olds.flatMap(o => o.assocs || []))];
+        if (p && oldAssocs.length && !assocKeysFrom((p.career || {}).group).length) {
+            const group = ASSOCS.filter(a => oldAssocs.includes(a.k)).map(a => a.label).join(', ');
+            const career = { ...(p.career || {}), group };
+            const history = (p.history || []).concat([{ at: hrNow(), changes: [{ label: '[경력] 구분(협회)', from: '', to: `${group} (협회 명단에서 옮김)` }] }]).slice(-50);
+            batch.update(db.collection('hr_staff').doc(hrId), { career, history });
+            p.career = career; p.history = history;
+        }
+    });
+    batch.set(db.collection('hr_meta').doc('assoc'), { migratedAt: firebase.firestore.FieldValue.serverTimestamp(), moved: Object.keys(byTo).length, skipped });
+    batch.commit().then(() => { alert('옮겼어요. 이제 협회 관리는 직원정보 명단을 써요.'); openAssocTab(); })
+        .catch(err => { console.error('교육 기록 옮기기 실패:', err); alert(err && err.code === 'permission-denied' ? '권한이 없어 저장하지 못했어요. Firebase 규칙(hr_)을 확인해 주세요.' : '옮기는 중 오류가 발생했어요.'); });
 }
 
 function setAssocFilter(key, value) {
@@ -728,75 +825,57 @@ function mergeEduImport(oldMember, newEdu) {
     return edu;
 }
 
-function openAssocModal(id = null) {
+// 수정 창: 사람 정보는 보기만(고치기는 직원정보·직원경력 창으로 바로 이동) · 여기서는 교육 기록 · 메모만 고침
+function openAssocModal(id) {
     AS.editingId = id;
-    const m = id ? AS.members.find(x => x.id === id) : { assocs: [], edu: {} };
+    const m = AS.members.find(x => x.id === id);
     if (!m) return;
-    const v = (x) => esc(x || '');
-    const grades = ['초급', '중급', '고급', '특급'];
-    const li = m._hrInfo ? 'disabled title="직원정보 관리에서 가져온 값"' : '', lc = m._hrCareer ? 'disabled title="직원경력 관리에서 가져온 값"' : '';
-    const linkNote = (on, where) => on ? `<div class="as-link-note">👤 ${where}에서 가져온 값이에요 · 바꾸려면 직원명단 엑셀을 고쳐서 다시 올려 주세요</div>` : '';
-    document.getElementById('assoc-modal-title').innerText = id ? `기술자 정보 · ${m.name}` : '기술자 추가';
+    const v = (x) => esc(x || '') || '<span class="sub">-</span>';
+    const chips = (m.assocs || []).map(k => { const a = ASSOCS.find(x => x.k === k); return `<span class="as-assoc as-${k}">${a.short}</span>`; }).join('') || '<span class="sub">-</span>';
+    document.getElementById('assoc-modal-title').innerText = `기술자 정보 · ${m.name}`;
     document.getElementById('assoc-modal-body').innerHTML = `
-        <div class="pay-grp"><div class="gh">기본 정보</div>${linkNote(m._hrInfo, '직원정보 관리')}<div class="pay-fg c3">
-            <div><label>이름</label><input id="ae-name" value="${v(m.name)}"></div>
-            <div><label>부서</label><input id="ae-department" value="${v(m.department)}" ${li}></div>
-            <div><label>직위</label><input id="ae-position" value="${v(m.position)}" ${li}></div>
-            <div><label>입사일</label><input type="date" id="ae-hireDate" value="${v(m.hireDate)}" ${li}></div>
-            <div><label>생년월일</label><input type="date" id="ae-birth" value="${v(m.birth)}" ${li}></div>
-            <div><label>전화번호</label><input id="ae-phone" value="${v(m.phone)}" ${li}></div>
-            <div style="grid-column: span 3;"><label>이메일</label><input id="ae-email" value="${v(m.email)}" ${li}></div>
-        </div></div>
-        <div class="pay-grp"><div class="gh">협회 · 자격</div>${linkNote(m._hrCareer, '직원경력 관리')}
-            ${m._hrAssoc ? '<div class="as-link-note">👤 가입 협회는 직원경력 관리의 구분(협회)에서 가져와요 · 바꾸려면 직원경력 관리에서 고쳐 주세요</div>' : ''}<div class="as-assoc-picks">${ASSOCS.map(a => `<label class="lvimp-emp"><input type="checkbox" id="ae-assoc-${a.k}" ${(m.assocs || []).includes(a.k) ? 'checked' : ''} ${m._hrAssoc ? 'disabled' : ''}> ${a.label}</label>`).join('')}</div>
-            <div class="pay-fg c3">
-                <div><label>분야</label><input id="ae-field" value="${v(m.field)}" placeholder="설계/감리" ${lc}></div>
-                <div><label>자격 등급</label><select id="ae-grade" ${lc}><option value="">-</option>${grades.map(gr => `<option ${m.grade === gr ? 'selected' : ''}>${gr}</option>`).join('')}${m.grade && !grades.includes(m.grade) ? `<option selected>${v(m.grade)}</option>` : ''}</select></div>
-                <div><label>회사 등록</label><select id="ae-companyReg" ${lc}><option value="">-</option><option value="Y" ${m.companyReg === true ? 'selected' : ''}>Y</option><option value="N" ${m.companyReg === false ? 'selected' : ''}>N</option></select></div>
-                <div style="grid-column: span 2;"><label>자격증</label><input id="ae-license" value="${v(m.license)}" ${lc}></div>
-                <div><label>합격일</label><input id="ae-licenseDate" value="${v(m.licenseDate)}" placeholder="2021-06-02" ${lc}></div>
+        <div class="pay-grp"><div class="gh" style="display: flex; align-items: center;">기본 정보 <span class="sub" style="font-weight: normal; font-size: 12px; margin-left: 8px;">직원정보 관리</span>
+            <button type="button" class="pay-btn sm" style="margin-left: auto;" onclick="goHrFromAssoc('${m.id}', 'info')">✏️ 직원정보에서 고치기</button></div>
+            <div class="as-ro">
+                <div><label>이름</label><b>${esc(m.name)}</b></div><div><label>부서 · 직급</label>${v([m.department, m.position].filter(Boolean).join(' · '))}</div><div><label>입사일</label>${v(m.hireDate)}</div>
+                <div><label>생년월일</label>${v(m.birth)}</div><div><label>전화</label>${v(m.phone)}</div><div><label>이메일</label>${v(m.email)}</div>
+            </div></div>
+        <div class="pay-grp"><div class="gh" style="display: flex; align-items: center;">협회 · 자격 <span class="sub" style="font-weight: normal; font-size: 12px; margin-left: 8px;">직원경력 관리</span>
+            <button type="button" class="pay-btn sm" style="margin-left: auto;" onclick="goHrFromAssoc('${m.id}', 'career')">✏️ 직원경력에서 고치기</button></div>
+            <div class="as-ro">
+                <div style="grid-column: span 3;"><label>가입 협회</label>${chips}</div>
+                <div><label>분야</label>${v(m.field)}</div><div><label>자격등급</label>${v(m.grade)}</div><div><label>회사등록</label>${m.companyReg === true ? 'Y' : m.companyReg === false ? 'N' : '<span class="sub">-</span>'}</div>
+                <div style="grid-column: span 2;"><label>자격증</label>${v(m.license)}</div><div><label>합격일</label>${v(m.licenseDate)}</div>
             </div></div>
         <div class="pay-grp"><div class="gh">교육</div>
             <div class="as-rule">✅ 교육 <b>종료일부터 3년 - 1일</b>까지 유효, 하루라도 지나면 <b>무효</b> (예: 23.11.14 종료 → 26.11.13까지) · 기록은 종료일부터 <b>10년</b> 보관
                 <br><small>최근 교육이 무효가 되면 노란 「＋ 새 교육」 줄이 나타나요. 기타·철도운전은 유효기간을 따로 적으면 그 날짜를 써요.</small></div>
             ${EDU_SLOTS.map(s => eduSlotHtml(m, s)).join('')}</div>
-        <div class="pay-grp"><div class="gh">메모</div><textarea id="ae-memo" class="as-memo" placeholder="예: 엔지니어링협회 퇴직 처리 함">${v(m.memo)}</textarea></div>`;
-    document.getElementById('assoc-del-btn').style.display = id ? '' : 'none';
+        <div class="pay-grp"><div class="gh">메모</div><textarea id="ae-memo" class="as-memo" placeholder="예: 엔지니어링협회 퇴직 처리 함">${esc(m.memo || '')}</textarea></div>`;
+    document.getElementById('assoc-del-btn').style.display = 'none';
     document.getElementById('assoc-modal').style.display = 'flex';
 }
 function closeAssocModal() { document.getElementById('assoc-modal').style.display = 'none'; }
+// 사람 정보 고치기 → 직원정보·경력 수정 창 (저장하면 협회 관리도 새로 그림)
+function goHrFromAssoc(id, tab) {
+    closeAssocModal();
+    HR.afterSave = () => { if (document.getElementById('assoc-admin-section').style.display === 'block') openAssocTab(); };
+    openHrModal(id, tab);
+}
 
 function saveAssocMember() {
-    const g = (k) => (document.getElementById('ae-' + k).value || '').trim();
-    const name = g('name');
-    if (!name) { alert('이름을 입력해 주세요.'); return; }
+    const id = AS.editingId;
+    if (!id) return;
     const edu = collectEduFromModal();
-    const reg = g('companyReg');
-    const cur = AS.editingId ? AS.members.find(x => x.id === AS.editingId) : null;
-    const doc = {
-        name, department: g('department'), position: g('position'), hireDate: g('hireDate'), birth: g('birth'), phone: g('phone'), email: g('email'),
-        assocs: ASSOCS.map(a => a.k).filter(k => document.getElementById('ae-assoc-' + k).checked),
-        field: g('field'), grade: g('grade'), companyReg: reg === 'Y' ? true : reg === 'N' ? false : null,
-        license: g('license'), licenseDate: g('licenseDate'), edu, memo: g('memo'),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    };
-    if (cur && cur._hrInfo) HR_INFO_FIELDS.forEach(k => { doc[k] = cur._raw[k] ?? ''; });
-    if (cur && cur._hrCareer) HR_CAREER_FIELDS.forEach(k => { doc[k] = cur._raw[k] ?? (k === 'companyReg' ? null : ''); });
-    if (cur && cur._hrAssoc) doc.assocs = cur._raw.assocs || [];   // 직원경력에서 가져온 협회는 협회 명단에 덮어쓰지 않음
-    const ref = AS.editingId ? db.collection("association_members").doc(AS.editingId) : db.collection("association_members").doc();
-    ref.set(doc).then(() => { closeAssocModal(); openAssocTab(); })
-        .catch(err => { console.error('협회 정보 저장 실패:', err); alert('저장 중 오류가 발생했어요.'); });
+    const memo = (document.getElementById('ae-memo').value || '').trim();
+    db.collection('hr_edu').doc(id).set({ edu, memo, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        .then(() => { closeAssocModal(); openAssocTab(); })
+        .catch(err => { console.error('교육 기록 저장 실패:', err); alert('저장 중 오류가 발생했어요.'); });
 }
-
-function deleteAssocMember() {
-    const m = AS.members.find(x => x.id === AS.editingId);
-    if (!m || !confirm(`${m.name} 님을 협회 명단에서 지울까요?\n(직원 관리의 사원 정보와는 별개라 그쪽은 그대로예요)`)) return;
-    db.collection("association_members").doc(m.id).delete().then(() => { closeAssocModal(); openAssocTab(); })
-        .catch(err => { console.error(err); alert('지우는 중 오류가 발생했어요.'); });
-}
+function deleteAssocMember() { /* 사람 추가·삭제는 직원정보 관리에서 (퇴사 처리하면 협회 관리에서도 빠짐) */ }
 
 // ------------------------------------------
-// 📤 직원명단 엑셀에서 가져오기 (이름으로 맞춰서 새로 추가 / 엑셀 내용으로 갱신, 메모는 유지)
+// 📤 직원명단 엑셀에서 교육 기록 가져오기 (이름으로 직원정보의 사람에게 연결 · 기존 이력은 유지, 같은 기간은 갱신)
 // ------------------------------------------
 let assocImportRows = [];
 function openAssocImport() {
@@ -824,34 +903,35 @@ function onAssocImportFile(input) {
     reader.readAsArrayBuffer(file);
 }
 function renderAssocImport(rows) {
-    assocImportRows = rows.map(p => ({ p, old: AS.members.find(m => m.name === p.name) || null }));
-    const add = assocImportRows.filter(r => !r.old).length, upd = assocImportRows.length - add;
+    const people = AS.people || [];
+    assocImportRows = rows.map(p => ({ p, hr: people.find(x => (x.name || '').trim() === (p.name || '').trim()) || null }))
+        .filter(r => EDU_SLOTS.some(s => r.p.edu[s.k]));
+    const ok = assocImportRows.filter(r => r.hr).length, miss = assocImportRows.length - ok;
     document.getElementById('assoc-imp-result').innerHTML = `
-        <div class="lvimp-sum"><span>읽은 기술자 <b>${rows.length}</b>명</span><span class="ok">새로 추가 <b>${add}</b></span><span class="warn">엑셀 내용으로 갱신 <b>${upd}</b></span></div>
-        <div class="lvimp-wrap"><table class="lvimp-tbl"><thead><tr><th>이름</th><th>부서 · 직위</th><th>협회</th><th>등급</th><th>교육 기록</th><th></th></tr></thead><tbody>
-        ${assocImportRows.map(({ p, old }) => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.department || '-')} · ${esc(p.position || '-')}</td>
-            <td>${(p.assocs || []).map(k => ASSOCS.find(a => a.k === k).short).join(', ') || '-'}</td><td>${esc(p.grade || '-')}</td>
-            <td>${EDU_SLOTS.filter(s => p.edu[s.k] && (p.edu[s.k].status || p.edu[s.k].from || p.edu[s.k].next)).length}건</td>
-            <td>${old ? '<span class="as-st gray">갱신</span>' : '<span class="as-st ok">추가</span>'}</td></tr>`).join('')}
+        <div class="lvimp-sum"><span>교육 기록이 있는 사람 <b>${assocImportRows.length}</b>명</span><span class="ok">직원정보와 연결 <b>${ok}</b></span>${miss ? `<span class="warn">직원정보에 없음(건너뜀) <b>${miss}</b></span>` : ''}</div>
+        <div class="lvimp-wrap"><table class="lvimp-tbl"><thead><tr><th>이름</th><th>교육 기록</th><th></th></tr></thead><tbody>
+        ${assocImportRows.map(({ p, hr }) => `<tr><td><b>${esc(p.name)}</b></td>
+            <td>${EDU_SLOTS.filter(s => p.edu[s.k]).length}칸</td>
+            <td>${hr ? '<span class="as-st ok">연결</span>' : '<span class="as-st gray">직원정보에 없음 · 건너뜀</span>'}</td></tr>`).join('')}
         </tbody></table></div>
-        <div class="pay-note" style="margin-top: 10px;">🔒 주민번호(생년월일만 사용)·주소·비밀번호 칸은 읽지 않았어요. 이미 있는 사람은 엑셀 내용으로 바뀌고, 화면에서 적은 <b>메모와 교육 이력은 그대로</b> 남아요 (같은 기간 교육은 엑셀 값으로 갱신, 새 기간이면 이력에 추가).</div>`;
+        <div class="pay-note" style="margin-top: 10px;">교육 기록만 가져와요(이름·부서·협회는 직원정보·직원경력 값을 써요) · 이미 있는 교육 이력과 메모는 그대로, 같은 기간 교육은 엑셀 값으로 갱신 · 🔒 주민번호·주소·비밀번호 칸은 읽지 않아요.</div>`;
     const btn = document.getElementById('assoc-imp-save');
-    btn.disabled = !rows.length;
-    btn.innerText = `${rows.length}명 저장`;
+    btn.disabled = !ok;
+    btn.innerText = `${ok}명 교육 기록 저장`;
 }
 
 function saveAssocImport() {
-    if (!assocImportRows.length) return;
-    if (!confirm(`${assocImportRows.length}명을 협회 명단에 저장할까요?`)) return;
+    const list = assocImportRows.filter(r => r.hr);
+    if (!list.length || !confirm(`${list.length}명의 교육 기록을 저장할까요?`)) return;
     const batch = db.batch();
-    assocImportRows.forEach(({ p, old }) => {
-        const ref = old ? db.collection("association_members").doc(old.id) : db.collection("association_members").doc();
-        batch.set(ref, { ...p, edu: mergeEduImport(old, p.edu), memo: old ? (old.memo || '') : '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    list.forEach(({ p, hr }) => {
+        const cur = (AS.eduById || {})[hr.id] || {};
+        batch.set(db.collection('hr_edu').doc(hr.id), { edu: mergeEduImport({ edu: cur.edu || {} }, p.edu), memo: cur.memo || '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
     });
     batch.commit().then(() => { alert('저장했어요.'); closeAssocImport(); openAssocTab(); })
         .catch(err => {
-            console.error('협회 명단 저장 실패:', err);
-            alert(err && err.code === 'permission-denied' ? '권한이 없어 저장하지 못했어요.\nFirebase 콘솔 > Firestore > 규칙에 association_members 규칙을 게시해 주세요.' : '저장 중 오류가 발생했어요.');
+            console.error('교육 기록 저장 실패:', err);
+            alert(err && err.code === 'permission-denied' ? '권한이 없어 저장하지 못했어요.\nFirebase 콘솔 > Firestore > 규칙(hr_)을 확인해 주세요.' : '저장 중 오류가 발생했어요.');
         });
 }
 

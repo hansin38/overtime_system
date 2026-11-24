@@ -762,3 +762,7 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .hr-assoc-picks { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border-radius: 8px; }
 .hr-assoc-picks.chg { background: #fff9db; outline: 1px solid #f08c00; }
 #hr-modal-body .hr-assoc-picks input { width: auto; height: auto; }
+/* 협회 관리 수정 창: 사람 정보는 보기만 */
+.as-ro { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 14px; font-size: 13.5px; }
+.as-ro label { display: block; font-size: 12px; color: #868e96; margin-bottom: 2px; }
+.as-mig-need td { background: #fff5f5; }
