@@ -30,6 +30,8 @@ h2, h3 { text-align: center; color: #222; margin-bottom: 20px; }
 .admin-nav-item.soon:hover { background: none; color: #adb5bd; }
 .admin-nav-item small { display: block; font-size: 11px; color: #ced4da; }
 .admin-main { min-width: 0; }
+/* 화면 제목: 7개 화면 모두 왼쪽 메뉴 이름과 같은 제목 · 같은 모양 */
+.admin-page-title { text-align: center; font-size: 24px; margin: 4px 0 26px; color: #222; }
 @media (max-width: 900px) {
     .admin-layout { grid-template-columns: 1fr; }
     .admin-nav { position: static; border-right: 0; border-bottom: 1px solid #eee; padding: 0 0 10px; display: flex; flex-wrap: wrap; gap: 4px; }

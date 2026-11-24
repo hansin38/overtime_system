@@ -51,9 +51,7 @@
         <div class="admin-main">
 
         <div id="ot-admin-section">
-        <div style="margin-bottom: 30px;">
-            <h2>연장근로 결재 센터</h2>
-        </div>
+        <h2 class="admin-page-title">📝 연장근로 결재</h2>
 
         <!-- 🔍 검색 & 기간 필터링 통합 영역 -->
         <div style="background: #fff; padding: 20px; border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 30px; display: flex; flex-direction: column; gap: 15px;">
@@ -131,6 +129,7 @@
 
         <!-- 🏖️ 연차 관리 (서명은 결재자가 링크로 진행, 관리자는 연차 갯수 관리·사용촉진용) -->
         <div id="leave-admin-section" style="display: none;">
+            <h2 class="admin-page-title">🏖️ 연차 관리</h2>
             <!-- 🔍 연도 · 직원명 · 상태 (고르면 바로 적용, 직원명은 신청 내역·연차 현황 둘 다 / 상태는 신청 내역만) -->
             <div class="lv-filter">
                 <label><span>연도:</span><select id="leave-year-select" onchange="loadLeaveAdmin()"></select></label>
@@ -195,6 +194,7 @@
 
         <!-- 💵 급여 관리 (월 급여·명세서 발송 · 사원 정보는 보기만 - 수정은 👥 직원 관리 / 화면 그리기는 js/payroll-*.js) -->
         <div id="pay-admin-section" style="display: none;">
+            <h2 class="admin-page-title">💵 급여 관리</h2>
             <div class="pay-month-bar">
                 <select id="pay-month" onchange="changePayMonth()"></select>
                 <span class="pay-stat">입력 <b id="pay-stat-saved">-</b></span>
@@ -235,6 +235,7 @@
 
         <!-- 👥 직원 관리 (전체 명단·검색·정보 누락 확인 / 줄을 누르면 사원 정보 수정 창 - js/staff-admin.js) -->
         <div id="staff-admin-section" style="display: none;">
+            <h2 class="admin-page-title">👥 직원 관리</h2>
             <div id="staff-kpis" class="staff-kpis"></div>
             <div class="staff-bar">
                 <input id="staff-search" class="staff-search" placeholder="🔍 이름 · 사원번호 · 부서 검색" oninput="renderStaffTable()">
@@ -262,7 +263,7 @@
 
         <!-- 👤 직원정보 관리 (직원명단 「1기본정보」 · 관리자 조회 전용 - js/hr-admin.js) -->
         <div id="hrinfo-admin-section" style="display: none;">
-            <h2 style="margin-bottom: 18px;">👤 직원정보</h2>
+            <h2 class="admin-page-title">👤 직원정보 관리</h2>
             <div class="staff-bar">
                 <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('info', this.value)">
                 <span class="sub" id="hr-info-count"></span>
@@ -277,7 +278,7 @@
 
         <!-- 📚 직원경력 관리 (직원명단 「2경력,학력」 · 관리자 조회 전용 - js/hr-admin.js) -->
         <div id="hrcareer-admin-section" style="display: none;">
-            <h2 style="margin-bottom: 18px;">📚 직원경력 · 자격 · 학력</h2>
+            <h2 class="admin-page-title">📚 직원경력 관리</h2>
             <div class="staff-bar">
                 <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('career', this.value)">
                 <span class="sub" id="hr-career-count"></span>
@@ -292,6 +293,7 @@
 
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
         <div id="assoc-admin-section" style="display: none;">
+            <h2 class="admin-page-title">🏛 협회 관리</h2>
             <div class="lv-subtabs">
                 <button type="button" id="as-subtab-apply" class="on" onclick="switchAssocSubTab('apply')">📌 할 일 <span id="as-apply-count" class="as-tab-n"></span></button>
                 <button type="button" id="as-subtab-byassoc" onclick="switchAssocSubTab('byassoc')">🏛 협회별 현황</button>
