@@ -265,11 +265,12 @@ function slotAssocLabel(m, k) {
 }
 // 협회별 과정 이름 (화면에 보이는 이름) - 칸 기본 이름은 EDU_SLOTS.label
 //   전기기술인협회: 설계기본과정·설계심화과정·감리기본과정·감리심화과정 (1 = 기본) · 정보통신공사협회: 설계 (1)·(2) 그대로
-//   전기철도협회·철도운전협회: 정기교육
+//   전기철도협회·철도운전협회·철도신호협회: 정기교육
 const COURSE_NAMES = {
     '전기기술인협회': { d1: '설계기본과정', d2: '설계심화과정', s1: '감리기본과정', s2: '감리심화과정' },
     '전기철도협회': { etc: '정기교육', drive: '정기교육' },
     '철도운전협회': { etc: '정기교육', drive: '정기교육' },
+    '철도신호협회': { etc: '정기교육', drive: '정기교육' },
 };
 function courseName(assocLabel, k) {
     return (COURSE_NAMES[assocLabel] || {})[k] || EDU_SLOTS.find(s => s.k === k).label;
