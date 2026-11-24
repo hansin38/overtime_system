@@ -44,8 +44,8 @@
             <button id="tab-pay-admin" class="admin-nav-item" onclick="switchAdminTab('pay')">💵 급여 관리</button>
             <button id="tab-staff-admin" class="admin-nav-item" onclick="switchAdminTab('staff')">👥 직원 관리</button>
             <div class="admin-nav-h">🎓 인사 · 자격</div>
-            <button class="admin-nav-item soon" disabled title="준비 중 - 직원명단 「1기본정보」">👤 직원정보 관리<small>준비 중</small></button>
-            <button class="admin-nav-item soon" disabled title="준비 중 - 직원명단 「2경력,학력」">📚 직원경력 관리<small>준비 중</small></button>
+            <button id="tab-hrinfo-admin" class="admin-nav-item" onclick="switchAdminTab('hrinfo')">👤 직원정보 관리</button>
+            <button id="tab-hrcareer-admin" class="admin-nav-item" onclick="switchAdminTab('hrcareer')">📚 직원경력 관리</button>
             <button id="tab-assoc-admin" class="admin-nav-item" onclick="switchAdminTab('assoc')">🏛 협회 관리</button>
         </nav>
         <div class="admin-main">
@@ -260,6 +260,36 @@
             <div class="staff-foot">줄을 누르면 사원 정보 수정 창이 열려요 · 이름·전화번호는 연장근로·연차 로그인과 연결돼 있어 수정할 수 없어요 · 퇴사자는 삭제 대신 퇴사일을 입력해 주세요</div>
         </div>
 
+        <!-- 👤 직원정보 관리 (직원명단 「1기본정보」 · 관리자 조회 전용 - js/hr-admin.js) -->
+        <div id="hrinfo-admin-section" style="display: none;">
+            <h2 style="margin-bottom: 18px;">👤 직원정보</h2>
+            <div class="staff-bar">
+                <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('info', this.value)">
+                <span class="sub" id="hr-info-count"></span>
+                <div class="staff-actions"><button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
+            </div>
+            <div class="staff-wrap"><table class="staff-tbl hr-tbl">
+                <thead><tr><th>이름</th><th>직급</th><th>부서</th><th>생년월일</th><th>전화번호</th><th>입사일 · 근속</th><th>이메일</th><th>주소</th></tr></thead>
+                <tbody id="hr-info-tbody"></tbody>
+            </table></div>
+            <div class="staff-foot">직원명단 엑셀의 「1기본정보」를 그대로 보여줘요 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있고, 주민번호는 저장하지 않고 생년월일만 보관해요</div>
+        </div>
+
+        <!-- 📚 직원경력 관리 (직원명단 「2경력,학력」 · 관리자 조회 전용 - js/hr-admin.js) -->
+        <div id="hrcareer-admin-section" style="display: none;">
+            <h2 style="margin-bottom: 18px;">📚 직원경력 · 자격 · 학력</h2>
+            <div class="staff-bar">
+                <input class="staff-search" placeholder="🔍 이름 · 부서 검색" oninput="setHrSearch('career', this.value)">
+                <span class="sub" id="hr-career-count"></span>
+                <div class="staff-actions"><button class="pay-btn" onclick="openHrImport()">📤 직원명단 엑셀 올리기</button></div>
+            </div>
+            <div class="staff-wrap"><table class="staff-tbl hr-tbl">
+                <thead><tr><th>이름</th><th>부서 · 직급</th><th>구분</th><th>분야</th><th>자격등급</th><th>회사등록</th><th>자격증 · 발급번호</th><th>합격일</th><th>최종학력</th><th>졸업년도</th></tr></thead>
+                <tbody id="hr-career-tbody"></tbody>
+            </table></div>
+            <div class="staff-foot">직원명단 엑셀의 「2경력,학력」을 그대로 보여줘요 · 바꿀 때는 엑셀을 고친 뒤 다시 올리면 통째로 바뀌어요 · 🔒 관리자만 볼 수 있어요</div>
+        </div>
+
         <!-- 🏛 협회 관리 (기술자 협회 가입·교육 현황 · 전 직원 대상, 사원정보와 별도 명단 - js/assoc-admin.js) -->
         <div id="assoc-admin-section" style="display: none;">
             <div class="lv-subtabs">
@@ -311,6 +341,22 @@
         </div>
         </div><!-- /admin-main -->
         </div><!-- /admin-layout -->
+    </div>
+
+    <!-- 📤 [직원명단 엑셀 올리기 - 직원정보·직원경력] -->
+    <div id="hr-imp-modal" class="pay-modal-bg" onclick="if (event.target === this) closeHrImport()">
+        <div class="pay-modal">
+            <div class="mh"><b>📤 직원명단 엑셀 올리기</b><button class="pay-btn ghost" onclick="closeHrImport()">✕</button></div>
+            <label class="pay-drop">
+                <input type="file" id="hr-imp-file" accept=".xls,.xlsx" onchange="onHrImportFile(this)">
+                <b>직원명단.xlsx 고르기</b><small>「1기본정보」 · 「2경력,학력」 시트를 읽어요 (주민번호는 생년월일만)</small>
+            </label>
+            <div id="hr-imp-result"></div>
+            <div class="pay-modal-foot">
+                <button class="pay-btn" onclick="closeHrImport()">닫기</button>
+                <button id="hr-imp-save" class="pay-btn blue" onclick="saveHrImport()" disabled>저장</button>
+            </div>
+        </div>
     </div>
 
     <!-- 🏛 [협회 기술자 수정] -->
@@ -640,5 +686,6 @@
     <script src="js/payroll-slip.js"></script>
     <script src="js/staff-admin.js"></script>
     <script src="js/assoc-admin.js"></script>
+    <script src="js/hr-admin.js"></script>
 </body>
 </html>

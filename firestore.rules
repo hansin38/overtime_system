@@ -38,9 +38,10 @@ service cloud.firestore {
     match /association_members/{id} { allow read, write: if isAdmin(); }
 
     // 💼 CFO 사이트 (별도 저장소 CFO · 통장·계산서·계약 · 계좌번호·금액 포함이라 관리자만)
-    // cfo_ 로 시작하는 컬렉션은 모두 여기 해당 → 새 cfo_ 컬렉션을 추가해도 규칙을 다시 게시할 필요 없음
+    // 🎓 인사·자격 (hr_ · 직원정보·경력 · 주소·연락처·생년월일 포함이라 관리자만)
+    // cfo_ · hr_ 로 시작하는 컬렉션은 모두 여기 해당 → 새 컬렉션을 추가해도 규칙을 다시 게시할 필요 없음
     match /{col}/{id} {
-      allow read, write: if col.matches('cfo_.*') && isAdmin();
+      allow read, write: if (col.matches('cfo_.*') || col.matches('hr_.*')) && isAdmin();
     }
   }
 }
