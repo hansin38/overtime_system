@@ -15,14 +15,16 @@ const ASSOCS = [
     { k: 'erail', label: '전기철도협회',     short: '전기철도', re: /전기철도/ },
     { k: 'drive', label: '철도운전협회',     short: '철도운전', re: /철도운전/ },
 ];
-// 교육 칸 6개: 설계(1)(2) · 감리(1)(2) · 기타(전기철도/철도신호) · 철도운전
+// 교육 칸 6개: 설계(1)(2) · 감리(1) 기본 · 감리(2) 심화 · 기타(전기철도/철도신호) · 철도운전
 const EDU_SLOTS = [
     { k: 'd1', group: '설계', label: '설계 (1)' }, { k: 'd2', group: '설계', label: '설계 (2)' },
-    { k: 's1', group: '감리', label: '감리 (1)' }, { k: 's2', group: '감리', label: '감리 (2)' },
+    { k: 's1', group: '감리', label: '감리 (1) 기본교육' }, { k: 's2', group: '감리', label: '감리 (2) 심화교육' },
     { k: 'etc', group: '기타', label: '기타 교육' }, { k: 'drive', group: '기타', label: '철도운전' },
 ];
 const EDU_STATUSES = ['이수', '신청완료', '신청대기', '신청필요'];
 const ASSOC_SOON_DAYS = 90;   // 다음 교육 기한이 이 안이면 '임박'
+const EDU_VALID_YEARS = 3;    // 교육은 종료일부터 3년 - 1일까지 유효 (예: 23.11.14 종료 → 26.11.13까지, 11.14부터 무효)
+const EDU_KEEP_YEARS = 10;    // 교육 기록은 종료일부터 10년 보관, 지나면 저장할 때 지움
 
 const AS = { members: [], filter: { assoc: '', due: '', q: '' }, sort: { key: 'name', dir: 1 }, editingId: null, loaded: false };
 
@@ -67,9 +69,46 @@ function assocKeysFrom(text) {
     return [...keys];
 }
 
-// 가장 가까운 다음 교육 기한 (설계·감리 다음 신청일, 기타·철도운전 유효기간)
+// ------------------------------------------
+// 교육 기록: 칸마다 여러 건(이력) 보관 - edu[칸] = { records: [{ assoc, status, from, to, next }] }
+// (예전 저장 모양 edu[칸] = { assoc, status, from, to, next } 한 건도 그대로 읽음)
+// ------------------------------------------
+const recEnd = (r) => r.to || r.from || '';
+function addYearsYmd(ymd, years, days = 0) {
+    const d = parseYmd(ymd);
+    d.setFullYear(d.getFullYear() + years);
+    d.setDate(d.getDate() + days);
+    return toYmd(d);
+}
+const eduKeepFrom = () => addYearsYmd(asToday(), -EDU_KEEP_YEARS);
+const recEmpty = (r) => !r.from && !r.to && !r.next && !['신청완료', '신청대기', '신청필요'].includes(r.status);
+// 칸의 기록 목록 (최신순, 종료일 10년 지난 기록 제외)
+function eduRecs(m, k) {
+    const e = (m && m.edu && m.edu[k]) || null;
+    if (!e) return [];
+    const list = Array.isArray(e.records) ? e.records : [e];
+    return list
+        .map(r => ({ assoc: r.assoc || '', status: r.status || '', from: r.from || '', to: r.to || '', next: r.next || '' }))
+        .filter(r => !recEmpty(r) && (!recEnd(r) || recEnd(r) >= eduKeepFrom()))
+        .sort((a, b) => (recEnd(b) || b.next || '9999').localeCompare(recEnd(a) || a.next || '9999'));
+}
+const isDone = (r) => (r.status === '이수' || !r.status) && !!recEnd(r);
+// 기록 한 건의 유효 기한: 종료일 + 3년 - 1일 (기타·철도운전은 유효기간을 직접 적었으면 그 날짜)
+function recExpiry(r, k) {
+    if (['etc', 'drive'].includes(k) && r.next) return r.next;
+    return recEnd(r) ? addYearsYmd(recEnd(r), EDU_VALID_YEARS, -1) : (r.next || '');
+}
+// 칸의 현재 유효 기한 = 가장 최근 이수 기록의 유효 기한 (이수 기록이 없으면 예전 '다음 기한' 값)
+function slotExpiry(m, k) {
+    const recs = eduRecs(m, k);
+    const done = recs.find(isDone);
+    if (done) return recExpiry(done, k);
+    const legacy = recs.find(r => r.next);
+    return legacy ? legacy.next : '';
+}
+// 가장 가까운 교육 기한 (모든 칸 중)
 function nextDueOf(m) {
-    const dates = EDU_SLOTS.map(s => (m.edu && m.edu[s.k] && m.edu[s.k].next) || '').filter(Boolean).sort();
+    const dates = EDU_SLOTS.map(s => slotExpiry(m, s.k)).filter(Boolean).sort();
     return dates[0] || '';
 }
 function dueLevel(ymd) {
@@ -179,19 +218,22 @@ function resetAssocFilter() {
 }
 function sortAssoc(key) { AS.sort = AS.sort.key === key ? { key, dir: -AS.sort.dir } : { key, dir: 1 }; renderAssoc(); }
 
-// 교육 칸 한 개: 상태 칩 + 날짜(수료/교육 기간) + 다음 기한
-function eduChip(e) {
-    if (!e || (!e.status && !e.from && !e.next)) return '<span class="sub">-</span>';
+// 교육 칸 한 개 (목록용): 최근 기록의 상태 칩 + 기간 + 유효 기한(→ 날짜, 지나면 빨강) + 이전 기록 수
+function eduChip(m, k) {
+    const recs = eduRecs(m, k);
+    if (!recs.length) return '<span class="sub">-</span>';
+    const e = recs[0];
     const st = e.status || (e.from ? '이수' : '');
     const cls = { '이수': 'ok', '신청완료': 'blue', '신청대기': 'gray', '신청필요': 'bad' }[st] || 'gray';
     const period = e.from ? `${asShort(e.from)}${e.to && e.to !== e.from ? '~' + asShort(e.to).slice(3) : ''}` : '';
-    const lv = dueLevel(e.next);
-    return `<div class="as-edu">${st ? `<span class="as-st ${cls}">${st}</span>` : ''}${period ? `<span class="as-dt">${period}</span>` : ''}${e.next ? `<span class="as-next ${lv}" title="다음 교육 기한(유효기간)">→ ${asShort(e.next)}</span>` : ''}</div>`;
+    const exp = slotExpiry(m, k), lv = dueLevel(exp);
+    const more = recs.length > 1 ? `<span class="as-more" title="이전 기록 ${recs.length - 1}건">+${recs.length - 1}</span>` : '';
+    return `<div class="as-edu">${st ? `<span class="as-st ${cls}">${st}</span>` : ''}${period ? `<span class="as-dt">${period}</span>` : ''}${exp ? `<span class="as-next ${lv}" title="${lv === 'over' ? '무효 (유효 기한 지남)' : '이 날까지 유효'}">→ ${asShort(exp)}</span>` : ''}${more}</div>`;
 }
 // (1)·(2) 두 칸: 둘 다 비면 '-' 하나만
-const eduEmpty = (e) => !e || (!e.status && !e.from && !e.next);
-function eduPair(a, b) { return eduEmpty(a) && eduEmpty(b) ? '<span class="sub">-</span>' : (eduEmpty(a) ? '' : eduChip(a)) + (eduEmpty(b) ? '' : eduChip(b)); }
-const hasNeed = (m) => EDU_SLOTS.some(s => m.edu && m.edu[s.k] && m.edu[s.k].status === '신청필요');
+const eduEmpty = (m, k) => !eduRecs(m, k).length;
+function eduPair(m, a, b) { return eduEmpty(m, a) && eduEmpty(m, b) ? '<span class="sub">-</span>' : (eduEmpty(m, a) ? '' : eduChip(m, a)) + (eduEmpty(m, b) ? '' : eduChip(m, b)); }
+const hasNeed = (m) => EDU_SLOTS.some(s => { const r = eduRecs(m, s.k)[0]; return r && r.status === '신청필요'; });
 
 function renderAssoc() {
     const tbody = document.getElementById('assoc-tbody');
@@ -235,19 +277,18 @@ function renderAssoc() {
         return;
     }
     tbody.innerHTML = list.map(({ m, due }) => {
-        const e = m.edu || {};
         const chips = (m.assocs || []).map(k => { const a = ASSOCS.find(x => x.k === k); return a ? `<span class="as-assoc as-${k}" title="${a.label}">${a.short}</span>` : ''; }).join('');
         const lv = dueLevel(due);
-        const etc = [e.etc, e.drive].filter(x => x && (x.status || x.from || x.next))
-            .map(x => `${x.assoc ? `<small class="as-sub">${esc(x.assoc.replace(/^\(사\)/, ''))}</small>` : ''}${eduChip(x)}`).join('') || '<span class="sub">-</span>';
+        const etc = ['etc', 'drive'].filter(k => !eduEmpty(m, k))
+            .map(k => { const a = eduRecs(m, k)[0].assoc; return `${a ? `<small class="as-sub">${esc(a.replace(/^\(사\)/, ''))}</small>` : ''}${eduChip(m, k)}`; }).join('') || '<span class="sub">-</span>';
         return `<tr onclick="openAssocModal('${m.id}')" title="눌러서 수정">
             <td><b>${esc(m.name)}</b></td>
             <td>${esc(m.department || '-')}<small>${esc(m.position || '')}</small></td>
             <td class="l">${chips || '<span class="sub">-</span>'}</td>
             <td>${esc(m.grade || '-')}<small>${esc(m.field || '')}</small></td>
             <td>${m.companyReg === true ? '<span class="staff-chip ok">Y</span>' : m.companyReg === false ? '<span class="staff-chip gray">N</span>' : '<span class="sub">-</span>'}</td>
-            <td class="l">${eduPair(e.d1, e.d2)}</td>
-            <td class="l">${eduPair(e.s1, e.s2)}</td>
+            <td class="l">${eduPair(m, 'd1', 'd2')}</td>
+            <td class="l">${eduPair(m, 's1', 's2')}</td>
             <td class="l">${etc}</td>
             <td>${due ? `<span class="as-due ${lv}">${asShort(due)}</span><small>${lv === 'over' ? '기한 지남' : `${asDaysTo(due)}일 남음`}</small>` : '<span class="sub">-</span>'}</td>
         </tr>`;
@@ -257,21 +298,93 @@ function renderAssoc() {
 // ------------------------------------------
 // 수정 창 (기술자 한 명)
 // ------------------------------------------
+// 수정 창 교육 카드 (1안): 칸마다 카드 하나, 기록은 최신순으로 전부 · 최근 교육이 무효면 노란 「새 교육 입력」 줄 자동 표시
+function eduValidText(m, k) {
+    const recs = eduRecs(m, k);
+    if (!recs.length) return { cls: 'gray', text: '기록 없음' };
+    const exp = slotExpiry(m, k);
+    if (!exp) return { cls: 'gray', text: recs[0].status || '-' };
+    const d = asDaysTo(exp);
+    if (d < 0) return { cls: 'bad', text: `무효 · ${-d}일 지남` };
+    return { cls: d <= ASSOC_SOON_DAYS ? 'soon' : 'ok', text: `유효 · ${asShort(exp)}까지${d <= ASSOC_SOON_DAYS ? ` (${d}일 남음)` : ''}` };
+}
+function eduRecRowHtml(k, r, kind) {
+    const v = (x) => esc(x || '');
+    const exp = kind === 'new' ? '' : (isDone(r) ? recExpiry(r, k) : '');
+    const expTxt = exp ? (asDaysTo(exp) < 0 ? `${asShort(exp)} 만료` : `${asShort(exp)}까지`) : '';
+    const label = { new: '＋ 새 교육', cur: '최근', old: '이전' }[kind];
+    const hasNext = ['etc', 'drive'].includes(k);
+    return `<div class="as-rec ${kind}${exp && asDaysTo(exp) < 0 ? ' expired' : ''}">
+        <span class="k">${label}</span>
+        <span class="row"><input type="date" class="r-from" value="${v(r.from)}" title="시작(수료)일"> ~ <input type="date" class="r-to" value="${v(r.to)}" title="종료일"></span>
+        <input class="r-assoc" value="${v(r.assoc)}" placeholder="협회">
+        <select class="r-status">${EDU_STATUSES.map(st => `<option ${(r.status || '이수') === st ? 'selected' : ''}>${st}</option>`).join('')}</select>
+        ${hasNext ? `<input type="date" class="r-next" value="${v(r.next)}" title="유효기간 (비우면 종료일 + 3년 - 1일)">` : ''}
+        <span class="exp${hasNext ? '' : ' wide'}">${expTxt}</span>
+        <button type="button" class="x" title="이 기록 지우기" onclick="this.closest('.as-rec').remove()">×</button>
+    </div>`;
+}
+function eduSlotHtml(m, s) {
+    const recs = eduRecs(m, s.k);
+    const vt = eduValidText(m, s.k);
+    const latestPending = recs[0] && !isDone(recs[0]);
+    const needNew = recs.length && vt.cls === 'bad' && !latestPending;
+    const lastAssoc = (recs[0] && recs[0].assoc) || '';
+    return `<div class="as-slot" data-k="${s.k}">
+        <div class="as-slot-h"><b>${s.label}</b><span class="as-valid ${vt.cls}">${vt.text}</span>
+            <button type="button" class="as-add" onclick="addEduRow('${s.k}')">＋ 교육 추가</button></div>
+        <div class="as-recs">
+            ${needNew ? eduRecRowHtml(s.k, { assoc: lastAssoc, status: '이수' }, 'new') : ''}
+            ${recs.map((r, i) => eduRecRowHtml(s.k, r, i === 0 ? 'cur' : 'old')).join('')}
+        </div></div>`;
+}
+function addEduRow(k) {
+    const box = document.querySelector(`.as-slot[data-k="${k}"] .as-recs`);
+    if (!box) return;
+    if (box.querySelector('.as-rec.new')) { box.querySelector('.as-rec.new .r-from').focus(); return; }
+    const first = box.querySelector('.r-assoc');
+    box.insertAdjacentHTML('afterbegin', eduRecRowHtml(k, { assoc: first ? first.value : '', status: '이수' }, 'new'));
+    box.querySelector('.as-rec.new .r-from').focus();
+}
+// 수정 창의 교육 카드 → 저장할 모양 { 칸: { records: [...] } } (빈 줄·10년 지난 기록은 뺌)
+function collectEduFromModal() {
+    const edu = {};
+    document.querySelectorAll('#assoc-modal-body .as-slot').forEach(slot => {
+        const k = slot.dataset.k;
+        const records = Array.from(slot.querySelectorAll('.as-rec')).map(row => {
+            const val = (c) => ((row.querySelector('.' + c) || {}).value || '').trim();
+            const r = { assoc: val('r-assoc'), status: val('r-status'), from: val('r-from'), to: val('r-to'), next: val('r-next') };
+            if (r.from && r.to && r.to < r.from) [r.from, r.to] = [r.to, r.from];
+            return r;
+        }).filter(r => !recEmpty(r) && (!recEnd(r) || recEnd(r) >= eduKeepFrom()))
+            .map(r => { Object.keys(r).forEach(x => { if (!r[x]) delete r[x]; }); return r; });
+        if (records.length) edu[k] = { records };
+    });
+    return edu;
+}
+// 엑셀 가져오기: 이미 있는 이력은 그대로 두고, 같은 기간 기록은 엑셀 값으로 갱신 · 새 기간이면 추가
+function mergeEduImport(oldMember, newEdu) {
+    const edu = {};
+    EDU_SLOTS.forEach(s => {
+        const recs = oldMember ? eduRecs(oldMember, s.k) : [];
+        const imp = newEdu[s.k] ? eduRecs({ edu: { [s.k]: newEdu[s.k] } }, s.k)[0] : null;
+        if (imp) {
+            const same = recs.find(r => (r.from && r.from === imp.from) || (r.to && r.to === imp.to) || (!recEnd(r) && !recEnd(imp)));
+            if (same) Object.keys(imp).forEach(x => { if (imp[x]) same[x] = imp[x]; });
+            else recs.push(imp);
+        }
+        const records = recs.map(r => { const o = { ...r }; Object.keys(o).forEach(x => { if (!o[x]) delete o[x]; }); return o; });
+        if (records.length) edu[s.k] = { records };
+    });
+    return edu;
+}
+
 function openAssocModal(id = null) {
     AS.editingId = id;
     const m = id ? AS.members.find(x => x.id === id) : { assocs: [], edu: {} };
     if (!m) return;
     const v = (x) => esc(x || '');
     const grades = ['초급', '중급', '고급', '특급'];
-    const eduRow = (s) => {
-        const e = (m.edu || {})[s.k] || {};
-        return `<tr><td>${s.label}</td>
-            <td><input id="ae-${s.k}-assoc" value="${v(e.assoc)}" placeholder="협회"></td>
-            <td><select id="ae-${s.k}-status"><option value="">-</option>${EDU_STATUSES.map(st => `<option ${e.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></td>
-            <td><input type="date" id="ae-${s.k}-from" value="${v(e.from)}"></td>
-            <td><input type="date" id="ae-${s.k}-to" value="${v(e.to)}"></td>
-            <td><input type="date" id="ae-${s.k}-next" value="${v(e.next)}"></td></tr>`;
-    };
     document.getElementById('assoc-modal-title').innerText = id ? `기술자 정보 · ${m.name}` : '기술자 추가';
     document.getElementById('assoc-modal-body').innerHTML = `
         <div class="pay-grp"><div class="gh">기본 정보</div><div class="pay-fg c3">
@@ -292,8 +405,10 @@ function openAssocModal(id = null) {
                 <div style="grid-column: span 2;"><label>자격증</label><input id="ae-license" value="${v(m.license)}"></div>
                 <div><label>합격일</label><input id="ae-licenseDate" value="${v(m.licenseDate)}" placeholder="2021-06-02"></div>
             </div></div>
-        <div class="pay-grp"><div class="gh">교육 <small class="sub" style="font-weight: normal;">다음 기한 = 설계·감리는 다음 신청 일정, 기타는 유효기간</small></div>
-            <table class="as-edu-tbl"><tr><th></th><th>협회</th><th>상태</th><th>시작(수료)</th><th>종료</th><th>다음 기한</th></tr>${EDU_SLOTS.map(eduRow).join('')}</table></div>
+        <div class="pay-grp"><div class="gh">교육</div>
+            <div class="as-rule">✅ 교육 <b>종료일부터 3년 - 1일</b>까지 유효, 하루라도 지나면 <b>무효</b> (예: 23.11.14 종료 → 26.11.13까지) · 기록은 종료일부터 <b>10년</b> 보관
+                <br><small>최근 교육이 무효가 되면 노란 「＋ 새 교육」 줄이 나타나요. 기타·철도운전은 유효기간을 따로 적으면 그 날짜를 써요.</small></div>
+            ${EDU_SLOTS.map(s => eduSlotHtml(m, s)).join('')}</div>
         <div class="pay-grp"><div class="gh">메모</div><textarea id="ae-memo" class="as-memo" placeholder="예: 엔지니어링협회 퇴직 처리 함">${v(m.memo)}</textarea></div>`;
     document.getElementById('assoc-del-btn').style.display = id ? '' : 'none';
     document.getElementById('assoc-modal').style.display = 'flex';
@@ -304,12 +419,7 @@ function saveAssocMember() {
     const g = (k) => (document.getElementById('ae-' + k).value || '').trim();
     const name = g('name');
     if (!name) { alert('이름을 입력해 주세요.'); return; }
-    const edu = {};
-    EDU_SLOTS.forEach(s => {
-        const e = { assoc: g(`${s.k}-assoc`), status: g(`${s.k}-status`), from: g(`${s.k}-from`), to: g(`${s.k}-to`), next: g(`${s.k}-next`) };
-        Object.keys(e).forEach(k => { if (!e[k]) delete e[k]; });
-        if (Object.keys(e).length) edu[s.k] = e;
-    });
+    const edu = collectEduFromModal();
     const reg = g('companyReg');
     const doc = {
         name, department: g('department'), position: g('position'), hireDate: g('hireDate'), birth: g('birth'), phone: g('phone'), email: g('email'),
@@ -369,7 +479,7 @@ function renderAssocImport(rows) {
             <td>${EDU_SLOTS.filter(s => p.edu[s.k] && (p.edu[s.k].status || p.edu[s.k].from || p.edu[s.k].next)).length}건</td>
             <td>${old ? '<span class="as-st gray">갱신</span>' : '<span class="as-st ok">추가</span>'}</td></tr>`).join('')}
         </tbody></table></div>
-        <div class="pay-note" style="margin-top: 10px;">🔒 주민번호(생년월일만 사용)·주소·비밀번호 칸은 읽지 않았어요. 이미 있는 사람은 엑셀 내용으로 바뀌고, 화면에서 적은 <b>메모는 그대로</b> 남아요.</div>`;
+        <div class="pay-note" style="margin-top: 10px;">🔒 주민번호(생년월일만 사용)·주소·비밀번호 칸은 읽지 않았어요. 이미 있는 사람은 엑셀 내용으로 바뀌고, 화면에서 적은 <b>메모와 교육 이력은 그대로</b> 남아요 (같은 기간 교육은 엑셀 값으로 갱신, 새 기간이면 이력에 추가).</div>`;
     const btn = document.getElementById('assoc-imp-save');
     btn.disabled = !rows.length;
     btn.innerText = `${rows.length}명 저장`;
@@ -381,7 +491,7 @@ function saveAssocImport() {
     const batch = db.batch();
     assocImportRows.forEach(({ p, old }) => {
         const ref = old ? db.collection("association_members").doc(old.id) : db.collection("association_members").doc();
-        batch.set(ref, { ...p, memo: old ? (old.memo || '') : '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        batch.set(ref, { ...p, edu: mergeEduImport(old, p.edu), memo: old ? (old.memo || '') : '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     });
     batch.commit().then(() => { alert('저장했어요.'); closeAssocImport(); openAssocTab(); })
         .catch(err => {
@@ -393,12 +503,12 @@ function saveAssocImport() {
 // ⬇ 협회 명단 엑셀로 받기
 function downloadAssocExcel() {
     const head = ['이름', '부서', '직위', '입사일', '협회', '분야', '등급', '회사등록', '자격증',
-        ...EDU_SLOTS.flatMap(s => [`${s.label} 상태`, `${s.label} 시작`, `${s.label} 종료`, `${s.label} 다음 기한`]), '가장 가까운 기한', '메모'];
+        ...EDU_SLOTS.flatMap(s => [`${s.label} 상태`, `${s.label} 시작`, `${s.label} 종료`, `${s.label} 유효 기한`, `${s.label} 이전 기록`]), '가장 가까운 기한', '메모'];
     const rows = AS.members.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(m => [
         m.name, m.department || '', m.position || '', m.hireDate || '',
         (m.assocs || []).map(k => (ASSOCS.find(a => a.k === k) || {}).label).join(', '), m.field || '', m.grade || '',
         m.companyReg === true ? 'Y' : m.companyReg === false ? 'N' : '', m.license || '',
-        ...EDU_SLOTS.flatMap(s => { const e = (m.edu || {})[s.k] || {}; return [e.status || '', e.from || '', e.to || '', e.next || '']; }),
+        ...EDU_SLOTS.flatMap(s => { const recs = eduRecs(m, s.k), e = recs[0] || {}; return [e.status || '', e.from || '', e.to || '', slotExpiry(m, s.k), recs.slice(1).map(r => `${r.from || ''}~${r.to || ''} ${r.assoc || ''} ${r.status || ''}`.trim()).join(' / ')]; }),
         nextDueOf(m), m.memo || '']);
     const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
     const wb = XLSX.utils.book_new();

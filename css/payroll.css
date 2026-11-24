@@ -615,5 +615,32 @@ table.pay-wage-tbl tr.tot td { font-weight: bold; border-top: 2px solid #e8c9ce;
 .as-edu-tbl { width: 100%; margin: 8px 0 0; table-layout: auto; }
 .as-edu-tbl th, .as-edu-tbl td { border: 0; border-bottom: 1px solid #eee; padding: 4px; font-size: 12.5px; }
 .as-edu-tbl input, .as-edu-tbl select { width: 100%; height: 30px; margin: 0; padding: 0 6px; border: 1px solid #ccc; border-radius: 5px; font-size: 12.5px; box-sizing: border-box; }
+/* 교육 카드 (칸마다 이력, 1안) */
+.as-rule { background: #eef4ff; color: #24447a; border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.7; margin: 4px 0 12px; }
+.as-rule small { color: #5c6f91; }
+.as-slot { border: 1px solid #e3e6ea; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+.as-slot-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: #f8f9fa; }
+.as-slot-h b { font-size: 13.5px; white-space: nowrap; }
+.as-valid { white-space: nowrap; border-radius: 999px; padding: 1px 9px; font-size: 11.5px; font-weight: bold; }
+.as-valid.ok { background: #e6f4ea; color: #2b8a3e; } .as-valid.bad { background: #ffe3e3; color: #c92a2a; }
+.as-valid.soon { background: #fff3bf; color: #e67700; } .as-valid.gray { background: #f1f3f5; color: #868e96; }
+.as-add { width: auto; flex: none; margin: 0 0 0 auto; border: 0; background: none; color: #1c64d9; font-size: 12px; cursor: pointer; padding: 2px 4px; }
+.as-recs:not(:empty) { border-top: 1px solid #e3e6ea; }
+.as-rec { display: grid; grid-template-columns: 62px auto minmax(80px, 1fr) 72px 112px 70px 16px; gap: 6px; align-items: center; padding: 7px 12px; border-bottom: 1px solid #f1f3f5; font-size: 12.5px; }
+.as-rec:last-child { border-bottom: 0; }
+.as-rec .k { font-size: 12px; color: #868e96; }
+.as-rec.cur .k { color: #222; font-weight: bold; }
+.as-rec.new { background: #fff9db; }
+.as-rec.new .k { color: #e67700; font-weight: bold; }
+.as-rec.expired input, .as-rec.expired select { color: #868e96; }
+.as-rec .row { display: flex; align-items: center; gap: 4px; }
+.as-rec input, .as-rec select { height: 30px; margin: 0; padding: 0 6px; border: 1px solid #ccc; border-radius: 5px; font-size: 12.5px; box-sizing: border-box; min-width: 0; font-family: inherit; }
+.as-rec input[type="date"] { width: 112px; padding: 0 4px; }
+.as-rec input.r-assoc { width: 100%; }
+.as-rec .exp.wide { grid-column: span 2; }
+.as-rec .exp { font-size: 11.5px; color: #868e96; white-space: nowrap; }
+.as-rec .x { width: auto; border: 0; background: none; color: #adb5bd; font-size: 16px; cursor: pointer; padding: 0; line-height: 1; }
+.as-rec .x:hover { color: #e03131; }
+.as-more { font-size: 11px; color: #868e96; margin-left: 2px; }
 .as-memo { width: 100%; min-height: 60px; margin: 8px 0 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; box-sizing: border-box; font-family: inherit; }
 @media (max-width: 900px) { .as-kpi-row { grid-template-columns: repeat(3, 1fr); } .as-kpi-row.small { grid-template-columns: 1fr 1fr; } }
