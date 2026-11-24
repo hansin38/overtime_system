@@ -15,10 +15,10 @@ const ASSOCS = [
     { k: 'erail', label: '전기철도협회',     short: '전기철도', re: /전기철도/ },
     { k: 'drive', label: '철도운전협회',     short: '철도운전', re: /철도운전/ },
 ];
-// 교육 칸 6개: 설계(1)(2) · 감리(1) 기본 · 감리(2) 심화 · 기타(전기철도/철도신호) · 철도운전
+// 교육 칸 6개: 설계(1)(2) · 감리(1)(2) · 기타(전기철도/철도신호) · 철도운전
 const EDU_SLOTS = [
     { k: 'd1', group: '설계', label: '설계 (1)' }, { k: 'd2', group: '설계', label: '설계 (2)' },
-    { k: 's1', group: '감리', label: '감리 (1) 기본교육' }, { k: 's2', group: '감리', label: '감리 (2) 심화교육' },
+    { k: 's1', group: '감리', label: '감리 (1)' }, { k: 's2', group: '감리', label: '감리 (2)' },
     { k: 'etc', group: '기타', label: '기타 교육' }, { k: 'drive', group: '기타', label: '철도운전' },
 ];
 const EDU_STATUSES = ['이수', '신청완료', '신청대기', '신청필요'];
@@ -263,6 +263,17 @@ function slotAssocLabel(m, k) {
     const a = ASSOCS.find(x => x.k === key);
     return a ? a.label : (asText(text).replace(/^\(사\)/, '') || (k === 'drive' ? '철도운전협회' : '기타 협회'));
 }
+// 협회별 과정 이름 (화면에 보이는 이름) - 칸 기본 이름은 EDU_SLOTS.label
+//   전기기술인협회: 설계기본과정·설계심화과정·감리기본과정·감리심화과정 (1 = 기본) · 정보통신공사협회: 설계 (1)·(2) 그대로
+//   전기철도협회·철도운전협회: 정기교육
+const COURSE_NAMES = {
+    '전기기술인협회': { d1: '설계기본과정', d2: '설계심화과정', s1: '감리기본과정', s2: '감리심화과정' },
+    '전기철도협회': { etc: '정기교육', drive: '정기교육' },
+    '철도운전협회': { etc: '정기교육', drive: '정기교육' },
+};
+function courseName(assocLabel, k) {
+    return (COURSE_NAMES[assocLabel] || {})[k] || EDU_SLOTS.find(s => s.k === k).label;
+}
 // 칸 하나의 다음 신청 정보: { k, kind: now|missed|jan|any, year, date, applied, sortKey, text, cls }
 function applyInfoOf(m, k) {
     const exp = slotExpiry(m, k);
@@ -272,7 +283,8 @@ function applyInfoOf(m, k) {
     const applied = !isDone(latest) && ['신청완료', '신청대기'].includes(latest.status);
     const today = asToday(), thisYear = Number(today.slice(0, 4));
     const applyBy = addMonthsYmd(exp, -EDU_APPLY_MONTHS);
-    const base = { k, exp, applied, assoc: slotAssocLabel(m, k), label: EDU_SLOTS.find(s => s.k === k).label };
+    const assoc = slotAssocLabel(m, k);
+    const base = { k, exp, applied, assoc, label: courseName(assoc, k) };
     if (exp < today) return { ...base, kind: 'now', year: thisYear, sortKey: '0', text: '지금 신청 (무효)', cls: 'bad' };
     if (JAN_BATCH_SLOTS.includes(k)) {
         const year = Number(applyBy.slice(0, 4));
@@ -363,7 +375,7 @@ function renderAssocApply() {
         const when = isJan ? `<span class="as-when jan">${year}년 1월 일괄 접수</span>` : `<span class="as-when any">수시 · 만료 6개월 전까지</span>`;
         const slots = EDU_SLOTS.filter(s => list.some(i => i.k === s.k));
         return `<div class="as-acard"><div class="as-acard-h">${esc(name)}${when}</div>
-            ${slots.map(s => `<div class="as-course"><span class="k">${s.label}</span><div class="as-ppl">
+            ${slots.map(s => `<div class="as-course"><span class="k">${courseName(name, s.k)}</span><div class="as-ppl">
                 ${list.filter(i => i.k === s.k).sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.m.name.localeCompare(b.m.name, 'ko')).map(i => {
                     const cls = i.applied ? 'done' : ['now', 'missed'].includes(i.kind) || i.cls === 'bad' ? 'red' : '';
                     const note = i.applied ? '신청완료' : i.kind === 'now' ? '무효 · 지금 신청' : i.kind === 'missed' ? `접수 놓침 · ~${asShort(i.exp)}` : i.kind === 'any' ? `${asShort(i.date)}까지${i.sortKey === '2' ? ' (지남)' : ''}` : `${i.window} · ~${asShort(i.exp)}`;
@@ -479,6 +491,11 @@ function eduRecRowHtml(k, r, kind) {
         <button type="button" class="x" title="이 기록 지우기" onclick="this.closest('.as-rec').remove()">×</button>
     </div>`;
 }
+// 카드 제목: 기록이 있으면 그 협회의 과정 이름, 없으면 (전기기술인협회 회원의 설계·감리는 전기 과정 이름) 기본 이름
+function eduSlotTitle(m, s) {
+    if (eduRecs(m, s.k).length) return courseName(slotAssocLabel(m, s.k), s.k);
+    return JAN_BATCH_SLOTS.includes(s.k) && (m.assocs || []).includes('elec') ? courseName('전기기술인협회', s.k) : s.label;
+}
 function eduSlotHtml(m, s) {
     const recs = eduRecs(m, s.k);
     const vt = eduValidText(m, s.k);
@@ -486,7 +503,7 @@ function eduSlotHtml(m, s) {
     const needNew = recs.length && vt.cls === 'bad' && !latestPending;
     const lastAssoc = (recs[0] && recs[0].assoc) || '';
     return `<div class="as-slot" data-k="${s.k}">
-        <div class="as-slot-h"><b>${s.label}</b><span class="as-valid ${vt.cls}">${vt.text}</span>
+        <div class="as-slot-h"><b>${eduSlotTitle(m, s)}</b>${eduRecs(m, s.k).length ? `<small class="sub">${esc(slotAssocLabel(m, s.k))}</small>` : ''}<span class="as-valid ${vt.cls}">${vt.text}</span>
             <button type="button" class="as-add" onclick="addEduRow('${s.k}')">＋ 교육 추가</button></div>
         <div class="as-recs">
             ${needNew ? eduRecRowHtml(s.k, { assoc: lastAssoc, status: '이수' }, 'new') : ''}
