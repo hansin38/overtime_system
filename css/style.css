@@ -389,23 +389,25 @@ th { background-color: #f1f3f5; }
     .ot-sheet:not(.ot-a4) { padding: 25mm 12mm 0 12mm; box-sizing: border-box; }
 }
 
-/* 🖨️ 인쇄용 A4 한 장 틀 (js/ot-sheet.js printOvertimeSheetA4) - 급여 관리 경비명세서와 같은 크기·여백·로고 비율
-   [위 고정] 로고·제목·문서정보 / [가운데] 신청인~내역 표 (넘치면 축소) / [아래 고정] 확인 문구·날짜·신청인 */
+/* 🖨️ 인쇄용 A4 틀 (js/ot-sheet.js printOvertimeSheetA4) - 급여 관리 경비명세서와 같은 폭(700px)·여백·로고 비율
+   한 장이면 확인 문구·성명은 종이 아래쪽 / 내역이 길면 축소하지 않고 2페이지로 넘김 (표 머리는 다음 장에도 다시 나옴) */
 .ot-sheet.ot-a4 {
     --ot-gap: 22px;
-    width: 700px; height: 990px; box-sizing: border-box; padding: 28px 78px 40px;
+    width: 700px; min-height: 990px; box-sizing: border-box; padding: 28px 78px 40px;
     display: flex; flex-direction: column; background: #fff; font-family: 'Malgun Gothic', sans-serif;
 }
 .ot-a4 .ot-top { flex: none; }
 .ot-a4 .ot-logo { height: 44px; }
-.ot-a4 .ot-body { flex: 1; min-height: 0; overflow: hidden; }
-/* flow-root: 첫 줄 위 여백이 밖으로 새지 않게 → 축소 비율 계산(높이 측정)이 정확해짐 */
-.ot-a4 .ot-body-in { transform-origin: top center; display: flow-root; }
+.ot-a4 .ot-body { flex: 1 0 auto; }
+.ot-a4 .ot-body-in { display: flow-root; }
+.ot-a4 .ot-items thead { display: table-header-group; }   /* 2페이지로 넘어가면 표 머리 다시 표시 */
+.ot-a4 .ot-items tr { break-inside: avoid; }
+.ot-a4 .ot-bottom { break-inside: avoid; }
 .ot-a4 .ot-name { margin-top: 32px; }
 .ot-a4 .ot-stats { margin-top: 16px; }
 .ot-a4 .ot-subject { margin-top: 34px; }
 .ot-a4 .ot-items th { padding: 10px 4px; }
-.ot-a4 .ot-items td { padding: 8px 4px; }
+.ot-a4 .ot-items td { padding: 11px 4px; }
 .ot-a4 .ot-bottom { flex: none; margin-top: 24px; }
 .ot-a4 .ot-lead { margin-top: 0; }
 .ot-a4 .ot-date { margin-top: 12px; }

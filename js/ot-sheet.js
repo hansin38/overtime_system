@@ -1,7 +1,7 @@
 // 연장근로 신청 확인서 양식 - 직원 화면(employee.html)과 관리자 화면(admin.html)이 함께 씀
 // (양식을 고치면 두 화면이 같이 바뀜, 모양은 css/style.css 의 .ot-sheet)
 // - 화면 상세보기: renderOvertimeSheetHtml(data)
-// - 인쇄: printOvertimeSheetA4(data) → 경비명세서처럼 A4 한 장(700×990) 틀, 로고·제목 위 고정 / 서명 아래 고정 / 내역이 길면 가운데만 축소
+// - 인쇄: printOvertimeSheetA4(data) → 경비명세서와 같은 폭(700px)·로고 비율, 내역이 길면 축소 없이 다음 장으로 넘김
 
 const OT_COMPANY_NAME = "(주)한신콘설탄트";
 const OT_COMPANY_LOGO = "/images/hanshin-logo.png";
@@ -81,7 +81,7 @@ function renderOvertimeSheetHtml(data, opts = {}) {
     return `<div class="ot-sheet">${top}${body}${bottom}</div>`;
 }
 
-// 🖨️ 인쇄: 따로 만든 인쇄 창(iframe)에서 A4 한 장 정중앙으로 (급여 관리 명세서 인쇄와 같은 방식)
+// 🖨️ 인쇄: 따로 만든 인쇄 창(iframe)에서 A4 가로 가운데로 (급여 관리 명세서 인쇄와 같은 방식)
 function printOvertimeSheetA4(data) {
     const old = document.getElementById('ot-print-frame');
     if (old) old.remove();
@@ -94,10 +94,10 @@ function printOvertimeSheetA4(data) {
     doc.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>연장근로 신청 확인서 - ${escapeOtHtml(data.employeeName || '')}</title>
         <link rel="stylesheet" href="${new URL('css/style.css', location.href).href}">
         <style>
-            @page { size: A4; margin: 0; }
+            @page { size: A4; margin: 10mm 0; }
             html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
             body, body * { visibility: visible !important; }   /* style.css 인쇄 규칙(#print-modal만 보이게) 해제 */
-            .sheet { width: 210mm; height: 296mm; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+            .sheet { width: 210mm; display: flex; justify-content: center; }
             .sheet .ot-a4 { flex: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         </style></head>
         <body><div class="sheet">${renderOvertimeSheetHtml(data, { a4: true })}</div></body></html>`);
@@ -107,12 +107,6 @@ function printOvertimeSheetA4(data) {
         .concat(Array.from(doc.images).map(img => img.complete ? Promise.resolve()
             : new Promise(resolve => { img.onload = img.onerror = resolve; })));
     Promise.all(waits).then(() => {
-        // 내역이 길어 가운데 칸을 넘으면 그 비율만큼만 축소 (경비명세서 fitSlipBodies와 같은 방식)
-        const box = doc.querySelector('.ot-body'), inner = doc.querySelector('.ot-body-in');
-        if (box && inner) {
-            const s = box.clientHeight / inner.offsetHeight;
-            if (s < 1) inner.style.transform = `scale(${s.toFixed(4)})`;
-        }
         frame.contentWindow.focus();
         frame.contentWindow.print();
     });
