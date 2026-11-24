@@ -14,7 +14,7 @@ const HR = {
     people: [], loaded: false, importRows: [],
     q: { info: '', career: '' },
     sort: { info: { key: 'no', dir: 1 }, career: { key: 'no', dir: 1 } },
-    filter: { info: { dept: '', pos: '' }, career: { grade: '', reg: '', assoc: '' } },
+    filter: { info: { dept: '', pos: '' }, career: { grade: '', reg: '', assoc: '', empty: '' } },
     reveal: false,   // 🔒 전화·이메일·주소는 기본으로 가림 → [개인정보 보기]를 눌러야 펼쳐짐 (화면 공유·캡처 대비)
 };
 
@@ -66,7 +66,9 @@ const HR_GRADES = ['특급', '고급', '중급', '초급'];
 const HR_POS_ORDER = ['대표이사', '부사장', '전무', '상무', '이사', '고문', '부장', '차장', '과장', '대리', '주임', '사원'];
 
 // 이름 칸: 퇴사자는 '퇴사 날짜' · 화면에서 고친 적 있으면 ✏️
-const hrNameCell = (p) => `<b>${esc(p.name)}</b>${p.resigned ? `<small>퇴사 ${esc(p.resigned.date || '')}</small>` : (p.history && p.history.length ? '<small title="화면에서 고친 기록이 있어요">✏️ 수정됨</small>' : '')}`;
+// 직원경력 화면은 경력이 없는 사람도 빈 줄로 보여줌 (경력 미입력 · 줄을 눌러 채우기)
+const hrRowsOf = (kind) => kind === 'info' ? HR.people.filter(p => p.info) : HR.people.map(p => p.career ? p : { ...p, career: { department: (p.info || {}).department || '', position: (p.info || {}).position || '' }, _noCareer: true });
+const hrNameCell = (p) => `<b>${esc(p.name)}</b>${p.resigned ? `<small>퇴사 ${esc(p.resigned.date || '')}</small>` : (p._noCareer ? '<small class="hr-empty">경력 미입력</small>' : p.history && p.history.length ? '<small title="화면에서 고친 기록이 있어요">✏️ 수정됨</small>' : '')}`;
 // 표 칸 정의: 정렬 열쇠 · 정렬 값 · 머리 · 칸 모양
 function hrColumns(kind) {
     const v = (x) => esc(x || '') || '<span class="sub">-</span>';
@@ -100,14 +102,14 @@ function hrListOf(kind) {
     const col = hrColumns(kind).find(c => c.key === HR.sort[kind].key);
     const val = col && col.val ? col.val : (p => p.no || 999);
     const dir = HR.sort[kind].dir;
-    return HR.people
-        .filter(p => kind === 'info' ? p.info : p.career)
+    return hrRowsOf(kind)
         .filter(p => HR.showResigned || !p.resigned)
         .filter(p => { const d = kind === 'info' ? p.info : p.career; return !q || [p.name, d.department, d.position].some(x => String(x || '').includes(q)); })
         .filter(p => kind !== 'info' || ((!f.dept || p.info.department === f.dept) && (!f.pos || p.info.position === f.pos)))
         .filter(p => kind !== 'career' || ((!f.grade || p.career.grade === f.grade)
             && (!f.reg || (f.reg === 'Y' ? p.career.companyReg === true : p.career.companyReg !== true))
-            && (!f.assoc || assocKeysFrom(p.career.group).includes(f.assoc))))
+            && (!f.assoc || assocKeysFrom(p.career.group).includes(f.assoc))
+            && (!f.empty || p._noCareer)))
         .sort((a, b) => {
             const x = val(a), y = val(b), byNo = (a.no || 999) - (b.no || 999);
             const ex = x === '' || x === null || x === undefined, ey = y === '' || y === null || y === undefined;
@@ -118,7 +120,7 @@ function hrListOf(kind) {
 
 // 위쪽 요약 + 필터 버튼 (누르면 그것만, 다시 누르면 풀림)
 function hrChipsHtml(kind) {
-    const all = HR.people.filter(p => kind === 'info' ? p.info : p.career);
+    const all = hrRowsOf(kind);
     const base = all.filter(p => HR.showResigned || !p.resigned);
     const nResigned = all.filter(p => p.resigned).length;
     const resignChip = nResigned ? `<button type="button" class="as-fc${HR.showResigned ? ' on' : ''}" onclick="toggleHrShowResigned()">퇴사자 포함<b>${nResigned}</b></button>` : '';
@@ -144,7 +146,7 @@ function hrChipsHtml(kind) {
     return `<div class="as-fchips">${chip('전체', base.length, allOn, "resetHrFilter('career')")}
         ${HR_GRADES.filter(g => grades[g]).map(g => chip(g, grades[g], f.grade === g, `setHrFilter('career','grade','${g}')`)).join('')}
         <span class="as-fsep"></span>
-        ${chip('회사등록 Y', regY, f.reg === 'Y', "setHrFilter('career','reg','Y')")}${chip('회사등록 N·없음', base.length - regY, f.reg === 'N', "setHrFilter('career','reg','N')")}
+        ${base.some(p => p._noCareer) ? chip('경력 미입력', base.filter(p => p._noCareer).length, f.empty === '1', "setHrFilter('career','empty','1')") + '<span class="as-fsep"></span>' : ''}${chip('회사등록 Y', regY, f.reg === 'Y', "setHrFilter('career','reg','Y')")}${chip('회사등록 N·없음', base.filter(p => !p._noCareer).length - regY, f.reg === 'N', "setHrFilter('career','reg','N')")}
         <span class="as-fsep"></span>
         ${ASSOCS.filter(a => assocs[a.k]).map(a => chip(a.short, assocs[a.k], f.assoc === a.k, `setHrFilter('career','assoc','${a.k}')`)).join('')}
         ${resignChip ? `<span class="as-fsep"></span>${resignChip}` : ''}</div>`;
@@ -209,7 +211,7 @@ HR.edit = null;   // { id, tab, orig }
 function hrFieldValue(p, tab, f) {
     if (f.root) return p ? p[f.k] || '' : '';
     const d = p && p[tab];
-    if (!d) return '';
+    if (!d) return tab === 'career' && ['department', 'position'].includes(f.k) ? ((p && p.info) || {})[f.k] || '' : '';   // 경력 미입력이면 부서·직급은 직원정보 값으로 채워 둠
     if (f.k === 'companyReg') return d.companyReg === true ? 'Y' : d.companyReg === false ? 'N' : '';
     return d[f.k] ?? '';
 }
