@@ -383,9 +383,36 @@ function courseName(assocLabel, k) {
     return (COURSE_NAMES[assocLabel] || {})[k] || EDU_SLOTS.find(s => s.k === k).label;
 }
 // 칸 하나의 다음 신청 정보: { k, kind: now|missed|jan|any, year, date, applied, sortKey, text, cls }
+// 📌 필수 과정: 직원경력의 협회 · 분야로 정해짐 → 이수 기록이 없으면 '신청필요(미이수)'
+//   전기기술인협회: 분야에 '설계' → 설계기본·설계심화 / '감리' → 감리기본·감리심화 (설계/감리면 넷 다)
+//   정보통신공사협회: 분야에 '설계' → 설계 (1)·(2)
+function requiredSlotsOf(m) {
+    const out = {}, field = String(m.field || ''), assocs = m.assocs || [];
+    const design = /설계/.test(field), supervise = /감리/.test(field);
+    if (assocs.includes('elec')) {
+        if (design) { out.d1 = '전기기술인협회'; out.d2 = '전기기술인협회'; }
+        if (supervise) { out.s1 = '전기기술인협회'; out.s2 = '전기기술인협회'; }
+    }
+    if (assocs.includes('ict') && design) { out.d1 = out.d1 || '정보통신공사협회'; out.d2 = out.d2 || '정보통신공사협회'; }
+    return out;
+}
+// 이수 기록이 없는데 필수이거나 '신청필요'로 적힌 칸 → 다가오는 1월 접수 대상 (신청완료·대기면 이미 신청함)
+function missingInfoOf(m, k) {
+    const recs = eduRecs(m, k), latest = recs[0] || {};
+    if (recs.some(isDone)) return null;
+    const req = requiredSlotsOf(m)[k];
+    if (!req && latest.status !== '신청필요' && !['신청완료', '신청대기'].includes(latest.status)) return null;
+    if (!req && !recs.length) return null;
+    const assoc = req || slotAssocLabel(m, k);
+    const year = assocApplyYears()[0];
+    const applied = ['신청완료', '신청대기'].includes(latest.status);
+    return { k, exp: '', applied, missing: true, assoc, label: courseName(assoc, k), kind: JAN_BATCH_SLOTS.includes(k) ? 'jan' : 'any',
+        year, sortKey: `${year}-01-00`, date: JAN_BATCH_SLOTS.includes(k) ? '' : asToday(), window: '1월~12월',
+        text: JAN_BATCH_SLOTS.includes(k) ? `${String(year).slice(2)}년 1월 접수 (미이수)` : '신청필요 (미이수)', cls: 'soon' };
+}
 function applyInfoOf(m, k) {
     const exp = slotExpiry(m, k);
-    if (!exp) return null;
+    if (!exp) return missingInfoOf(m, k);
     const recs = eduRecs(m, k);
     const latest = recs[0] || {};
     const applied = !isDone(latest) && ['신청완료', '신청대기'].includes(latest.status);
@@ -503,7 +530,8 @@ function assocTableHtml(a) {
     const members = st.members.slice().sort((x, y) => (x.name || '').localeCompare(y.name || '', 'ko'));
     const cell = (m, k) => {
         const recs = eduRecs(m, k);
-        if (!recs.length || slotAssocLabel(m, k) !== a.label) return '<span class="sub">-</span>';
+        if (!recs.length) return requiredSlotsOf(m)[k] === a.label ? '<span class="as-pill warn" title="필수 과정인데 이수 기록이 없어요">신청필요 · 미이수</span>' : '<span class="sub">-</span>';
+        if (slotAssocLabel(m, k) !== a.label) return '<span class="sub">-</span>';
         const r = recs[0], state = slotState(m, k), exp = slotExpiry(m, k);
         const period = r.from ? `${asShort(r.from)}${r.to && r.to !== r.from ? '~' + asShort(r.to).slice(3) : ''}` : '';
         if (state === 'need') return '<span class="as-pill bad">신청필요</span>';
@@ -563,6 +591,9 @@ function todoCardHtml(i) {
         const period = r.from ? `${fullDate(r.from)}${r.to && r.to !== r.from ? `~${monthDay(r.to)}` : ''} 교육` : '';
         what = `${course} → ${esc(r.status || '신청완료')}${period ? ` (${period})` : ''}`;
         why = i.exp ? `지금 교육은 ${fullDate(i.exp)}까지 유효` : '';
+    } else if (i.missing) {
+        what = i.kind === 'jan' ? `${course} → <b>${i.year}년 1월 접수</b>에 신청` : `${course} → <b>신청 필요</b>`;
+        why = '필수 과정인데 아직 이수 기록이 없어요';
     } else if (i.kind === 'now') {
         what = `${course} → <b>지금 바로 신청</b>`;
         why = `유효기간이 ${fullDate(i.exp)}에 이미 지났어요`;
@@ -636,7 +667,7 @@ function downloadAssocApplyExcel() {
 // 교육 칸 하나의 지금 상태: need(신청필요) · applied(신청완료/대기) · over(무효) · ok(유효)
 function slotState(m, k) {
     const recs = eduRecs(m, k);
-    if (!recs.length) return '';
+    if (!recs.length) return requiredSlotsOf(m)[k] ? 'need' : '';
     const latest = recs[0];
     if (latest.status === '신청필요') return 'need';
     if (!isDone(latest) && ['신청완료', '신청대기'].includes(latest.status)) return 'applied';
