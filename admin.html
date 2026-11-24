@@ -315,7 +315,8 @@
             <div id="leave-detail-sheet"></div>
             <div id="leave-detail-extra" style="margin-top: 12px; text-align: left; font-size: 13px;"></div>
             <div style="text-align: center; margin-top: 20px;">
-                <button onclick="closeLeaveDetail()" class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px;">닫기</button>
+                <button onclick="printLeaveDetail()" class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px; margin-right: 8px;">🖨️ 인쇄</button>
+                <button onclick="closeLeaveDetail()"class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px;">닫기</button>
             </div>
         </div>
     </div>
@@ -587,7 +588,8 @@
             </table>
             
             <div style="text-align: center; margin-top: 20px;">
-                <button onclick="closeModal()" class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px;">닫기</button>
+                <button onclick="printOvertimeDetail()" class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px; margin-right: 8px;">🖨️ 인쇄</button>
+                <button onclick="closeModal()"class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px;">닫기</button>
             </div>
         </div>
     </div>
@@ -600,6 +602,7 @@
     </div>
 
     <script src="js/ot-rules.js"></script>
+    <script src="js/ot-sheet.js"></script>
     <script src="js/leavejs/leave-common.js"></script>
     <script src="js/admin.js"></script>
     <script src="js/leavejs/leave-admin.js"></script>

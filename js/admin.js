@@ -321,6 +321,7 @@ function viewDetails(docId) {
         const data = doc.data();
         const modalTbody = document.getElementById('modal-tbody');
         if (!modalTbody) return;
+        detailPrintData = data;
 
         const logs = Array.isArray(data.detailLogs) ? data.detailLogs : [];
         const empNameKey = data.employeeName ? data.employeeName.trim() : "";
@@ -343,6 +344,49 @@ function viewDetails(docId) {
 
 function closeModal() {
     document.getElementById('detail-modal').style.display = "none";
+}
+
+// 🖨️ 상세보기 인쇄: 따로 만든 인쇄 창(iframe)에 양식만 넣어 인쇄 (관리자 화면·다른 창은 안 찍힘)
+// 연장근로 → 직원 화면과 같은 '연장근로 신청 확인서' (js/ot-sheet.js) · 연차 → 상세보기에 보이는 휴가신청서 그대로
+let detailPrintData = null;
+function printHtmlInFrame(html, title) {
+    const old = document.getElementById('detail-print-frame');
+    if (old) old.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'detail-print-frame';
+    frame.style.cssText = 'position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0;';
+    document.body.appendChild(frame);
+    const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+        .map(l => `<link rel="stylesheet" href="${l.href}">`).join('');
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><base href="${location.href}"><title>${title}</title>${links}
+        <style>
+            @page { size: A4; margin: 10mm; }
+            html, body { margin: 0; padding: 0; background: #fff; }
+            /* style.css 인쇄 규칙(#print-modal만 보이게)을 이 창에서는 풀어 줌 */
+            body, body * { visibility: visible !important; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        </style></head><body>${html}</body></html>`);
+    doc.close();
+    const waits = Array.from(doc.querySelectorAll('link')).map(link => new Promise(resolve => { if (link.sheet) resolve(); else link.onload = link.onerror = resolve; }))
+        .concat(Array.from(doc.images).map(img => img.complete ? Promise.resolve()
+            : new Promise(resolve => { img.onload = img.onerror = resolve; })));
+    Promise.all(waits).then(() => {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    });
+}
+
+function printOvertimeDetail() {
+    if (!detailPrintData) return;
+    printHtmlInFrame(renderOvertimeSheetHtml(detailPrintData), `연장근로 신청 확인서 - ${detailPrintData.employeeName || ''}`);
+}
+
+function printLeaveDetail() {
+    const sheet = document.getElementById('leave-detail-sheet').innerHTML;
+    const extra = document.getElementById('leave-detail-extra').innerHTML;
+    printHtmlInFrame(sheet + (extra ? `<div style="margin: 12px 15mm 0; font-size: 12px;">${extra}</div>` : ''), '휴가신청서');
 }
 
 // 💰 상세보기 상단 요약: 구분별 사용/한도(사원 화면과 동일 형식) + 가산율별 초과수당 + 총 지급액
