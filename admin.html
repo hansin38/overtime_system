@@ -574,19 +574,11 @@
             <h3>상세 내역</h3>
             <!-- 💰 고정OT 사용/한도 및 초과수당 계산 요약 -->
             <div id="modal-summary" style="text-align: left; background: var(--gray-color); border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 14px;"></div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>날짜</th>
-                        <th>구분</th>
-                        <th>시작</th>
-                        <th>종료</th>
-                        <th>시간</th>
-                    </tr>
-                </thead>
-                <tbody id="modal-tbody"></tbody>
-            </table>
-            
+            <!-- 직원 화면 제출내역조회와 같은 '연장근로 신청 확인서' (사유 포함, js/ot-sheet.js) -->
+            <div class="print-paper" style="width: 100%; box-sizing: border-box; margin: 0 auto;">
+                <div id="modal-sheet"></div>
+            </div>
+
             <div style="text-align: center; margin-top: 20px;">
                 <button onclick="printOvertimeDetail()" class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px; margin-right: 8px;">🖨️ 인쇄</button>
                 <button onclick="closeModal()"class="btn-batch-delete" style="padding: 0 20px; height: 38px; line-height: 36px;">닫기</button>

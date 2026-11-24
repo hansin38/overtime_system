@@ -319,8 +319,8 @@ function viewDetails(docId) {
     db.collection("overtime_requests").doc(docId).get().then(doc => {
         if (!doc.exists) return alert("신청 내역을 찾을 수 없습니다.");
         const data = doc.data();
-        const modalTbody = document.getElementById('modal-tbody');
-        if (!modalTbody) return;
+        const sheet = document.getElementById('modal-sheet');
+        if (!sheet) return;
         detailPrintData = data;
 
         const logs = Array.isArray(data.detailLogs) ? data.detailLogs : [];
@@ -329,16 +329,11 @@ function viewDetails(docId) {
         const limits = limitMapCache[empNameKey] || FIX_OT_LIMITS;
         renderPaySummary(data.employeeName || "-", wageInfo, calculateOvertimePay(logs, wageInfo.wage, limits), limits);
 
-        modalTbody.innerHTML = logs.map(log =>
-            `<tr>
-                <td>${log.date}</td>
-                <td>${log.type === 'weekday' ? '평일 야근' : '주말/공휴일'}</td>
-                <td>${log.start}</td>
-                <td>${log.end}</td>
-                <td>${log.hours} 시간</td>
-            </tr>`
-        ).join('');
+        // 아래 내역: 직원 화면 제출내역조회·인쇄와 같은 확인서 양식 (사유까지 보임)
+        sheet.innerHTML = renderOvertimeSheetHtml(data);
         document.getElementById('detail-modal').style.display = "flex";
+        const box = document.querySelector('#detail-modal .modal-content');
+        if (box) box.scrollTop = 0;
     });
 }
 

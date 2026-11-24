@@ -341,7 +341,7 @@ th { background-color: #f1f3f5; }
    ========================================== */
 /* --ot-gap: 블록 사이 간격 하나로 통일 → 여백 조정은 이 값만 바꾸면 됨 */
 /* 글자 크기는 4단계만: 작은 글씨(이름표·표 머리·단위) 12px / 본문 13px / 강조(성명) 16px / 숫자 20px · 제목 22px */
-.ot-sheet { --ot-gap: 30px; --ot-soft: #666a70; --ot-hair: #c9ccd1; --ot-sm: 12px; --ot-md: 13px; --ot-lg: 16px; font-size: var(--ot-md); color: #111; }
+.ot-sheet { --ot-gap: 30px; --ot-soft: #666a70; --ot-hair: #c9ccd1; --ot-sm: 12px; --ot-md: 13px; --ot-lg: 16px; font-size: var(--ot-md); color: #111; text-align: left; }  /* 창 안에서도 인쇄본처럼 왼쪽 정렬 */
 .ot-sheet table { width: 100%; border-collapse: collapse; margin: 0; }
 .ot-sheet th, .ot-sheet td { border: 0; background: none; }  /* 전역 표 테두리·배경 해제 (필요한 가로줄만 아래에서 지정) */
 
