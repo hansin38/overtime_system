@@ -81,6 +81,14 @@ function bindSearchAndActionEvents() {
             applyFilters();
         });
     }
+    // 부서를 바꾸면 직원명 목록을 그 부서 사람으로 줄이고 바로 조회
+    const deptEl = document.getElementById('search-dept');
+    if (deptEl) {
+        deptEl.addEventListener('change', () => {
+            fillOtNameOptions();
+            applyFilters();
+        });
+    }
     const statusEl = document.getElementById('search-status');
     if (statusEl) {
         statusEl.addEventListener('change', () => {
@@ -90,25 +98,47 @@ function bindSearchAndActionEvents() {
 }
 
 // 2. 🔍 검색용 드롭다운 메뉴에 DB의 사원 리스트 뿌리기
+// 부서 목록도 같이 (👥 직원 관리의 부서) - 부서를 고르면 직원명은 그 부서 사람만
+let otSearchEmployees = [];
 function loadSearchEmployeeList() {
     const selectEl = document.getElementById('search-employee-name');
     if (!selectEl) return;
 
     db.collection("employees").orderBy("name", "asc").get()
         .then((snapshot) => {
-            selectEl.innerHTML = '<option value="">선택</option>';
-            
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                const option = document.createElement('option');
-                option.value = data.name;
-                option.innerText = data.name;
-                selectEl.appendChild(option);
-            });
+            otSearchEmployees = snapshot.docs.map(doc => doc.data()).filter(e => e.name);
+            fillDeptOptions(document.getElementById('search-dept'), otSearchEmployees, '전체');
+            fillOtNameOptions();
         })
         .catch((error) => {
             console.error("검색용 사원 목록 로드 중 오류:", error);
         });
+}
+
+// 부서 드롭다운 채우기 (가나다순, 고른 값 유지) - 연장근로·연차·급여 공용
+function fillDeptOptions(sel, employees, allLabel) {
+    if (!sel) return;
+    const keep = sel.value;
+    const depts = [...new Set(employees.map(e => (e.department || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+    const esc = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    sel.innerHTML = `<option value="">${allLabel}</option>` + depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    sel.value = depts.includes(keep) ? keep : '';
+}
+
+function fillOtNameOptions() {
+    const selectEl = document.getElementById('search-employee-name');
+    if (!selectEl) return;
+    const dept = document.getElementById('search-dept')?.value || '';
+    const keep = selectEl.value;
+    const names = otSearchEmployees.filter(e => !dept || (e.department || '').trim() === dept).map(e => e.name);
+    selectEl.innerHTML = '<option value="">선택</option>';
+    names.forEach(n => {
+        const option = document.createElement('option');
+        option.value = n;
+        option.innerText = n;
+        selectEl.appendChild(option);
+    });
+    selectEl.value = names.includes(keep) ? keep : '';
 }
 
 // 4. 📅 기간 퀵 버튼 설정 헬퍼 함수
@@ -162,8 +192,10 @@ function applyFilters() {
     const startDateVal = document.getElementById('search-start-date')?.value || "";
     const endDateVal = document.getElementById('search-end-date')?.value || "";
 
-    currentTabStatus = searchStatus; 
-    loadAdminData(searchName, searchStatus, startDateVal, endDateVal);
+    const searchDept = document.getElementById('search-dept')?.value || "";
+
+    currentTabStatus = searchStatus;
+    loadAdminData(searchName, searchStatus, startDateVal, endDateVal, searchDept);
 }
 
 function logoutAdmin() {
@@ -179,7 +211,7 @@ function wageInfoFor(nameKey, req) {
 }
 
 // 6. 결재 내역 로드 (사원별 경비 시급·고정OT 반영)
-function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = "", endDateVal = "") {
+function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = "", endDateVal = "", searchDept = "") {
     // 1) 전체 사원의 급여조건·고정OT 매핑 맵 생성
     Promise.all([db.collection("employees").get(), db.collection("payroll_profiles").get()]).then(([empSnapshot, profSnapshot]) => {
         const profiles = {};
@@ -243,8 +275,12 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
                 });
             }
 
+            // 부서: 신청서 이름 → 직원 관리의 부서
+            const deptOf = name => ((empMap[(name || '').trim()] || {}).employee || {}).department || '';
+            if (searchDept) docs = docs.filter(doc => deptOf(doc.data().employeeName).trim() === searchDept);
+
             if (docs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 20px; color: #888;">지정된 기간 내의 결재 내역이 존재하지 않습니다.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 20px; color: #888;">${searchDept ? `${searchDept} 부서의 ` : '지정된 기간 내의 '}결재 내역이 존재하지 않습니다.</td></tr>`;
                 return;
             }
 
@@ -270,7 +306,7 @@ function loadAdminData(searchName = "", targetStatus = "전체", startDateVal = 
 
                 return `<tr>
                     <td>${formattedDate}</td>
-                    <td>${data.employeeName}</td>
+                    <td>${data.employeeName}${deptOf(data.employeeName) ? `<br><small style="color: #888;">${deptOf(data.employeeName)}</small>` : ''}</td>
                     <td>${data.employeePhone ? data.employeePhone.slice(-4) : "-"}</td>
                     <td><b>${data.totalHours} 시간</b></td>
                     <td>
@@ -530,6 +566,7 @@ function loadLeaveAdmin() {
         .then(([empSnap, reqSnap]) => {
             leaveAdminRequests = reqSnap.docs.map(doc => ({ id: doc.id, data: doc.data() }));
             leaveAdminEmployees = empSnap.docs.map(doc => doc.data());
+            fillDeptOptions(document.getElementById('leave-search-dept'), leaveAdminEmployees, '전체');
             fillLeaveNameOptions();
             applyLeaveFilters();
         })
@@ -541,10 +578,24 @@ function fillLeaveNameOptions() {
     const sel = document.getElementById('leave-search-name');
     if (!sel) return;
     const keep = sel.value;
+    const dept = document.getElementById('leave-search-dept')?.value || '';
     const names = [...new Set(leaveAdminEmployees.map(e => e.name).concat(leaveAdminRequests.map(r => r.data.employeeName)).filter(Boolean))]
+        .filter(n => !dept || leaveDeptOf(n) === dept)
         .sort((a, b) => a.localeCompare(b, 'ko'));
     sel.innerHTML = `<option value="">전체</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('');
     sel.value = names.includes(keep) ? keep : '';
+}
+
+// 이름 → 부서 (👥 직원 관리의 부서, 사원정보에 없는 이름은 '')
+function leaveDeptOf(name) {
+    const e = leaveAdminEmployees.find(x => (x.name || '').trim() === (name || '').trim());
+    return ((e && e.department) || '').trim();
+}
+
+// 부서를 바꾸면 직원명 목록을 그 부서 사람으로 줄이고 다시 그림
+function onLeaveDeptChange() {
+    fillLeaveNameOptions();
+    applyLeaveFilters();
 }
 
 // 연도·직원명·상태 적용 (다시 불러오지 않고 받아 둔 자료로 다시 그림)
@@ -577,6 +628,8 @@ function switchLeaveSubTab(tab) {
 }
 
 function resetLeaveFilters() {
+    document.getElementById('leave-search-dept').value = '';
+    fillLeaveNameOptions();
     document.getElementById('leave-search-name').value = '';
     document.getElementById('leave-search-status').value = '';
     applyLeaveFilters();
@@ -595,11 +648,12 @@ function renderLeaveSummary(year, employees) {
     const tbody = document.getElementById('leave-summary-tbody');
     if (!tbody) return;
     const pickName = document.getElementById('leave-search-name')?.value || '';
+    const pickDept = document.getElementById('leave-search-dept')?.value || '';
     // 상태를 고르면 그 상태의 신청이 그해에 있는 직원만 (대기는 재전송·결재중 포함)
     const pickStatus = document.getElementById('leave-search-status')?.value || '';
     const hasStatus = emp => leaveAdminRequests.some(({ data }) => data.employeeName === emp.name && data.employeePhone === emp.phoneLast4 && data.fiscalYear === year
         && (() => { const st = leaveDisplayStatus(data); return st === pickStatus || (pickStatus === '대기' && (st === '재전송' || st === '결재중')); })());
-    const rows = employees.filter(emp => (!pickName || emp.name === pickName) && (!pickStatus || hasStatus(emp))).map(emp => {
+    const rows = employees.filter(emp => (!pickName || emp.name === pickName) && (!pickDept || (emp.department || '').trim() === pickDept) && (!pickStatus || hasStatus(emp))).map(emp => {
         let used = 0, pending = 0;
         const mine = leaveAdminRequests.filter(({ data }) => data.employeeName === emp.name && data.employeePhone === emp.phoneLast4);
         mine.forEach(({ data }) => {
@@ -634,7 +688,7 @@ function renderLeaveSummary(year, employees) {
     });
 
     if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="color: #888;">${pickStatus ? `${year}년 '${pickStatus}' 신청이 있는 직원이 없습니다.` : pickName ? `${pickName} 님은 사원정보에 없습니다.` : '등록된 사원이 없습니다.'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #888;">${pickDept && !pickName && !pickStatus ? `${pickDept} 부서에 등록된 사원이 없습니다.` : pickStatus ? `${year}년 '${pickStatus}' 신청이 있는 직원이 없습니다.` : pickName ? `${pickName} 님은 사원정보에 없습니다.` : '등록된 사원이 없습니다.'}</td></tr>`;
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -643,7 +697,7 @@ function renderLeaveSummary(year, employees) {
         // 잔여가 발생의 절반 이상이면 주황(사용촉진 대상), 마이너스면 빨강
         const remainColor = r.remaining < 0 ? 'var(--danger-color)' : (r.entitlement > 0 && r.remaining >= r.entitlement / 2 ? '#e67e22' : '#333');
         return `<tr>
-            <td>${r.emp.name}</td>
+            <td>${r.emp.name}${r.emp.department ? `<br><small style="color: #888;">${r.emp.department}</small>` : ''}</td>
             <td>${noHire ? '<span style="color: var(--danger-color);">미등록</span>' : r.emp.hireDate}</td>
             <td title="${noHire ? '' : r.detail.parts.map(p => `${p.date} ${p.label} ${p.days}일`).join('\n')}">${noHire ? '-' : formatDays(r.entitlement) + '일'}${!noHire && r.detail.yearTotal > r.entitlement ? `<br><small style="color: #888; white-space: nowrap;">연말까지 ${formatDays(r.detail.yearTotal)}일<br>다음 ${r.detail.next.slice(5).replace('-', '/')}</small>` : ''}</td>
             <td>${formatDays(r.used)}일</td>
@@ -675,11 +729,12 @@ function renderLeaveRequestList(year) {
     const tbody = document.getElementById('leave-admin-tbody');
     if (!tbody) return;
     const pickName = document.getElementById('leave-search-name')?.value || '';
+    const pickDept = document.getElementById('leave-search-dept')?.value || '';
     const pickStatus = document.getElementById('leave-search-status')?.value || '';
     const statusOk = s => !pickStatus || s === pickStatus || (pickStatus === "대기" && (s === "재전송" || s === "결재중"));
     const list = leaveAdminRequests
         .filter(({ data }) => data.fiscalYear === year && data.status !== "작성") // 회수(작성) 건 제외
-        .filter(({ data }) => (!pickName || data.employeeName === pickName) && statusOk(leaveDisplayStatus(data)))
+        .filter(({ data }) => (!pickName || data.employeeName === pickName) && (!pickDept || leaveDeptOf(data.employeeName) === pickDept) && statusOk(leaveDisplayStatus(data)))
         // 제출일 또는 휴가 시작일 순 (▼ 최신순 / ▲ 오래된 순), 같으면 다른 기준도 같은 방향
         // (엑셀로 올린 이전 자료는 같은 신청일이 여러 건)
         .sort((a, b) => {
@@ -695,11 +750,11 @@ function renderLeaveRequestList(year) {
     // 제목 옆 건수: 조건이 있으면 '조건 · N건'
     const countEl = document.getElementById('leave-list-count');
     if (countEl) {
-        const label = [pickName, pickStatus && (pickStatus === "대기" ? "대기·결재중" : pickStatus)].filter(Boolean).join(' · ');
+        const label = [pickDept, pickName, pickStatus && (pickStatus === "대기" ? "대기·결재중" : pickStatus)].filter(Boolean).join(' · ');
         countEl.innerText = `${label ? label + ' · ' : ''}${list.length}건`;
     }
     if (list.length === 0) {
-        const cond = [pickName, pickStatus && `'${pickStatus}'`].filter(Boolean).join(' · ');
+        const cond = [pickDept, pickName, pickStatus && `'${pickStatus}'`].filter(Boolean).join(' · ');
         tbody.innerHTML = `<tr><td colspan="8" style="color: #888;">${year}년${cond ? ` ${cond}` : ''} 연차 신청 내역이 없습니다.</td></tr>`;
         return;
     }
@@ -713,7 +768,7 @@ function renderLeaveRequestList(year) {
         const canAdminApprove = ACTIVE_STATUSES.includes(data.status) && !leaveIsFinal(data);
         return `<tr>
             <td>${submitted}</td>
-            <td>${data.employeeName}</td>
+            <td>${data.employeeName}${leaveDeptOf(data.employeeName) ? `<br><small style="color: #888;">${leaveDeptOf(data.employeeName)}</small>` : ''}</td>
             <td>${leaveTypeLabel(data)}</td>
             <td style="font-size: 13px;">${periodSummary(data)}</td>
             <td>${formatDays(data.totalDays || 0)}일</td>

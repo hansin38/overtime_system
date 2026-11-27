@@ -49,6 +49,7 @@ function loadPayrollData() {
     ]).then(([empSnap, profSnap, recSnap, otSnap, leaveSnap, setDoc, expSnap]) => {
         P.employees = empSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+        fillDeptOptions(document.getElementById('pay-dept'), P.employees, '전체 부서');   // 👥 직원 관리의 부서 (admin.js)
         P.profiles = {};
         profSnap.forEach(d => { P.profiles[d.id] = d.data(); });
         // 예전에 저장된 기록도 지금 합계 규칙(실지급액 10원 반올림 등)으로 다시 계산
@@ -114,7 +115,8 @@ function renderPayMonthBar() {
 
 function renderPayEmpList() {
     const q = (document.getElementById('pay-search').value || '').trim();
-    const match = (e) => !q || (e.name || '').includes(q);
+    const dept = document.getElementById('pay-dept')?.value || '';
+    const match = (e) => (!q || (e.name || '').includes(q)) && (!dept || (e.department || '').trim() === dept);
     const list = monthEmployees().filter(match);
     const box = document.getElementById('pay-emp-list');
     if (P.employees.length === 0) {
@@ -125,15 +127,15 @@ function renderPayEmpList() {
     box.innerHTML = list.map(e => {
         const st = recordStatus(P.records[e.id]);
         return `<div class="${e.id === P.selectedId ? 'sel' : ''}" onclick="selectPayEmployee('${e.id}')">
-            <span class="pay-dot d-${st}"></span>${esc(e.name)}<small>${esc(e.empNo || '')}</small>
+            <span class="pay-dot d-${st}"></span>${esc(e.name)}<small>${esc(dept ? (e.empNo || '') : [e.department, e.empNo].filter(Boolean).join(' · '))}</small>
         </div>`;
-    }).join('') || `<div class="pay-emp-none">${q ? '검색 결과가 없습니다' : '이번 달 급여명세서 대상자가 없습니다'}</div>`;
+    }).join('') || `<div class="pay-emp-none">${q || dept ? '검색 결과가 없습니다' : '이번 달 급여명세서 대상자가 없습니다'}</div>`;
 
     // 대상 아님 · 이번 달 미재직 사원 (정보 수정은 가능, 기본은 접어둠)
     const others = P.employees.filter(e => !(isTarget(e.id) && isEmployedIn(e, P.month)) && match(e));
     const otherBox = document.getElementById('pay-emp-others');
     if (!others.length) { otherBox.innerHTML = ''; return; }
-    const open = P.showOthers || !!q || others.some(e => e.id === P.selectedId);
+    const open = P.showOthers || !!q || !!dept || others.some(e => e.id === P.selectedId);
     otherBox.innerHTML = `<div class="pay-others-title" onclick="P.showOthers = !P.showOthers; renderPayEmpList();">급여명세서 대상 아님 · 미재직 (${others.length}명) ${open ? '▾' : '▸'}</div>`
         + (open ? others.map(e => {
             const why = !isTarget(e.id) ? '대상 아님' : (e.resignDate && e.resignDate < `${P.month}-01` ? '퇴사' : '입사 전');

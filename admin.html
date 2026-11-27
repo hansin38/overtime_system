@@ -58,8 +58,15 @@
             
             <!-- 직원명 & 상태 선택 한 줄 배치 -->
             <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <!-- 부서 (👥 직원 관리의 부서) → 고르면 그 부서 사람만, 직원명 목록도 그 부서로 -->
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-weight: bold; font-size: 14px; color: #333; min-width: 70px;">직원명:</span>
+                    <span style="font-weight: bold; font-size: 14px; color: #333; min-width: 70px;">부서:</span>
+                    <select id="search-dept" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 140px; height: 34px; cursor: pointer; outline: none; background-color: #fff;">
+                        <option value="">전체</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-weight: bold; font-size: 14px; color: #333; min-width: 50px;">직원명:</span>
                     <select id="search-employee-name" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; min-width: 140px; height: 34px; cursor: pointer; outline: none; background-color: #fff;">
                         <option value="">선택</option>
                     </select>
@@ -133,6 +140,7 @@
             <!-- 🔍 연도 · 직원명 · 상태 (고르면 바로 적용, 직원명은 신청 내역·연차 현황 둘 다 / 상태는 신청 내역만) -->
             <div class="lv-filter">
                 <label><span>연도:</span><select id="leave-year-select" onchange="loadLeaveAdmin()"></select></label>
+                <label><span>부서:</span><select id="leave-search-dept" onchange="onLeaveDeptChange()"><option value="">전체</option></select></label>
                 <label><span>직원명:</span><select id="leave-search-name" onchange="applyLeaveFilters()"><option value="">전체</option></select></label>
                 <label><span>상태:</span><select id="leave-search-status" onchange="applyLeaveFilters()">
                     <option value="">전체</option>
@@ -217,6 +225,7 @@
 
             <div class="pay-layout">
                 <div class="pay-side">
+                    <select id="pay-dept" class="pay-search" onchange="renderPayEmpList()" title="부서별로 보기 (👥 직원 관리의 부서)"><option value="">전체 부서</option></select>
                     <input id="pay-search" class="pay-search" placeholder="🔍 이름 검색" oninput="renderPayEmpList()">
                     <div id="pay-emp-list" class="pay-emp-list"></div>
                     <div id="pay-emp-others" class="pay-emp-list others"></div>
